@@ -1,9 +1,12 @@
 {
-  "name": "ArbitrageBot",
-  "image": "mcr.microsoft.com/devcontainers/rust",
-  "features": {
-    "git": "latest",
-    "sqlite": "latest"
-  },
-  "postCreateCommand": "cargo build"
+  "name": "Rust Arbitrage Bot",
+  "image": "mcr.microsoft.com/devcontainers/rust:latest",
+  "postCreateCommand": "apt-get update && apt-get install -y sqlite3 libsqlite3-dev && cargo build",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer"
+      ]
+    }
+  }
 }
