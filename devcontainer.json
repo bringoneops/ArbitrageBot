@@ -1,0 +1,9 @@
+{
+  "name": "ArbitrageBot",
+  "image": "mcr.microsoft.com/devcontainers/rust",
+  "features": {
+    "git": "latest",
+    "sqlite": "latest"
+  },
+  "postCreateCommand": "cargo build"
+}
