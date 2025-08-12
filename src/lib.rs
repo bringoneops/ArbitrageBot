@@ -2,7 +2,7 @@ pub mod events;
 
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::{env, fs};
+use std::{collections::HashSet, env, fs};
 
 /// Configuration for global streams and per-symbol stream suffixes.
 #[derive(Clone, Deserialize)]
@@ -53,17 +53,19 @@ pub fn chunk_streams_with_config(
         return Vec::new();
     }
 
-    let mut streams =
-        Vec::with_capacity(config.global.len() + symbols.len() * config.per_symbol.len());
-    streams.extend(config.global.iter().cloned());
+    let mut stream_set: HashSet<String> =
+        HashSet::with_capacity(config.global.len() + symbols.len() * config.per_symbol.len());
+    stream_set.extend(config.global.iter().cloned());
 
     for &sym in symbols {
         let sym_lower = sym.to_lowercase();
         for suffix in &config.per_symbol {
-            streams.push(format!("{}@{}", sym_lower, suffix));
+            stream_set.insert(format!("{}@{}", sym_lower, suffix));
         }
     }
 
+    let mut streams: Vec<String> = stream_set.into_iter().collect();
+    streams.sort();
     let capacity = (streams.len() + chunk_size - 1) / chunk_size;
     let mut result = Vec::with_capacity(capacity);
     for chunk in streams.chunks(chunk_size) {

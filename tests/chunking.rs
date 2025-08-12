@@ -1,4 +1,5 @@
 use binance_us_and_global::{chunk_streams, chunk_streams_with_config, StreamConfig};
+use std::collections::HashSet;
 
 #[test]
 fn chunks_do_not_exceed_hundred_streams() {
@@ -52,4 +53,13 @@ fn supports_custom_stream_configuration() {
     let chunks = chunk_streams_with_config(&["ABC"], 10, &cfg);
     assert!(chunks.iter().flatten().any(|s| s == "custom"));
     assert!(chunks.iter().flatten().any(|s| s == "abc@suffix"));
+}
+
+#[test]
+fn removes_duplicate_streams() {
+    let symbols = ["SYM0", "SYM0"];
+    let chunks = chunk_streams(&symbols, 100);
+    let streams: Vec<String> = chunks.into_iter().flatten().collect();
+    let unique: HashSet<&String> = streams.iter().collect();
+    assert_eq!(streams.len(), unique.len());
 }
