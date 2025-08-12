@@ -106,6 +106,17 @@ async fn main() -> Result<()> {
     )
     .await?;
 
+    spawn_exchange(
+        "Binance Options",
+        "https://vapi.binance.com/vapi/v1/exchangeInfo",
+        "wss://vstream.binance.com/stream?streams=",
+        &client,
+        chunk_size,
+        &proxy_url,
+        &mut tasks,
+    )
+    .await?;
+
     while let Some(res) = tasks.join_next().await {
         res?;
     }

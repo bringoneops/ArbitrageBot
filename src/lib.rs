@@ -1,183 +1,65 @@
 pub mod events;
 
-// Global streams including rolling-window tickers
-const GLOBAL_STREAMS: &[&str] = &[
-    "!miniTicker@arr",
-    "!ticker@arr",
-    "!bookTicker@arr",
-    "!ticker_1h@arr",
-    "!ticker_4h@arr",
-    "!ticker_1d@arr",
-    "!ticker_1w@arr",
-    "!ticker_1M@arr",
-    "!markPrice@arr",
-    "!markPrice@arr@1s",
-    "forceOrder@arr",
-];
+use once_cell::sync::Lazy;
+use serde::Deserialize;
+use std::{env, fs};
 
-// Per-symbol stream suffixes
-const PER_SYMBOL_SUFFIXES: &[&str] = &[
-    "trade",
-    "aggTrade",
-    "depth",
-    "depth5",
-    "depth10",
-    "depth20",
-    "depth@100ms",
-    "depth5@100ms",
-    "depth10@100ms",
-    "depth20@100ms",
-    "kline_1m",
-    "kline_3m",
-    "kline_5m",
-    "kline_15m",
-    "kline_30m",
-    "kline_1h",
-    "kline_2h",
-    "kline_4h",
-    "kline_6h",
-    "kline_8h",
-    "kline_12h",
-    "kline_1d",
-    "kline_3d",
-    "kline_1w",
-    "kline_1M",
-    "miniTicker",
-    "ticker",
-    "bookTicker",
-    "ticker_1h",
-    "ticker_4h",
-    "ticker_1d",
-    "ticker_1w",
-    "ticker_1M",
-    "indexPrice",
-    "indexPrice@1s",
-    "markPrice",
-    "markPrice@1s",
-    "markPriceKline_1m",
-    "markPriceKline_3m",
-    "markPriceKline_5m",
-    "markPriceKline_15m",
-    "markPriceKline_30m",
-    "markPriceKline_1h",
-    "markPriceKline_2h",
-    "markPriceKline_4h",
-    "markPriceKline_6h",
-    "markPriceKline_8h",
-    "markPriceKline_12h",
-    "markPriceKline_1d",
-    "markPriceKline_3d",
-    "markPriceKline_1w",
-    "markPriceKline_1M",
-    "indexPriceKline_1m",
-    "indexPriceKline_3m",
-    "indexPriceKline_5m",
-    "indexPriceKline_15m",
-    "indexPriceKline_30m",
-    "indexPriceKline_1h",
-    "indexPriceKline_2h",
-    "indexPriceKline_4h",
-    "indexPriceKline_6h",
-    "indexPriceKline_8h",
-    "indexPriceKline_12h",
-    "indexPriceKline_1d",
-    "indexPriceKline_3d",
-    "indexPriceKline_1w",
-    "indexPriceKline_1M",
-    "continuousKline_1m_perpetual",
-    "continuousKline_1m_current_quarter",
-    "continuousKline_1m_next_quarter",
-    "continuousKline_3m_perpetual",
-    "continuousKline_3m_current_quarter",
-    "continuousKline_3m_next_quarter",
-    "continuousKline_5m_perpetual",
-    "continuousKline_5m_current_quarter",
-    "continuousKline_5m_next_quarter",
-    "continuousKline_15m_perpetual",
-    "continuousKline_15m_current_quarter",
-    "continuousKline_15m_next_quarter",
-    "continuousKline_30m_perpetual",
-    "continuousKline_30m_current_quarter",
-    "continuousKline_30m_next_quarter",
-    "continuousKline_1h_perpetual",
-    "continuousKline_1h_current_quarter",
-    "continuousKline_1h_next_quarter",
-    "continuousKline_2h_perpetual",
-    "continuousKline_2h_current_quarter",
-    "continuousKline_2h_next_quarter",
-    "continuousKline_4h_perpetual",
-    "continuousKline_4h_current_quarter",
-    "continuousKline_4h_next_quarter",
-    "continuousKline_6h_perpetual",
-    "continuousKline_6h_current_quarter",
-    "continuousKline_6h_next_quarter",
-    "continuousKline_8h_perpetual",
-    "continuousKline_8h_current_quarter",
-    "continuousKline_8h_next_quarter",
-    "continuousKline_12h_perpetual",
-    "continuousKline_12h_current_quarter",
-    "continuousKline_12h_next_quarter",
-    "continuousKline_1d_perpetual",
-    "continuousKline_1d_current_quarter",
-    "continuousKline_1d_next_quarter",
-    "continuousKline_3d_perpetual",
-    "continuousKline_3d_current_quarter",
-    "continuousKline_3d_next_quarter",
-    "continuousKline_1w_perpetual",
-    "continuousKline_1w_current_quarter",
-    "continuousKline_1w_next_quarter",
-    "continuousKline_1M_perpetual",
-    "continuousKline_1M_current_quarter",
-    "continuousKline_1M_next_quarter",
-    "forceOrder",
-];
+/// Configuration for global streams and per-symbol stream suffixes.
+#[derive(Clone, Deserialize)]
+pub struct StreamConfig {
+    pub global: Vec<String>,
+    #[serde(rename = "per_symbol")]
+    pub per_symbol: Vec<String>,
+}
 
-/// Builds a list of Binance WebSocket stream names split into chunks.
+/// Loads the stream configuration from a JSON file specified by the
+/// `STREAMS_CONFIG` environment variable. If the variable is unset or the file
+/// fails to load, a built-in default configuration is used.
+static STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    if let Ok(path) = env::var("STREAMS_CONFIG") {
+        if let Ok(content) = fs::read_to_string(path) {
+            if let Ok(cfg) = serde_json::from_str(&content) {
+                return cfg;
+            }
+        }
+    }
+    serde_json::from_str(include_str!("../streams.json"))
+        .expect("invalid default stream configuration")
+});
+
+/// Returns the default stream configuration.
+pub fn default_stream_config() -> &'static StreamConfig {
+    &STREAM_CONFIG
+}
+
+/// Builds a list of Binance WebSocket stream names split into chunks using the
+/// global stream configuration.
 ///
 /// Global streams are combined with per-symbol streams generated by pairing
-/// each symbol with a predefined set of suffixes. Symbols are lowercased before
-/// being combined. The complete list is then divided into chunks containing at
-/// most `chunk_size` stream names.
-///
-/// # Parameters
-/// - `symbols`: Trading pairs (e.g. `["BTCUSDT", "ETHUSDT"]`) to include.
-/// - `chunk_size`: Maximum number of stream names per chunk. When `0`, an empty
-///   vector is returned.
-///
-/// # Returns
-/// A vector of chunks where each inner `Vec<String>` holds up to `chunk_size`
-/// stream names.
-///
-/// # Examples
-/// ```
-/// use binance_us_and_global::chunk_streams;
-///
-/// let symbols = ["BTCUSDT", "ETHUSDT"];
-/// let chunks = chunk_streams(&symbols, 100);
-/// assert!(!chunks.is_empty());
-/// assert!(chunks.iter().all(|c| c.len() <= 100));
-/// ```
-///
-/// Splitting with a smaller chunk size:
-/// ```
-/// use binance_us_and_global::chunk_streams;
-///
-/// let symbols = ["BTCUSDT"];
-/// let chunks = chunk_streams(&symbols, 10);
-/// assert!(chunks.len() > 1);
-/// ```
+/// each symbol with a set of suffixes. Symbols are lowercased before being
+/// combined. The complete list is then divided into chunks containing at most
+/// `chunk_size` stream names.
 pub fn chunk_streams(symbols: &[&str], chunk_size: usize) -> Vec<Vec<String>> {
+    chunk_streams_with_config(symbols, chunk_size, default_stream_config())
+}
+
+/// Builds stream name chunks using a provided configuration.
+pub fn chunk_streams_with_config(
+    symbols: &[&str],
+    chunk_size: usize,
+    config: &StreamConfig,
+) -> Vec<Vec<String>> {
     if chunk_size == 0 {
         return Vec::new();
     }
 
     let mut streams =
-        Vec::with_capacity(GLOBAL_STREAMS.len() + symbols.len() * PER_SYMBOL_SUFFIXES.len());
-    streams.extend(GLOBAL_STREAMS.iter().map(|s| s.to_string()));
+        Vec::with_capacity(config.global.len() + symbols.len() * config.per_symbol.len());
+    streams.extend(config.global.iter().cloned());
 
     for &sym in symbols {
         let sym_lower = sym.to_lowercase();
-        for &suffix in PER_SYMBOL_SUFFIXES {
+        for suffix in &config.per_symbol {
             streams.push(format!("{}@{}", sym_lower, suffix));
         }
     }
