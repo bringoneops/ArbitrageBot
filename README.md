@@ -29,6 +29,28 @@ level along with its raw payload. If a metrics recorder is installed, an
 `unknown_events` counter is also incremented so operators can set up alerts for
 protocol changes.
 
+## Event Channel and Logging
+
+Parsed WebSocket events are sent over an unbounded Tokio `mpsc` channel.
+Downstream tasks can consume the messages directly:
+
+```rust
+let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+tokio::spawn(async move {
+    while let Some(event) = rx.recv().await {
+        // handle event
+    }
+});
+```
+
+Each handled message increments a `ws_events` metrics counter. Per-event
+logging is disabled by default; enable the `debug-logs` feature to log every
+event at the `debug` level:
+
+```bash
+cargo run --features debug-logs
+```
+
 ## Default Channels
 
 By default, the aggregator subscribes to the following Binance WebSocket channels
