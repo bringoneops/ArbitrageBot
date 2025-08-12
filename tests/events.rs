@@ -64,3 +64,42 @@ fn parses_kline_event() {
         _ => panic!("unexpected event"),
     }
 }
+
+#[test]
+fn parses_mini_ticker_event() {
+    let json = r#"{"stream":"btcusdt@miniTicker","data":{"e":"24hrMiniTicker","E":1,"s":"BTCUSDT","c":"1","o":"0.5","h":"1.2","l":"0.4","v":"100","q":"80"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::MiniTicker(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.close_price, "1");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn parses_ticker_event() {
+    let json = r#"{"stream":"btcusdt@ticker","data":{"e":"24hrTicker","E":1,"s":"BTCUSDT","p":"0.1","P":"1","w":"0.6","c":"0.7","o":"0.6","h":"0.8","l":"0.5","v":"1000","q":"600"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::Ticker(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.last_price, "0.7");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn parses_book_ticker_event() {
+    let json = r#"{"stream":"btcusdt@bookTicker","data":{"e":"bookTicker","u":1,"s":"BTCUSDT","b":"0.1","B":"2","a":"0.2","A":"3"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::BookTicker(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.best_bid_price, "0.1");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
