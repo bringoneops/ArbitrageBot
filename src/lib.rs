@@ -1,9 +1,14 @@
+pub mod canonical;
 pub mod events;
 
 use metrics::counter;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::{collections::{HashMap, HashSet}, env, fs, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    env, fs,
+    time::Duration,
+};
 #[cfg(feature = "debug-logs")]
 use tracing::debug;
 use tracing::{info, warn};
@@ -162,16 +167,8 @@ pub struct OrderBook {
 impl From<DepthSnapshot> for OrderBook {
     fn from(snapshot: DepthSnapshot) -> Self {
         Self {
-            bids: snapshot
-                .bids
-                .into_iter()
-                .map(|[p, q]| (p, q))
-                .collect(),
-            asks: snapshot
-                .asks
-                .into_iter()
-                .map(|[p, q]| (p, q))
-                .collect(),
+            bids: snapshot.bids.into_iter().map(|[p, q]| (p, q)).collect(),
+            asks: snapshot.asks.into_iter().map(|[p, q]| (p, q)).collect(),
             last_update_id: snapshot.last_update_id,
         }
     }
