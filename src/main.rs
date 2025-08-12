@@ -3,7 +3,7 @@ use futures::{future, stream, Future, SinkExt, StreamExt};
 use metrics::counter;
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
-use std::{collections::HashMap, env, pin::Pin, sync::Arc};
+use std::{collections::HashMap, env, io::Read, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 use tokio::{
@@ -27,6 +27,7 @@ use binance_us_and_global::{
     events::{Event, StreamMessage},
     handle_stream_event, next_backoff, stream_config_for_exchange, DepthSnapshot, OrderBook,
 };
+use flate2::read::{GzDecoder, ZlibDecoder};
 
 #[derive(Deserialize)]
 struct ExchangeInfo {
@@ -323,34 +324,77 @@ where
 
     while let Some(msg) = read.next().await {
         match msg {
-            Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
-                Ok(event) => {
-                    // metrics + optional debug logging
-                    counter!("ws_events").increment(1);
-                    #[cfg(feature = "debug-logs")]
-                    debug!(?event);
+            Ok(Message::Text(text)) => {
+                match serde_json::from_str::<StreamMessage<Event>>(&text) {
+                    Ok(event) => {
+                        // metrics + optional debug logging
+                        counter!("ws_events").increment(1);
+                        #[cfg(feature = "debug-logs")]
+                        debug!(?event);
 
-                    // always call the shared handler
-                    handle_stream_event(&event, &text);
+                        // always call the shared handler
+                        handle_stream_event(&event, &text);
 
-                    // if it's a depth update, keep the local order book warm
-                    if let Event::DepthUpdate(ref update) = event.data {
-                        let mut map = books.lock().await;
-                        if let Some(book) = map.get_mut(&update.symbol) {
-                            apply_depth_update(book, update);
+                        // if it's a depth update, keep the local order book warm
+                        if let Event::DepthUpdate(ref update) = event.data {
+                            let mut map = books.lock().await;
+                            if let Some(book) = map.get_mut(&update.symbol) {
+                                apply_depth_update(book, update);
+                            }
                         }
-                    }
 
-                    // fan out raw event to the channel for other consumers
-                    let _ = event_tx.send(event);
+                        // fan out raw event to the channel for other consumers
+                        let _ = event_tx.send(event);
+                    }
+                    Err(e) => error!("failed to parse message: {}", e),
                 }
-                Err(e) => error!("failed to parse message: {}", e),
-            },
+            }
+            Ok(Message::Binary(bin)) => {
+                let text = match String::from_utf8(bin.clone()) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        let mut s = String::new();
+                        let mut gz = GzDecoder::new(&bin[..]);
+                        if gz.read_to_string(&mut s).is_err() {
+                            let mut z = ZlibDecoder::new(&bin[..]);
+                            if z.read_to_string(&mut s).is_err() {
+                                error!("failed to decode binary message");
+                                continue;
+                            }
+                        }
+                        s
+                    }
+                };
+
+                match serde_json::from_str::<StreamMessage<Event>>(&text) {
+                    Ok(event) => {
+                        // metrics + optional debug logging
+                        counter!("ws_events").increment(1);
+                        #[cfg(feature = "debug-logs")]
+                        debug!(?event);
+
+                        // always call the shared handler
+                        handle_stream_event(&event, &text);
+
+                        // if it's a depth update, keep the local order book warm
+                        if let Event::DepthUpdate(ref update) = event.data {
+                            let mut map = books.lock().await;
+                            if let Some(book) = map.get_mut(&update.symbol) {
+                                apply_depth_update(book, update);
+                            }
+                        }
+
+                        // fan out raw event to the channel for other consumers
+                        let _ = event_tx.send(event);
+                    }
+                    Err(e) => error!("failed to parse message: {}", e),
+                }
+            }
             Ok(Message::Ping(payload)) => {
                 write.send(Message::Pong(payload)).await?;
             }
             Ok(Message::Pong(_)) => {}
-            Ok(_) => {} // ignore binary and other messages
+            Ok(_) => {} // ignore other messages
             Err(e) => return Err(e.into()),
         }
     }
