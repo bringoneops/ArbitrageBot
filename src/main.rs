@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
     let mut handles = Vec::new();
 
     for chunk in streams.chunks(chunk_size) {
-        // **capture only owned data for the task**
+        // capture only owned data for the task
         let param = chunk.join("/");
         let chunk_len = chunk.len();
         let url = Url::parse(&format!("{}{}", ws_base, param))
