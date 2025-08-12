@@ -104,17 +104,24 @@ async fn main() -> Result<()> {
 
     println!("🔌 Total Binance.US streams: {}", streams.len());
 
-    // 5. Chunk the list to avoid exceeding URL length limits
-    let chunk_size = 100;
+    // 5. Chunk the list to avoid exceeding URL length limits.
+    //    Binance allows up to 100 streams per connection.
+    const MAX_STREAMS_PER_CONN: usize = 100;
     let ws_base = "wss://stream.binance.us:9443/stream?streams=";
     let mut handles = Vec::new();
 
-    for chunk in streams.chunks(chunk_size) {
-        // capture only owned data for the task
-        let param = chunk.join("/");
-        let chunk_len = chunk.len();
-        let url = Url::parse(&format!("{}{}", ws_base, param)).context("parsing WebSocket URL")?;
-        let proxy = proxy_url.clone();
+// resolve: keep configurable chunk_size + keep proxy clone from main
+for chunk in streams.chunks(chunk_size) {
+    // capture only owned data for the task
+    let param = chunk.join("/");
+    let chunk_len = chunk.len();
+
+    let url = Url::parse(&format!("{}{}", ws_base, param))
+        .context("parsing WebSocket URL")?;
+
+    let proxy = proxy_url.clone(); // from main
+    // ... rest of loop
+}
 
         handles.push(task::spawn(async move {
             println!("→ opening WS: {} ({} streams)", url, chunk_len);
