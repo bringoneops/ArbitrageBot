@@ -17,6 +17,12 @@ pub enum Event {
     DepthUpdate(DepthUpdateEvent),
     #[serde(rename = "kline")]
     Kline(KlineEvent),
+    #[serde(rename = "24hrMiniTicker")]
+    MiniTicker(MiniTickerEvent),
+    #[serde(rename = "24hrTicker")]
+    Ticker(TickerEvent),
+    #[serde(rename = "bookTicker")]
+    BookTicker(BookTickerEvent),
     #[serde(other)]
     Unknown,
 }
@@ -123,4 +129,66 @@ pub struct Kline {
     pub taker_buy_base_volume: String,
     #[serde(rename = "Q")]
     pub taker_buy_quote_volume: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MiniTickerEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "c")]
+    pub close_price: String,
+    #[serde(rename = "o")]
+    pub open_price: String,
+    #[serde(rename = "h")]
+    pub high_price: String,
+    #[serde(rename = "l")]
+    pub low_price: String,
+    #[serde(rename = "v")]
+    pub volume: String,
+    #[serde(rename = "q")]
+    pub quote_volume: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TickerEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "p")]
+    pub price_change: String,
+    #[serde(rename = "P")]
+    pub price_change_percent: String,
+    #[serde(rename = "w")]
+    pub weighted_avg_price: String,
+    #[serde(rename = "c")]
+    pub last_price: String,
+    #[serde(rename = "o")]
+    pub open_price: String,
+    #[serde(rename = "h")]
+    pub high_price: String,
+    #[serde(rename = "l")]
+    pub low_price: String,
+    #[serde(rename = "v")]
+    pub volume: String,
+    #[serde(rename = "q")]
+    pub quote_volume: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BookTickerEvent {
+    #[serde(rename = "u")]
+    pub update_id: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "b")]
+    pub best_bid_price: String,
+    #[serde(rename = "B")]
+    pub best_bid_qty: String,
+    #[serde(rename = "a")]
+    pub best_ask_price: String,
+    #[serde(rename = "A")]
+    pub best_ask_qty: String,
 }

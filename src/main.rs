@@ -177,6 +177,13 @@ where
                             info!(event = "depthUpdate", symbol = %data.symbol)
                         }
                         Event::Kline(data) => info!(event = "kline", symbol = %data.symbol),
+                        Event::MiniTicker(data) => {
+                            info!(event = "miniTicker", symbol = %data.symbol)
+                        }
+                        Event::Ticker(data) => info!(event = "ticker", symbol = %data.symbol),
+                        Event::BookTicker(data) => {
+                            info!(event = "bookTicker", symbol = %data.symbol)
+                        }
                         Event::Unknown => info!(event = "unknown", stream = %event.stream),
                     }
                     debug!(?event);
