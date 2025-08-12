@@ -28,10 +28,8 @@ async fn main() -> Result<()> {
         .user_agent("binance-us-all-streams")
         .use_rustls_tls();
     if !proxy_url.is_empty() {
-        client_builder = client_builder.proxy(
-            Proxy::all(format!("socks5h://{}", proxy_url))
-                .context("invalid proxy URL")?,
-        );
+        client_builder = client_builder
+            .proxy(Proxy::all(format!("socks5h://{}", proxy_url)).context("invalid proxy URL")?);
     }
     let client = client_builder.build().context("building HTTP client")?;
 
@@ -59,13 +57,33 @@ async fn main() -> Result<()> {
 
     // 3. Define per-symbol suffixes (spot only), now including rolling-window tickers
     let suffixes = &[
-        "trade", "aggTrade",
-        "depth", "depth5", "depth10", "depth20", "depth@100ms",
-        "kline_1m", "kline_3m", "kline_5m", "kline_15m", "kline_30m",
-        "kline_1h", "kline_2h", "kline_4h", "kline_6h", "kline_8h", "kline_12h",
-        "kline_1d", "kline_3d", "kline_1w", "kline_1M",
-        "miniTicker", "ticker", "bookTicker",
-        "ticker_1h", "ticker_4h",
+        "trade",
+        "aggTrade",
+        "depth",
+        "depth5",
+        "depth10",
+        "depth20",
+        "depth@100ms",
+        "kline_1m",
+        "kline_3m",
+        "kline_5m",
+        "kline_15m",
+        "kline_30m",
+        "kline_1h",
+        "kline_2h",
+        "kline_4h",
+        "kline_6h",
+        "kline_8h",
+        "kline_12h",
+        "kline_1d",
+        "kline_3d",
+        "kline_1w",
+        "kline_1M",
+        "miniTicker",
+        "ticker",
+        "bookTicker",
+        "ticker_1h",
+        "ticker_4h",
     ];
 
     // 4. Build full list of streams for all trading symbols
@@ -78,17 +96,17 @@ async fn main() -> Result<()> {
 
     println!("🔌 Total Binance.US streams: {}", streams.len());
 
-    // 5. Chunk the list to avoid exceeding URL length limits
-    let chunk_size = 100;
+    // 5. Chunk the list to avoid exceeding URL length limits.
+    //    Binance allows up to 100 streams per connection.
+    const MAX_STREAMS_PER_CONN: usize = 100;
     let ws_base = "wss://stream.binance.us:9443/stream?streams=";
     let mut handles = Vec::new();
 
-    for chunk in streams.chunks(chunk_size) {
+    for chunk in streams.chunks(MAX_STREAMS_PER_CONN) {
         // **capture only owned data for the task**
         let param = chunk.join("/");
         let chunk_len = chunk.len();
-        let url = Url::parse(&format!("{}{}", ws_base, param))
-            .context("parsing WebSocket URL")?;
+        let url = Url::parse(&format!("{}{}", ws_base, param)).context("parsing WebSocket URL")?;
 
         handles.push(task::spawn(async move {
             println!("→ opening WS: {} ({} streams)", url, chunk_len);
