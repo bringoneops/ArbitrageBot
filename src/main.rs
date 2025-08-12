@@ -7,6 +7,8 @@ use tokio::task;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use url::Url;
 
+use binance_us_and_global::chunk_streams;
+
 #[derive(Deserialize)]
 struct ExchangeInfo {
     symbols: Vec<SymbolInfo>,
@@ -28,10 +30,8 @@ async fn main() -> Result<()> {
         .user_agent("binance-us-all-streams")
         .use_rustls_tls();
     if !proxy_url.is_empty() {
-        client_builder = client_builder.proxy(
-            Proxy::all(format!("socks5h://{}", proxy_url))
-                .context("invalid proxy URL")?,
-        );
+        client_builder = client_builder
+            .proxy(Proxy::all(format!("socks5h://{}", proxy_url)).context("invalid proxy URL")?);
     }
     let client = client_builder.build().context("building HTTP client")?;
 
@@ -48,47 +48,28 @@ async fn main() -> Result<()> {
         .await
         .context("parsing exchangeInfo JSON")?;
 
-    // 2. Prepare global "@arr" streams, including 1h & 4h rolling-window tickers
-    let mut streams = vec![
-        "!miniTicker@arr".to_string(),
-        "!ticker@arr".to_string(),
-        "!bookTicker@arr".to_string(),
-        "!ticker_1h@arr".to_string(),
-        "!ticker_4h@arr".to_string(),
-    ];
+    // 2. Collect trading symbols
+    let symbols: Vec<String> = info
+        .symbols
+        .into_iter()
+        .filter(|s| s.status == "TRADING")
+        .map(|s| s.symbol)
+        .collect();
+    let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
-    // 3. Define per-symbol suffixes (spot only), now including rolling-window tickers
-    let suffixes = &[
-        "trade", "aggTrade",
-        "depth", "depth5", "depth10", "depth20", "depth@100ms",
-        "kline_1m", "kline_3m", "kline_5m", "kline_15m", "kline_30m",
-        "kline_1h", "kline_2h", "kline_4h", "kline_6h", "kline_8h", "kline_12h",
-        "kline_1d", "kline_3d", "kline_1w", "kline_1M",
-        "miniTicker", "ticker", "bookTicker",
-        "ticker_1h", "ticker_4h",
-    ];
+    // 3. Generate and chunk streams
+    let chunks = chunk_streams(&symbol_refs);
+    let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
+    println!("🔌 Total Binance.US streams: {}", total_streams);
 
-    // 4. Build full list of streams for all trading symbols
-    for s in info.symbols.into_iter().filter(|s| s.status == "TRADING") {
-        let sym = s.symbol.to_lowercase();
-        for &suffix in suffixes.iter() {
-            streams.push(format!("{}@{}", sym, suffix));
-        }
-    }
-
-    println!("🔌 Total Binance.US streams: {}", streams.len());
-
-    // 5. Chunk the list to avoid exceeding URL length limits
-    let chunk_size = 100;
     let ws_base = "wss://stream.binance.us:9443/stream?streams=";
     let mut handles = Vec::new();
 
-    for chunk in streams.chunks(chunk_size) {
+    for chunk in chunks {
         // **capture only owned data for the task**
         let param = chunk.join("/");
         let chunk_len = chunk.len();
-        let url = Url::parse(&format!("{}{}", ws_base, param))
-            .context("parsing WebSocket URL")?;
+        let url = Url::parse(&format!("{}{}", ws_base, param)).context("parsing WebSocket URL")?;
 
         handles.push(task::spawn(async move {
             println!("→ opening WS: {} ({} streams)", url, chunk_len);
@@ -113,7 +94,7 @@ async fn main() -> Result<()> {
         }));
     }
 
-    // 6. Await all connections (runs indefinitely)
+    // 4. Await all connections (runs indefinitely)
     for handle in handles {
         handle.await??;
     }
