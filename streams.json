@@ -8,7 +8,6 @@
     "!ticker_1d@arr",
     "!ticker_1w@arr",
     "!ticker_1M@arr",
-    "!markPrice@arr",
     "!markPrice@arr@1s",
     "forceOrder@arr"
   ],
@@ -38,18 +37,8 @@
     "kline_3d",
     "kline_1w",
     "kline_1M",
-    "miniTicker",
-    "ticker",
-    "bookTicker",
-    "ticker_1h",
-    "ticker_4h",
-    "ticker_1d",
-    "ticker_1w",
-    "ticker_1M",
     "indexPrice",
     "indexPrice@1s",
-    "markPrice",
-    "markPrice@1s",
     "markPriceKline_1m",
     "markPriceKline_3m",
     "markPriceKline_5m",
@@ -124,8 +113,7 @@
     "continuousKline_1w_next_quarter",
     "continuousKline_1M_perpetual",
     "continuousKline_1M_current_quarter",
-    "continuousKline_1M_next_quarter",
-    "forceOrder"
+    "continuousKline_1M_next_quarter"
   ]
 }
 
