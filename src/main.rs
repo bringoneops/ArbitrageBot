@@ -229,6 +229,9 @@ where
                         Event::BookTicker(data) => {
                             info!(event = "bookTicker", symbol = %data.symbol)
                         }
+                        Event::IndexPrice(data) => {
+                            info!(event = "indexPriceUpdate", symbol = %data.symbol)
+                        }
                         Event::MarkPrice(data) => {
                             info!(event = "markPriceUpdate", symbol = %data.symbol)
                         }

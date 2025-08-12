@@ -50,6 +50,8 @@ const PER_SYMBOL_SUFFIXES: &[&str] = &[
     "ticker_1d",
     "ticker_1w",
     "ticker_1M",
+    "indexPrice",
+    "indexPrice@1s",
     "markPrice",
     "markPrice@1s",
     "forceOrder",
