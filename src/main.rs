@@ -3,8 +3,16 @@ use futures::StreamExt;
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
 use std::env;
-use tokio::task;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::TcpStream,
+    task,
+};
+use tokio_socks::tcp::Socks5Stream;
+use tokio_tungstenite::{
+    client_async_tls_with_config, connect_async, tungstenite::protocol::Message, MaybeTlsStream,
+    WebSocketStream,
+};
 use url::Url;
 
 #[derive(Deserialize)]
@@ -102,31 +110,28 @@ async fn main() -> Result<()> {
     let ws_base = "wss://stream.binance.us:9443/stream?streams=";
     let mut handles = Vec::new();
 
-    for chunk in streams.chunks(MAX_STREAMS_PER_CONN) {
-        // **capture only owned data for the task**
-        let param = chunk.join("/");
-        let chunk_len = chunk.len();
-        let url = Url::parse(&format!("{}{}", ws_base, param)).context("parsing WebSocket URL")?;
+// resolve: keep configurable chunk_size + keep proxy clone from main
+for chunk in streams.chunks(chunk_size) {
+    // capture only owned data for the task
+    let param = chunk.join("/");
+    let chunk_len = chunk.len();
+
+    let url = Url::parse(&format!("{}{}", ws_base, param))
+        .context("parsing WebSocket URL")?;
+
+    let proxy = proxy_url.clone(); // from main
+    // ... rest of loop
+}
 
         handles.push(task::spawn(async move {
             println!("→ opening WS: {} ({} streams)", url, chunk_len);
-            let (ws_stream, _) = connect_async(url).await.context("connecting WebSocket")?;
-            let (_, mut read) = ws_stream.split();
-
-            while let Some(msg) = read.next().await {
-                match msg {
-                    Ok(Message::Text(text)) => {
-                        // TODO: deserialize `text` into your event structs
-                        println!("{}", text);
-                    }
-                    Ok(_) => {} // ignore pings/pongs and binary
-                    Err(e) => {
-                        eprintln!("❌ WS error: {}", e);
-                        break;
-                    }
-                }
+            if proxy.is_empty() {
+                let (ws_stream, _) = connect_async(url).await.context("connecting WebSocket")?;
+                run_ws(ws_stream).await?;
+            } else {
+                let ws_stream = connect_via_socks5(url, &proxy).await?;
+                run_ws(ws_stream).await?;
             }
-
             Ok::<(), anyhow::Error>(())
         }));
     }
@@ -134,6 +139,50 @@ async fn main() -> Result<()> {
     // 6. Await all connections (runs indefinitely)
     for handle in handles {
         handle.await??;
+    }
+
+    Ok(())
+}
+
+// Establish a WebSocket connection through a SOCKS5 proxy.
+async fn connect_via_socks5(
+    url: Url,
+    proxy_addr: &str,
+) -> Result<WebSocketStream<MaybeTlsStream<Socks5Stream<TcpStream>>>> {
+    let host = url.host_str().context("URL missing host")?;
+    let port = url.port_or_known_default().context("URL missing port")?;
+    let target = format!("{}:{}", host, port);
+
+    let stream = Socks5Stream::connect(proxy_addr, target)
+        .await
+        .context("connecting via SOCKS5 proxy")?;
+
+    let (ws_stream, _) = client_async_tls_with_config(url, stream, None, None)
+        .await
+        .context("WebSocket handshake via proxy")?;
+
+    Ok(ws_stream)
+}
+
+// Shared WebSocket read loop for both direct and proxied connections.
+async fn run_ws<S>(ws_stream: WebSocketStream<S>) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (_, mut read) = ws_stream.split();
+
+    while let Some(msg) = read.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                // TODO: deserialize `text` into your event structs
+                println!("{}", text);
+            }
+            Ok(_) => {} // ignore pings/pongs and binary
+            Err(e) => {
+                eprintln!("❌ WS error: {}", e);
+                break;
+            }
+        }
     }
 
     Ok(())
