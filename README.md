@@ -1,6 +1,6 @@
-# Binance.US Stream Aggregator
+# Binance Stream Aggregator
 
-This project connects to the Binance.US WebSocket API and forwards a wide range of market data streams.
+This project connects to the Binance.US, Binance.com (global), and Binance Futures WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
 
 ## Runtime Configuration
 

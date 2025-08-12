@@ -42,10 +42,8 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    // Optional SOCKS5 proxy, e.g. "host:port"
     let proxy_url = env::var("SOCKS5_PROXY").unwrap_or_default();
 
-    // Build HTTP client (with rustls) and apply proxy if present
     let mut client_builder = Client::builder()
         .user_agent("binance-us-all-streams")
         .use_rustls_tls();
@@ -55,10 +53,77 @@ async fn main() -> Result<()> {
     }
     let client = client_builder.build().context("building HTTP client")?;
 
-    // 1) Fetch exchangeInfo from Binance.US
-    let api_base = "https://api.binance.us";
+    const MAX_STREAMS_PER_CONN: usize = 100;
+    let chunk_size = env::var("CHUNK_SIZE")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(MAX_STREAMS_PER_CONN);
+
+    let mut tasks = JoinSet::new();
+
+    spawn_exchange(
+        "Binance.US Spot",
+        "https://api.binance.us/api/v3/exchangeInfo",
+        "wss://stream.binance.us:9443/stream?streams=",
+        &client,
+        chunk_size,
+        &proxy_url,
+        &mut tasks,
+    )
+    .await?;
+
+    spawn_exchange(
+        "Binance Global Spot",
+        "https://api.binance.com/api/v3/exchangeInfo",
+        "wss://stream.binance.com:9443/stream?streams=",
+        &client,
+        chunk_size,
+        &proxy_url,
+        &mut tasks,
+    )
+    .await?;
+
+    spawn_exchange(
+        "Binance Futures",
+        "https://fapi.binance.com/fapi/v1/exchangeInfo",
+        "wss://fstream.binance.com/stream?streams=",
+        &client,
+        chunk_size,
+        &proxy_url,
+        &mut tasks,
+    )
+    .await?;
+
+    spawn_exchange(
+        "Binance Delivery",
+        "https://dapi.binance.com/dapi/v1/exchangeInfo",
+        "wss://dstream.binance.com/stream?streams=",
+        &client,
+        chunk_size,
+        &proxy_url,
+        &mut tasks,
+    )
+    .await?;
+
+    while let Some(res) = tasks.join_next().await {
+        res?;
+    }
+
+    Ok(())
+}
+
+async fn spawn_exchange(
+    name: &str,
+    exchange_info_url: &str,
+    ws_base: &str,
+    client: &Client,
+    chunk_size: usize,
+    proxy_url: &str,
+    tasks: &mut JoinSet<()>,
+) -> Result<()> {
     let info: ExchangeInfo = client
-        .get(format!("{}/api/v3/exchangeInfo", api_base))
+        .get(exchange_info_url)
         .send()
         .await
         .context("sending exchangeInfo request")?
@@ -68,7 +133,6 @@ async fn main() -> Result<()> {
         .await
         .context("parsing exchangeInfo JSON")?;
 
-    // 2) Gather all TRADING symbols
     let symbols: Vec<String> = info
         .symbols
         .into_iter()
@@ -77,35 +141,21 @@ async fn main() -> Result<()> {
         .collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
-    // 3) Chunk the list to avoid exceeding URL length/connection limits
-    //    Binance says ~100 streams per connection works.
-    const MAX_STREAMS_PER_CONN: usize = 100;
-    let chunk_size = env::var("CHUNK_SIZE")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(MAX_STREAMS_PER_CONN);
-
     let chunks = chunk_streams(&symbol_refs, chunk_size);
     let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
-    info!("🔌 Total Binance.US streams: {}", total_streams);
-
-    let ws_base = "wss://stream.binance.us:9443/stream?streams=";
-    let mut tasks = JoinSet::new();
+    info!("🔌 Total {} streams: {}", name, total_streams);
 
     for chunk in chunks {
-        // Build URL per chunk
-        let param = chunk.join("/");
         let chunk_len = chunk.len();
-
+        let param = chunk.join("/");
         let url = Url::parse(&format!("{}{}", ws_base, param)).context("parsing WebSocket URL")?;
-
-        let proxy = proxy_url.clone();
+        let proxy = proxy_url.to_string();
+        let name = name.to_string();
 
         tasks.spawn(async move {
             let mut backoff = Duration::from_secs(1);
             loop {
-                info!("→ opening WS: {} ({} streams)", url, chunk_len);
+                info!("→ opening WS ({}): {} ({} streams)", name, url, chunk_len);
                 let result = if proxy.is_empty() {
                     match connect_async(url.clone()).await {
                         Ok((ws_stream, _)) => run_ws(ws_stream).await,
@@ -129,11 +179,6 @@ async fn main() -> Result<()> {
                 backoff = std::cmp::min(backoff * 2, Duration::from_secs(64));
             }
         });
-    }
-
-    // 4) Await all connection tasks (runs indefinitely)
-    while let Some(res) = tasks.join_next().await {
-        res?;
     }
 
     Ok(())
