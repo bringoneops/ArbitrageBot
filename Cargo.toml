@@ -16,3 +16,7 @@ anyhow            = "1"
 url               = "2"
 tracing           = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+metrics           = "0.24"
+
+[dev-dependencies]
+tracing-test = { version = "0.2", features = ["no-env-filter"] }

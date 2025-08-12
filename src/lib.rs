@@ -1,8 +1,12 @@
 pub mod events;
 
+use metrics::counter;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::{collections::HashSet, env, fs, time::Duration};
+use tracing::{debug, info, warn};
+
+use crate::events::{Event, StreamMessage};
 
 /// Configuration for global streams and per-symbol stream suffixes.
 #[derive(Clone, Deserialize)]
@@ -119,3 +123,34 @@ pub fn next_backoff(
     }
 }
 
+/// Logs stream events, warning on unknown types and optionally incrementing a
+/// metric. The raw payload is included for easier troubleshooting.
+pub fn handle_stream_event(event: &StreamMessage<Event>, raw: &str) {
+    match &event.data {
+        Event::Trade(data) => info!(event = "trade", symbol = %data.symbol),
+        Event::AggTrade(data) => info!(event = "aggTrade", symbol = %data.symbol),
+        Event::DepthUpdate(data) => info!(event = "depthUpdate", symbol = %data.symbol),
+        Event::Kline(data) => info!(event = "kline", symbol = %data.symbol),
+        Event::MiniTicker(data) => info!(event = "miniTicker", symbol = %data.symbol),
+        Event::Ticker(data) => info!(event = "ticker", symbol = %data.symbol),
+        Event::BookTicker(data) => info!(event = "bookTicker", symbol = %data.symbol),
+        Event::IndexPrice(data) => info!(event = "indexPriceUpdate", symbol = %data.symbol),
+        Event::MarkPrice(data) => info!(event = "markPriceUpdate", symbol = %data.symbol),
+        Event::MarkPriceKline(data) => info!(event = "markPriceKline", symbol = %data.symbol),
+        Event::IndexPriceKline(data) => info!(event = "indexPriceKline", symbol = %data.symbol),
+        Event::ContinuousKline(data) => {
+            info!(event = "continuous_kline", pair = %data.pair, contract_type = %data.contract_type)
+        }
+        Event::ForceOrder(data) => info!(event = "forceOrder", symbol = %data.order.symbol),
+        Event::Unknown => {
+            warn!(
+                event = "unknown",
+                stream = %event.stream,
+                payload = %raw,
+                "unknown event"
+            );
+            counter!("unknown_events").increment(1);
+        }
+    }
+    debug!(?event);
+}
