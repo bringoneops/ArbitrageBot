@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use futures::{future, Future, SinkExt, StreamExt};
+use metrics::counter;
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
 use std::{env, pin::Pin, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -15,6 +16,8 @@ use tokio_tungstenite::{
     client_async_tls_with_config, connect_async, tungstenite::protocol::Message, MaybeTlsStream,
     WebSocketStream,
 };
+#[cfg(feature = "debug-logs")]
+use tracing::debug;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 use url::Url;
@@ -64,6 +67,8 @@ async fn main() -> Result<()> {
 
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
+    let (event_tx, _event_rx) = mpsc::unbounded_channel::<StreamMessage<Event>>();
+
     let mut inits: Vec<Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>> =
         Vec::new();
 
@@ -71,6 +76,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance.US Spot",
@@ -82,6 +88,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -92,6 +99,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Global Spot",
@@ -103,6 +111,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -113,6 +122,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Futures",
@@ -124,6 +134,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -134,6 +145,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Delivery",
@@ -145,6 +157,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -155,6 +168,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Options",
@@ -166,6 +180,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -196,6 +211,7 @@ async fn spawn_exchange(
     chunk_size: usize,
     proxy_url: &str,
     tasks: Arc<Mutex<JoinSet<()>>>,
+    event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
 ) -> Result<()> {
     let info: ExchangeInfo = client
         .get(exchange_info_url)
@@ -228,6 +244,7 @@ async fn spawn_exchange(
         let proxy = proxy_url.to_string();
         let name = name.to_string();
         let tasks = tasks.clone();
+        let event_tx = event_tx.clone();
 
         tasks.lock().await.spawn(async move {
             let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
@@ -246,7 +263,7 @@ async fn spawn_exchange(
                         Ok((ws_stream, _)) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream).await
+                            run_ws(ws_stream, event_tx.clone()).await
                         }
                         Err(e) => Err(e.into()),
                     }
@@ -255,7 +272,7 @@ async fn spawn_exchange(
                         Ok(ws_stream) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream).await
+                            run_ws(ws_stream, event_tx.clone()).await
                         }
                         Err(e) => Err(e),
                     }
@@ -307,7 +324,10 @@ async fn connect_via_socks5(
 }
 
 // Shared WebSocket read loop for both direct and proxied connections.
-async fn run_ws<S>(ws_stream: WebSocketStream<S>) -> Result<()>
+async fn run_ws<S>(
+    ws_stream: WebSocketStream<S>,
+    event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
+) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -317,7 +337,11 @@ where
         match msg {
             Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
                 Ok(event) => {
+                    counter!("ws_events").increment(1);
+                    #[cfg(feature = "debug-logs")]
+                    debug!(?event);
                     handle_stream_event(&event, &text);
+                    let _ = event_tx.send(event);
                 }
                 Err(e) => error!("failed to parse message: {}", e),
             },

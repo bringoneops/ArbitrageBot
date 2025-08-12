@@ -18,5 +18,10 @@ tracing           = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 metrics           = "0.24"
 
+[features]
+default = []
+# Enable verbose per-event logging at the debug level.
+debug-logs = []
+
 [dev-dependencies]
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
