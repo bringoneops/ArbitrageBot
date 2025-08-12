@@ -7,6 +7,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
     task,
+    time::{sleep, Duration},
 };
 use tokio_socks::tcp::Socks5Stream;
 use tokio_tungstenite::{
@@ -130,21 +131,37 @@ async fn main() -> Result<()> {
         let proxy = proxy_url.clone();
 
         handles.push(task::spawn(async move {
-            println!("→ opening WS: {} ({} streams)", url, chunk_len);
-            if proxy.is_empty() {
-                let (ws_stream, _) = connect_async(url).await.context("connecting WebSocket")?;
-                run_ws(ws_stream).await?;
-            } else {
-                let ws_stream = connect_via_socks5(url, &proxy).await?;
-                run_ws(ws_stream).await?;
+            let mut backoff = Duration::from_secs(1);
+            loop {
+                println!("→ opening WS: {} ({} streams)", url, chunk_len);
+                let result = if proxy.is_empty() {
+                    match connect_async(url.clone()).await {
+                        Ok((ws_stream, _)) => run_ws(ws_stream).await,
+                        Err(e) => Err(e.into()),
+                    }
+                } else {
+                    match connect_via_socks5(url.clone(), &proxy).await {
+                        Ok(ws_stream) => run_ws(ws_stream).await,
+                        Err(e) => Err(e),
+                    }
+                };
+
+                if let Err(e) = result {
+                    eprintln!("❌ WS error: {}", e);
+                } else {
+                    eprintln!("WS stream closed");
+                }
+
+                eprintln!("Reconnecting in {:?}...", backoff);
+                sleep(backoff).await;
+                backoff = std::cmp::min(backoff * 2, Duration::from_secs(64));
             }
-            Ok::<(), anyhow::Error>(())
         }));
     }
 
-    // 6) Await all connections (runs indefinitely)
+    // 6) Await all connection tasks (runs indefinitely)
     for handle in handles {
-        handle.await??;
+        handle.await?;
     }
 
     Ok(())
@@ -184,10 +201,7 @@ where
                 Err(e) => eprintln!("failed to parse message: {}", e),
             },
             Ok(_) => {} // ignore pings/pongs and binary
-            Err(e) => {
-                eprintln!("❌ WS error: {}", e);
-                break;
-            }
+            Err(e) => return Err(e.into()),
         }
     }
 

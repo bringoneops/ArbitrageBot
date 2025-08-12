@@ -1,3 +1,5 @@
+pub mod events;
+
 pub fn chunk_streams(symbols: &[&str]) -> Vec<Vec<String>> {
     // Global streams including rolling-window tickers
     let mut streams = vec![
