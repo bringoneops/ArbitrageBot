@@ -235,6 +235,15 @@ where
                         Event::MarkPrice(data) => {
                             info!(event = "markPriceUpdate", symbol = %data.symbol)
                         }
+                        Event::MarkPriceKline(data) => {
+                            info!(event = "markPriceKline", symbol = %data.symbol)
+                        }
+                        Event::IndexPriceKline(data) => {
+                            info!(event = "indexPriceKline", symbol = %data.symbol)
+                        }
+                        Event::ContinuousKline(data) => {
+                            info!(event = "continuous_kline", pair = %data.pair, contract_type = %data.contract_type)
+                        }
                         Event::ForceOrder(data) => {
                             info!(event = "forceOrder", symbol = %data.order.symbol)
                         }

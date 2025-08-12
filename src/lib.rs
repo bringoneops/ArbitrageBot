@@ -54,6 +54,12 @@ const PER_SYMBOL_SUFFIXES: &[&str] = &[
     "indexPrice@1s",
     "markPrice",
     "markPrice@1s",
+    "markPriceKline_1m",
+    "markPriceKline_1h",
+    "indexPriceKline_1m",
+    "indexPriceKline_1h",
+    "continuousKline_1m_perpetual",
+    "continuousKline_1h_perpetual",
     "forceOrder",
 ];
 
