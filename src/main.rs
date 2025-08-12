@@ -14,7 +14,8 @@ use tokio_tungstenite::{
     client_async_tls_with_config, connect_async, tungstenite::protocol::Message, MaybeTlsStream,
     WebSocketStream,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
+use tracing_subscriber::EnvFilter;
 use url::Url;
 
 use binance_us_and_global::{
@@ -35,7 +36,11 @@ struct SymbolInfo {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
     // Optional SOCKS5 proxy, e.g. "host:port"
     let proxy_url = env::var("SOCKS5_PROXY").unwrap_or_default();
@@ -164,7 +169,18 @@ where
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
-                Ok(event) => info!("{:#?}", event),
+                Ok(event) => {
+                    match &event.data {
+                        Event::Trade(data) => info!(event = "trade", symbol = %data.symbol),
+                        Event::AggTrade(data) => info!(event = "aggTrade", symbol = %data.symbol),
+                        Event::DepthUpdate(data) => {
+                            info!(event = "depthUpdate", symbol = %data.symbol)
+                        }
+                        Event::Kline(data) => info!(event = "kline", symbol = %data.symbol),
+                        Event::Unknown => info!(event = "unknown", stream = %event.stream),
+                    }
+                    debug!(?event);
+                }
                 Err(e) => error!("failed to parse message: {}", e),
             },
             Ok(Message::Ping(payload)) => {
