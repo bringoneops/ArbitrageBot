@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     // 1. Fetch exchangeInfo from Binance.US
     let api_base = "https://api.binance.us";
     let info: ExchangeInfo = client
-        .get(&format!("{}/api/v3/exchangeInfo", api_base))
+        .get(format!("{}/api/v3/exchangeInfo", api_base))
         .send()
         .await
         .context("sending exchangeInfo request")?
