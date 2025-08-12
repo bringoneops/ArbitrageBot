@@ -2,7 +2,7 @@ pub mod events;
 
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::{collections::HashSet, env, fs};
+use std::{collections::HashSet, env, fs, time::Duration};
 
 /// Configuration for global streams and per-symbol stream suffixes.
 #[derive(Clone, Deserialize)]
@@ -99,3 +99,23 @@ pub fn chunk_streams_with_config(
     }
     result
 }
+
+/// Calculates the next backoff duration for reconnection attempts.
+///
+/// If a run completed successfully and lasted at least `min_stable`, the
+/// backoff is reset to one second. Otherwise it doubles, bounded by
+/// `max_backoff`.
+pub fn next_backoff(
+    previous: Duration,
+    run_duration: Duration,
+    was_successful: bool,
+    max_backoff: Duration,
+    min_stable: Duration,
+) -> Duration {
+    if was_successful && run_duration >= min_stable {
+        Duration::from_secs(1)
+    } else {
+        std::cmp::min(previous * 2, max_backoff)
+    }
+}
+
