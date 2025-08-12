@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use futures::{future, Future, SinkExt, StreamExt};
+use futures::{future, stream, Future, SinkExt, StreamExt};
 use metrics::counter;
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
@@ -174,28 +174,47 @@ async fn spawn_exchange(
     // 2) Seed order books via REST depth snapshots, so depth updates apply cleanly.
     let depth_base = exchange_info_url.trim_end_matches("exchangeInfo");
     let mut books_map: HashMap<String, OrderBook> = HashMap::new();
-    for sym in &symbols {
-        let depth_url = format!("{}depth?symbol={}", depth_base, sym);
-        let resp = match client.get(&depth_url).send().await {
-            Ok(resp) => resp,
-            Err(e) => {
-                warn!("depth snapshot GET failed for {} ({}): {}", sym, depth_url, e);
-                continue;
-            }
-        };
 
-        let resp = match resp.error_for_status() {
-            Ok(resp) => resp,
-            Err(e) => {
-                warn!("depth snapshot non-2xx for {} ({}): {}", sym, depth_url, e);
-                continue;
-            }
-        };
+    let fetches = stream::iter(symbols.clone())
+        .map(|sym| {
+            let depth_url = format!("{}depth?symbol={}", depth_base, sym);
+            let client = client.clone();
+            async move {
+                let resp = match client.get(&depth_url).send().await {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        warn!(
+                            "depth snapshot GET failed for {} ({}): {}",
+                            sym, depth_url, e
+                        );
+                        return None;
+                    }
+                };
 
-        if let Ok(snapshot) = resp.json::<DepthSnapshot>().await {
-            books_map.insert(sym.clone(), snapshot.into());
+                let resp = match resp.error_for_status() {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        warn!("depth snapshot non-2xx for {} ({}): {}", sym, depth_url, e);
+                        return None;
+                    }
+                };
+
+                if let Ok(snapshot) = resp.json::<DepthSnapshot>().await {
+                    Some((sym, snapshot.into()))
+                } else {
+                    None
+                }
+            }
+        })
+        .buffer_unordered(10);
+
+    futures::pin_mut!(fetches);
+    while let Some(result) = fetches.next().await {
+        if let Some((sym, book)) = result {
+            books_map.insert(sym, book);
         }
     }
+
     let orderbooks = Arc::new(Mutex::new(books_map));
 
     // 3) Chunk streams and spawn WS connections
