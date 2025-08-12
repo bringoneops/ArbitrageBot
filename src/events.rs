@@ -27,6 +27,12 @@ pub enum Event {
     IndexPrice(IndexPriceEvent),
     #[serde(rename = "markPriceUpdate")]
     MarkPrice(MarkPriceEvent),
+    #[serde(rename = "markPriceKline")]
+    MarkPriceKline(MarkPriceKlineEvent),
+    #[serde(rename = "indexPriceKline")]
+    IndexPriceKline(IndexPriceKlineEvent),
+    #[serde(rename = "continuous_kline")]
+    ContinuousKline(ContinuousKlineEvent),
     #[serde(rename = "forceOrder")]
     ForceOrder(ForceOrderEvent),
     #[serde(other)]
@@ -225,6 +231,38 @@ pub struct MarkPriceEvent {
     pub next_funding_time: u64,
     #[serde(rename = "P", default)]
     pub estimated_settle_price: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarkPriceKlineEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "k")]
+    pub kline: Kline,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IndexPriceKlineEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "k")]
+    pub kline: Kline,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ContinuousKlineEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "ps")]
+    pub pair: String,
+    #[serde(rename = "ct")]
+    pub contract_type: String,
+    #[serde(rename = "k")]
+    pub kline: Kline,
 }
 
 #[derive(Debug, Deserialize)]

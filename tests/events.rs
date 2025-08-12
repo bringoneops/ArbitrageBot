@@ -132,6 +132,45 @@ fn parses_index_price_event() {
 }
 
 #[test]
+fn parses_mark_price_kline_event() {
+    let json = r#"{"stream":"btcusdt@markPriceKline_1m","data":{"e":"markPriceKline","E":1,"s":"BTCUSDT","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::MarkPriceKline(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.kline.open, "0.1");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn parses_index_price_kline_event() {
+    let json = r#"{"stream":"btcusdt@indexPriceKline_1m","data":{"e":"indexPriceKline","E":1,"s":"BTCUSDT","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::IndexPriceKline(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.kline.close, "0.2");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn parses_continuous_kline_event() {
+    let json = r#"{"stream":"btcusdt@continuousKline_1m_perpetual","data":{"e":"continuous_kline","E":1,"ps":"BTCUSDT","ct":"PERPETUAL","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::ContinuousKline(ev) => {
+            assert_eq!(ev.pair, "BTCUSDT");
+            assert_eq!(ev.contract_type, "PERPETUAL");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
 fn parses_force_order_event() {
     let json = r#"{"stream":"btcusdt@forceOrder","data":{"e":"forceOrder","E":1,"o":{"s":"BTCUSDT","S":"SELL","o":"LIMIT","f":"IOC","q":"0.1","p":"10000","ap":"10000","X":"FILLED","l":"0.1","z":"0.1","T":2,"L":"10000","t":1,"b":"0","a":"0","m":false,"R":false}}}"#;
     let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
