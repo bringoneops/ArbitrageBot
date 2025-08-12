@@ -342,7 +342,9 @@ where
                     }
 
                     // fan out raw event to the channel for other consumers
-                    let _ = event_tx.send(event);
+                    if let Err(e) = event_tx.send(event) {
+                        warn!("failed to send event: {}", e);
+                    }
                 }
                 Err(e) => error!("failed to parse message: {}", e),
             },
