@@ -1,4 +1,4 @@
-use binance_us_and_global::chunk_streams;
+use binance_us_and_global::{chunk_streams, chunk_streams_with_config, StreamConfig};
 
 #[test]
 fn chunks_do_not_exceed_hundred_streams() {
@@ -41,4 +41,15 @@ fn returns_expected_number_of_chunks() {
 fn zero_chunk_size_returns_empty_vec() {
     let chunks = chunk_streams(&[], 0);
     assert!(chunks.is_empty());
+}
+
+#[test]
+fn supports_custom_stream_configuration() {
+    let cfg = StreamConfig {
+        global: vec!["custom".into()],
+        per_symbol: vec!["suffix".into()],
+    };
+    let chunks = chunk_streams_with_config(&["ABC"], 10, &cfg);
+    assert!(chunks.iter().flatten().any(|s| s == "custom"));
+    assert!(chunks.iter().flatten().any(|s| s == "abc@suffix"));
 }

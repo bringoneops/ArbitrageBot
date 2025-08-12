@@ -1,6 +1,6 @@
 # Binance Stream Aggregator
 
-This project connects to the Binance.US, Binance.com (global), and Binance Futures WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
+This project connects to the Binance.US, Binance.com (global), Binance Futures, Binance Delivery, and Binance Options WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
 
 ## Runtime Configuration
 
@@ -8,6 +8,7 @@ The binary can be configured via environment variables:
 
 - `SOCKS5_PROXY` – optional `host:port` for routing all HTTP and WebSocket traffic through a SOCKS5 proxy.
 - `CHUNK_SIZE` – number of streams per WebSocket connection. Defaults to `100` if unset or invalid.
+- `STREAMS_CONFIG` – optional path to a JSON file specifying `global` and `per_symbol` stream lists. If omitted, a built-in `streams.json` configuration is used.
 
 Example using a local proxy:
 
