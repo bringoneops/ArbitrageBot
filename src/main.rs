@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use futures::{future, Future, SinkExt, StreamExt};
+use metrics::counter;
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
-use std::{env, pin::Pin, sync::Arc};
-use tokio::sync::Mutex;
+use std::{collections::HashMap, env, pin::Pin, sync::Arc};
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -15,6 +16,8 @@ use tokio_tungstenite::{
     client_async_tls_with_config, connect_async, tungstenite::protocol::Message, MaybeTlsStream,
     WebSocketStream,
 };
+#[cfg(feature = "debug-logs")]
+use tracing::debug;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 use url::Url;
@@ -64,6 +67,8 @@ async fn main() -> Result<()> {
 
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
+    let (event_tx, _event_rx) = mpsc::unbounded_channel::<StreamMessage<Event>>();
+
     let mut inits: Vec<Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>> =
         Vec::new();
 
@@ -71,6 +76,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance.US Spot",
@@ -82,6 +88,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -92,6 +99,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Global Spot",
@@ -103,6 +111,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -113,6 +122,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Futures",
@@ -124,6 +134,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -134,6 +145,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Delivery",
@@ -145,6 +157,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -155,6 +168,7 @@ async fn main() -> Result<()> {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
+        let event_tx = event_tx.clone();
         inits.push(Box::pin(async move {
             (
                 "Binance Options",
@@ -166,6 +180,7 @@ async fn main() -> Result<()> {
                     chunk_size,
                     &proxy_url,
                     tasks,
+                    event_tx,
                 )
                 .await,
             )
@@ -196,7 +211,9 @@ async fn spawn_exchange(
     chunk_size: usize,
     proxy_url: &str,
     tasks: Arc<Mutex<JoinSet<()>>>,
+    event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
 ) -> Result<()> {
+    // 1) Pull tradable symbols
     let info: ExchangeInfo = client
         .get(exchange_info_url)
         .send()
@@ -216,9 +233,9 @@ async fn spawn_exchange(
         .collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
-    // Fetch depth snapshots for each symbol before starting WebSocket streams.
+    // 2) Seed order books via REST depth snapshots, so depth updates apply cleanly.
     let depth_base = exchange_info_url.trim_end_matches("exchangeInfo");
-    let mut books_map = std::collections::HashMap::new();
+    let mut books_map: HashMap<String, OrderBook> = HashMap::new();
     for sym in &symbols {
         let depth_url = format!("{}depth?symbol={}", depth_base, sym);
         if let Ok(resp) = client.get(&depth_url).send().await {
@@ -231,6 +248,7 @@ async fn spawn_exchange(
     }
     let orderbooks = Arc::new(Mutex::new(books_map));
 
+    // 3) Chunk streams and spawn WS connections
     let cfg = stream_config_for_exchange(name);
     let chunks = chunk_streams_with_config(&symbol_refs, chunk_size, cfg);
     let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
@@ -244,6 +262,7 @@ async fn spawn_exchange(
         let name = name.to_string();
         let tasks = tasks.clone();
         let books = orderbooks.clone();
+        let event_tx = event_tx.clone();
 
         tasks.lock().await.spawn(async move {
             let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
@@ -262,7 +281,7 @@ async fn spawn_exchange(
                         Ok((ws_stream, _)) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream, books.clone()).await
+                            run_ws(ws_stream, books.clone(), event_tx.clone()).await
                         }
                         Err(e) => Err(e.into()),
                     }
@@ -271,7 +290,7 @@ async fn spawn_exchange(
                         Ok(ws_stream) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream, books.clone()).await
+                            run_ws(ws_stream, books.clone(), event_tx.clone()).await
                         }
                         Err(e) => Err(e),
                     }
@@ -325,7 +344,8 @@ async fn connect_via_socks5(
 // Shared WebSocket read loop for both direct and proxied connections.
 async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
-    books: Arc<Mutex<std::collections::HashMap<String, OrderBook>>>,
+    books: Arc<Mutex<HashMap<String, OrderBook>>>,
+    event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -336,15 +356,24 @@ where
         match msg {
             Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
                 Ok(event) => {
+                    // metrics + optional debug logging
+                    counter!("ws_events").increment(1);
+                    #[cfg(feature = "debug-logs")]
+                    debug!(?event);
+
+                    // always call the shared handler
+                    handle_stream_event(&event, &text);
+
+                    // if it's a depth update, keep the local order book warm
                     if let Event::DepthUpdate(ref update) = event.data {
-                        handle_stream_event(&event, &text);
                         let mut map = books.lock().await;
                         if let Some(book) = map.get_mut(&update.symbol) {
                             apply_depth_update(book, update);
                         }
-                    } else {
-                        handle_stream_event(&event, &text);
                     }
+
+                    // fan out raw event to the channel for other consumers
+                    let _ = event_tx.send(event);
                 }
                 Err(e) => error!("failed to parse message: {}", e),
             },
