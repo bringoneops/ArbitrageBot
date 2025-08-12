@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     }
     let client = client_builder.build().context("building HTTP client")?;
 
-    // 1. Fetch exchangeInfo from Binance.US
+    // 1) Fetch exchangeInfo from Binance.US
     let api_base = "https://api.binance.us";
     let info: ExchangeInfo = client
         .get(format!("{}/api/v3/exchangeInfo", api_base))
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
         .await
         .context("parsing exchangeInfo JSON")?;
 
-    // 2. Prepare global "@arr" streams, including 1h & 4h rolling-window tickers
+    // 2) Prepare global "@arr" streams, including 1h & 4h rolling-window tickers
     let mut streams = vec![
         "!miniTicker@arr".to_string(),
         "!ticker@arr".to_string(),
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
         "!ticker_4h@arr".to_string(),
     ];
 
-    // 3. Define per-symbol suffixes (spot only), now including rolling-window tickers
+    // 3) Define per-symbol suffixes (spot only), incl. rolling-window tickers
     let suffixes = &[
         "trade",
         "aggTrade",
@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
         "ticker_4h",
     ];
 
-    // 4. Build full list of streams for all trading symbols
+    // 4) Build full list of streams for all TRADING symbols
     for s in info.symbols.into_iter().filter(|s| s.status == "TRADING") {
         let sym = s.symbol.to_lowercase();
         for &suffix in suffixes.iter() {
@@ -102,26 +102,30 @@ async fn main() -> Result<()> {
         }
     }
 
-    println!("🔌 Total Binance.US streams: {}", streams.len());
-
-    // 5. Chunk the list to avoid exceeding URL length limits.
-    //    Binance allows up to 100 streams per connection.
+    // 5) Chunk the list to avoid exceeding URL length/connection limits
+    //    Binance says ~100 streams per connection works.
     const MAX_STREAMS_PER_CONN: usize = 100;
+    let chunk_size = env::var("CHUNK_SIZE")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(MAX_STREAMS_PER_CONN);
+
+    let total_streams = streams.len();
+    println!("🔌 Total Binance.US streams: {}", total_streams);
+
     let ws_base = "wss://stream.binance.us:9443/stream?streams=";
     let mut handles = Vec::new();
 
-// resolve: keep configurable chunk_size + keep proxy clone from main
-for chunk in streams.chunks(chunk_size) {
-    // capture only owned data for the task
-    let param = chunk.join("/");
-    let chunk_len = chunk.len();
+    for chunk in streams.chunks(chunk_size) {
+        // Build URL per chunk
+        let param = chunk.join("/");
+        let chunk_len = chunk.len();
 
-    let url = Url::parse(&format!("{}{}", ws_base, param))
-        .context("parsing WebSocket URL")?;
+        let url = Url::parse(&format!("{}{}", ws_base, param))
+            .context("parsing WebSocket URL")?;
 
-    let proxy = proxy_url.clone(); // from main
-    // ... rest of loop
-}
+        let proxy = proxy_url.clone();
 
         handles.push(task::spawn(async move {
             println!("→ opening WS: {} ({} streams)", url, chunk_len);
@@ -136,7 +140,7 @@ for chunk in streams.chunks(chunk_size) {
         }));
     }
 
-    // 6. Await all connections (runs indefinitely)
+    // 6) Await all connections (runs indefinitely)
     for handle in handles {
         handle.await??;
     }
