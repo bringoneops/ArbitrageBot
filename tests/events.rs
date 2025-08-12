@@ -35,7 +35,7 @@ fn parses_agg_trade_event() {
 
 #[test]
 fn parses_depth_update_event() {
-    let json = r#"{"stream":"btcusdt@depth","data":{"e":"depthUpdate","E":1,"s":"BTCUSDT","U":2,"u":3,"pu":1,"b":[["1.0","2.0"],["1.5","3.0"]],"a":[["2.0","1.0"],["2.5","4.0"]]}}"#;
+    let json = r#"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1,"s":"BTCUSDT","U":2,"u":3,"pu":1,"b":[["1.0","2.0"],["1.5","3.0"]],"a":[["2.0","1.0"],["2.5","4.0"]]}}"#;
     let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
     match msg.data {
         Event::DepthUpdate(ev) => {
