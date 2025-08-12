@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
 use std::env;
+use tokio::task::JoinSet;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    task,
     time::{sleep, Duration},
 };
 use tokio_socks::tcp::Socks5Stream;
@@ -17,7 +17,10 @@ use tokio_tungstenite::{
 use tracing::{error, info, warn};
 use url::Url;
 
-use binance_us_and_global::{chunk_streams, events::{Event, StreamMessage}};
+use binance_us_and_global::{
+    chunk_streams,
+    events::{Event, StreamMessage},
+};
 
 #[derive(Deserialize)]
 struct ExchangeInfo {
@@ -83,7 +86,7 @@ async fn main() -> Result<()> {
     info!("🔌 Total Binance.US streams: {}", total_streams);
 
     let ws_base = "wss://stream.binance.us:9443/stream?streams=";
-    let mut handles = Vec::new();
+    let mut tasks = JoinSet::new();
 
     for chunk in chunks {
         // Build URL per chunk
@@ -94,7 +97,7 @@ async fn main() -> Result<()> {
 
         let proxy = proxy_url.clone();
 
-        handles.push(task::spawn(async move {
+        tasks.spawn(async move {
             let mut backoff = Duration::from_secs(1);
             loop {
                 info!("→ opening WS: {} ({} streams)", url, chunk_len);
@@ -120,12 +123,12 @@ async fn main() -> Result<()> {
                 sleep(backoff).await;
                 backoff = std::cmp::min(backoff * 2, Duration::from_secs(64));
             }
-        }));
+        });
     }
 
     // 4) Await all connection tasks (runs indefinitely)
-    for handle in handles {
-        handle.await?;
+    while let Some(res) = tasks.join_next().await {
+        res?;
     }
 
     Ok(())
@@ -156,7 +159,7 @@ async fn run_ws<S>(ws_stream: WebSocketStream<S>) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let (_, mut read) = ws_stream.split();
+    let (mut write, mut read) = ws_stream.split();
 
     while let Some(msg) = read.next().await {
         match msg {
@@ -164,7 +167,11 @@ where
                 Ok(event) => info!("{:#?}", event),
                 Err(e) => error!("failed to parse message: {}", e),
             },
-            Ok(_) => {} // ignore pings/pongs and binary
+            Ok(Message::Ping(payload)) => {
+                write.send(Message::Pong(payload)).await?;
+            }
+            Ok(Message::Pong(_)) => {}
+            Ok(_) => {} // ignore binary and other messages
             Err(e) => return Err(e.into()),
         }
     }
