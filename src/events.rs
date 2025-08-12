@@ -97,6 +97,8 @@ pub struct DepthUpdateEvent {
     pub first_update_id: u64,
     #[serde(rename = "u")]
     pub final_update_id: u64,
+    #[serde(rename = "pu")]
+    pub previous_final_update_id: u64,
     #[serde(rename = "b")]
     pub bids: Vec<[String; 2]>,
     #[serde(rename = "a")]
