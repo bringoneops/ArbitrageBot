@@ -15,6 +15,9 @@ use tokio_tungstenite::{
 };
 use url::Url;
 
+mod events;
+use events::{Event, StreamMessage};
+
 #[derive(Deserialize)]
 struct ExchangeInfo {
     symbols: Vec<SymbolInfo>,
@@ -122,8 +125,7 @@ async fn main() -> Result<()> {
         let param = chunk.join("/");
         let chunk_len = chunk.len();
 
-        let url = Url::parse(&format!("{}{}", ws_base, param))
-            .context("parsing WebSocket URL")?;
+        let url = Url::parse(&format!("{}{}", ws_base, param)).context("parsing WebSocket URL")?;
 
         let proxy = proxy_url.clone();
 
@@ -177,10 +179,10 @@ where
 
     while let Some(msg) = read.next().await {
         match msg {
-            Ok(Message::Text(text)) => {
-                // TODO: deserialize `text` into your event structs
-                println!("{}", text);
-            }
+            Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
+                Ok(event) => println!("{:#?}", event),
+                Err(e) => eprintln!("failed to parse message: {}", e),
+            },
             Ok(_) => {} // ignore pings/pongs and binary
             Err(e) => {
                 eprintln!("❌ WS error: {}", e);
