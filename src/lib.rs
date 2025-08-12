@@ -179,8 +179,26 @@ impl From<DepthSnapshot> for OrderBook {
 
 /// Applies a websocket depth update diff to an existing order book snapshot.
 pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) {
+    let next_expected = book.last_update_id + 1;
+
     // Ignore outdated updates.
-    if update.final_update_id <= book.last_update_id {
+    if update.final_update_id < next_expected {
+        warn!(
+            expected = next_expected,
+            final_update_id = update.final_update_id,
+            "outdated depth update"
+        );
+        return;
+    }
+
+    // Detect gaps in the update sequence.
+    if update.first_update_id > next_expected {
+        warn!(
+            expected = next_expected,
+            first_update_id = update.first_update_id,
+            final_update_id = update.final_update_id,
+            "non-contiguous depth update"
+        );
         return;
     }
 
