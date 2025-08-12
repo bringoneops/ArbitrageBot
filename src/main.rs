@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
-use futures::{SinkExt, StreamExt};
+use futures::{future, Future, SinkExt, StreamExt};
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
-use std::env;
+use std::{env, pin::Pin, sync::Arc};
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -60,65 +61,126 @@ async fn main() -> Result<()> {
         .filter(|&n| n > 0)
         .unwrap_or(MAX_STREAMS_PER_CONN);
 
-    let mut tasks = JoinSet::new();
+    let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
-    spawn_exchange(
-        "Binance.US Spot",
-        "https://api.binance.us/api/v3/exchangeInfo",
-        "wss://stream.binance.us:9443/stream?streams=",
-        &client,
-        chunk_size,
-        &proxy_url,
-        &mut tasks,
-    )
-    .await?;
+    let mut inits: Vec<Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>> = Vec::new();
 
-    spawn_exchange(
-        "Binance Global Spot",
-        "https://api.binance.com/api/v3/exchangeInfo",
-        "wss://stream.binance.com:9443/stream?streams=",
-        &client,
-        chunk_size,
-        &proxy_url,
-        &mut tasks,
-    )
-    .await?;
+    {
+        let tasks = tasks.clone();
+        let client = client.clone();
+        let proxy_url = proxy_url.clone();
+        inits.push(Box::pin(async move {
+            (
+                "Binance.US Spot",
+                spawn_exchange(
+                    "Binance.US Spot",
+                    "https://api.binance.us/api/v3/exchangeInfo",
+                    "wss://stream.binance.us:9443/stream?streams=",
+                    &client,
+                    chunk_size,
+                    &proxy_url,
+                    tasks,
+                )
+                .await,
+            )
+        }));
+    }
 
-    spawn_exchange(
-        "Binance Futures",
-        "https://fapi.binance.com/fapi/v1/exchangeInfo",
-        "wss://fstream.binance.com/stream?streams=",
-        &client,
-        chunk_size,
-        &proxy_url,
-        &mut tasks,
-    )
-    .await?;
+    {
+        let tasks = tasks.clone();
+        let client = client.clone();
+        let proxy_url = proxy_url.clone();
+        inits.push(Box::pin(async move {
+            (
+                "Binance Global Spot",
+                spawn_exchange(
+                    "Binance Global Spot",
+                    "https://api.binance.com/api/v3/exchangeInfo",
+                    "wss://stream.binance.com:9443/stream?streams=",
+                    &client,
+                    chunk_size,
+                    &proxy_url,
+                    tasks,
+                )
+                .await,
+            )
+        }));
+    }
 
-    spawn_exchange(
-        "Binance Delivery",
-        "https://dapi.binance.com/dapi/v1/exchangeInfo",
-        "wss://dstream.binance.com/stream?streams=",
-        &client,
-        chunk_size,
-        &proxy_url,
-        &mut tasks,
-    )
-    .await?;
+    {
+        let tasks = tasks.clone();
+        let client = client.clone();
+        let proxy_url = proxy_url.clone();
+        inits.push(Box::pin(async move {
+            (
+                "Binance Futures",
+                spawn_exchange(
+                    "Binance Futures",
+                    "https://fapi.binance.com/fapi/v1/exchangeInfo",
+                    "wss://fstream.binance.com/stream?streams=",
+                    &client,
+                    chunk_size,
+                    &proxy_url,
+                    tasks,
+                )
+                .await,
+            )
+        }));
+    }
 
-    spawn_exchange(
-        "Binance Options",
-        "https://vapi.binance.com/vapi/v1/exchangeInfo",
-        "wss://vstream.binance.com/stream?streams=",
-        &client,
-        chunk_size,
-        &proxy_url,
-        &mut tasks,
-    )
-    .await?;
+    {
+        let tasks = tasks.clone();
+        let client = client.clone();
+        let proxy_url = proxy_url.clone();
+        inits.push(Box::pin(async move {
+            (
+                "Binance Delivery",
+                spawn_exchange(
+                    "Binance Delivery",
+                    "https://dapi.binance.com/dapi/v1/exchangeInfo",
+                    "wss://dstream.binance.com/stream?streams=",
+                    &client,
+                    chunk_size,
+                    &proxy_url,
+                    tasks,
+                )
+                .await,
+            )
+        }));
+    }
 
+    {
+        let tasks = tasks.clone();
+        let client = client.clone();
+        let proxy_url = proxy_url.clone();
+        inits.push(Box::pin(async move {
+            (
+                "Binance Options",
+                spawn_exchange(
+                    "Binance Options",
+                    "https://vapi.binance.com/vapi/v1/exchangeInfo",
+                    "wss://vstream.binance.com/stream?streams=",
+                    &client,
+                    chunk_size,
+                    &proxy_url,
+                    tasks,
+                )
+                .await,
+            )
+        }));
+    }
+
+    for (name, result) in future::join_all(inits).await {
+        if let Err(e) = result {
+            error!("Failed to initialize {}: {}", name, e);
+        }
+    }
+
+    let mut tasks = tasks.lock().await;
     while let Some(res) = tasks.join_next().await {
-        res?;
+        if let Err(e) = res {
+            error!("task error: {}", e);
+        }
     }
 
     Ok(())
@@ -131,7 +193,7 @@ async fn spawn_exchange(
     client: &Client,
     chunk_size: usize,
     proxy_url: &str,
-    tasks: &mut JoinSet<()>,
+    tasks: Arc<Mutex<JoinSet<()>>>,
 ) -> Result<()> {
     let info: ExchangeInfo = client
         .get(exchange_info_url)
@@ -162,8 +224,9 @@ async fn spawn_exchange(
         let url = Url::parse(&format!("{}{}", ws_base, param)).context("parsing WebSocket URL")?;
         let proxy = proxy_url.to_string();
         let name = name.to_string();
+        let tasks = tasks.clone();
 
-        tasks.spawn(async move {
+        tasks.lock().await.spawn(async move {
             let mut backoff = Duration::from_secs(1);
             loop {
                 info!("→ opening WS ({}): {} ({} streams)", name, url, chunk_len);
