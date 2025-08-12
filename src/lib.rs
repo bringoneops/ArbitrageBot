@@ -12,6 +12,7 @@ const GLOBAL_STREAMS: &[&str] = &[
     "!ticker_1M@arr",
     "!markPrice@arr",
     "!markPrice@arr@1s",
+    "forceOrder@arr",
 ];
 
 // Per-symbol stream suffixes
@@ -51,6 +52,7 @@ const PER_SYMBOL_SUFFIXES: &[&str] = &[
     "ticker_1M",
     "markPrice",
     "markPrice@1s",
+    "forceOrder",
 ];
 
 /// Builds a list of Binance WebSocket stream names split into chunks.
