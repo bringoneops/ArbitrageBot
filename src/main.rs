@@ -3,7 +3,7 @@ use futures::{future, Future, SinkExt, StreamExt};
 use metrics::counter;
 use reqwest::{Client, Proxy};
 use serde::Deserialize;
-use std::{env, pin::Pin, sync::Arc};
+use std::{collections::HashMap, env, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 use tokio::{
@@ -23,9 +23,9 @@ use tracing_subscriber::EnvFilter;
 use url::Url;
 
 use binance_us_and_global::{
-    chunk_streams_with_config,
+    apply_depth_update, chunk_streams_with_config,
     events::{Event, StreamMessage},
-    handle_stream_event, next_backoff, stream_config_for_exchange,
+    handle_stream_event, next_backoff, stream_config_for_exchange, DepthSnapshot, OrderBook,
 };
 
 #[derive(Deserialize)]
@@ -213,6 +213,7 @@ async fn spawn_exchange(
     tasks: Arc<Mutex<JoinSet<()>>>,
     event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
 ) -> Result<()> {
+    // 1) Pull tradable symbols
     let info: ExchangeInfo = client
         .get(exchange_info_url)
         .send()
@@ -232,6 +233,22 @@ async fn spawn_exchange(
         .collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
+    // 2) Seed order books via REST depth snapshots, so depth updates apply cleanly.
+    let depth_base = exchange_info_url.trim_end_matches("exchangeInfo");
+    let mut books_map: HashMap<String, OrderBook> = HashMap::new();
+    for sym in &symbols {
+        let depth_url = format!("{}depth?symbol={}", depth_base, sym);
+        if let Ok(resp) = client.get(&depth_url).send().await {
+            if let Ok(resp) = resp.error_for_status() {
+                if let Ok(snapshot) = resp.json::<DepthSnapshot>().await {
+                    books_map.insert(sym.clone(), snapshot.into());
+                }
+            }
+        }
+    }
+    let orderbooks = Arc::new(Mutex::new(books_map));
+
+    // 3) Chunk streams and spawn WS connections
     let cfg = stream_config_for_exchange(name);
     let chunks = chunk_streams_with_config(&symbol_refs, chunk_size, cfg);
     let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
@@ -244,6 +261,7 @@ async fn spawn_exchange(
         let proxy = proxy_url.to_string();
         let name = name.to_string();
         let tasks = tasks.clone();
+        let books = orderbooks.clone();
         let event_tx = event_tx.clone();
 
         tasks.lock().await.spawn(async move {
@@ -263,7 +281,7 @@ async fn spawn_exchange(
                         Ok((ws_stream, _)) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream, event_tx.clone()).await
+                            run_ws(ws_stream, books.clone(), event_tx.clone()).await
                         }
                         Err(e) => Err(e.into()),
                     }
@@ -272,7 +290,7 @@ async fn spawn_exchange(
                         Ok(ws_stream) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream, event_tx.clone()).await
+                            run_ws(ws_stream, books.clone(), event_tx.clone()).await
                         }
                         Err(e) => Err(e),
                     }
@@ -326,6 +344,7 @@ async fn connect_via_socks5(
 // Shared WebSocket read loop for both direct and proxied connections.
 async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
+    books: Arc<Mutex<HashMap<String, OrderBook>>>,
     event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
 ) -> Result<()>
 where
@@ -337,10 +356,23 @@ where
         match msg {
             Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
                 Ok(event) => {
+                    // metrics + optional debug logging
                     counter!("ws_events").increment(1);
                     #[cfg(feature = "debug-logs")]
                     debug!(?event);
+
+                    // always call the shared handler
                     handle_stream_event(&event, &text);
+
+                    // if it's a depth update, keep the local order book warm
+                    if let Event::DepthUpdate(ref update) = event.data {
+                        let mut map = books.lock().await;
+                        if let Some(book) = map.get_mut(&update.symbol) {
+                            apply_depth_update(book, update);
+                        }
+                    }
+
+                    // fan out raw event to the channel for other consumers
                     let _ = event_tx.send(event);
                 }
                 Err(e) => error!("failed to parse message: {}", e),
