@@ -17,6 +17,9 @@
     "kline_2h",
     "kline_4h",
     "kline_1d",
-    "kline_1w"
+    "kline_1w",
+    "greeks",
+    "openInterest",
+    "impliedVolatility"
   ]
 }

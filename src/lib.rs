@@ -142,6 +142,9 @@ pub fn handle_stream_event(event: &StreamMessage<Event>, raw: &str) {
             info!(event = "continuous_kline", pair = %data.pair, contract_type = %data.contract_type)
         }
         Event::ForceOrder(data) => info!(event = "forceOrder", symbol = %data.order.symbol),
+        Event::Greeks(data) => info!(event = "greeks", symbol = %data.symbol),
+        Event::OpenInterest(data) => info!(event = "openInterest", symbol = %data.symbol),
+        Event::ImpliedVolatility(data) => info!(event = "impliedVolatility", symbol = %data.symbol),
         Event::Unknown => {
             warn!(
                 event = "unknown",

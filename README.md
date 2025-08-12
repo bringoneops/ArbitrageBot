@@ -164,3 +164,32 @@ as defined in [`streams.json`](streams.json):
 - `topLongShortPositionRatio`
 - `trade`
 
+### Options Streams
+
+The aggregator supports Binance Options channels defined in [`streams_options.json`](streams_options.json):
+
+#### Global Streams
+
+- `!bookTicker@arr`
+- `!miniTicker@arr`
+- `!ticker@arr`
+
+#### Per-Symbol Streams
+
+- `bookTicker`
+- `miniTicker`
+- `ticker`
+- `trade`
+- `kline_1m`
+- `kline_5m`
+- `kline_15m`
+- `kline_30m`
+- `kline_1h`
+- `kline_2h`
+- `kline_4h`
+- `kline_1d`
+- `kline_1w`
+- `greeks`
+- `openInterest`
+- `impliedVolatility`
+

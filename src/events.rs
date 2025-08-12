@@ -35,6 +35,12 @@ pub enum Event {
     ContinuousKline(ContinuousKlineEvent),
     #[serde(rename = "forceOrder")]
     ForceOrder(ForceOrderEvent),
+    #[serde(rename = "greeks")]
+    Greeks(GreeksEvent),
+    #[serde(rename = "openInterest")]
+    OpenInterest(OpenInterestEvent),
+    #[serde(rename = "impliedVolatility")]
+    ImpliedVolatility(ImpliedVolatilityEvent),
     #[serde(other)]
     Unknown,
 }
@@ -333,4 +339,42 @@ pub struct ForceOrder {
     pub is_maker: bool,
     #[serde(rename = "R")]
     pub reduce_only: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GreeksEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "d")]
+    pub delta: String,
+    #[serde(rename = "g")]
+    pub gamma: String,
+    #[serde(rename = "v")]
+    pub vega: String,
+    #[serde(rename = "t")]
+    pub theta: String,
+    #[serde(rename = "r", default)]
+    pub rho: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OpenInterestEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "o")]
+    pub open_interest: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImpliedVolatilityEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "v")]
+    pub implied_volatility: String,
 }
