@@ -8,7 +8,7 @@ use tokio::task::JoinSet;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    time::{sleep, Duration},
+    time::{sleep, Duration, Instant},
 };
 use tokio_socks::tcp::Socks5Stream;
 use tokio_tungstenite::{
@@ -22,6 +22,7 @@ use url::Url;
 use binance_us_and_global::{
     chunk_streams_with_config,
     events::{Event, StreamMessage},
+    next_backoff,
     stream_config_for_exchange,
 };
 
@@ -229,30 +230,55 @@ async fn spawn_exchange(
         let tasks = tasks.clone();
 
         tasks.lock().await.spawn(async move {
+            let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(64);
+            let max_backoff = Duration::from_secs(max_backoff_secs);
+            let min_stable = Duration::from_secs(30);
             let mut backoff = Duration::from_secs(1);
             loop {
                 info!("→ opening WS ({}): {} ({} streams)", name, url, chunk_len);
+                let start = Instant::now();
+                let mut connected = false;
                 let result = if proxy.is_empty() {
                     match connect_async(url.clone()).await {
-                        Ok((ws_stream, _)) => run_ws(ws_stream).await,
+                        Ok((ws_stream, _)) => {
+                            connected = true;
+                            backoff = Duration::from_secs(1);
+                            run_ws(ws_stream).await
+                        }
                         Err(e) => Err(e.into()),
                     }
                 } else {
                     match connect_via_socks5(url.clone(), &proxy).await {
-                        Ok(ws_stream) => run_ws(ws_stream).await,
+                        Ok(ws_stream) => {
+                            connected = true;
+                            backoff = Duration::from_secs(1);
+                            run_ws(ws_stream).await
+                        }
                         Err(e) => Err(e),
                     }
                 };
 
-                if let Err(e) = result {
-                    error!("WS error: {}", e);
+                let ok = result.is_ok();
+                if !ok {
+                    if let Err(e) = &result {
+                        error!("WS error: {}", e);
+                    }
                 } else {
                     warn!("WS stream closed");
                 }
 
+                let elapsed = start.elapsed();
+                if connected {
+                    backoff = next_backoff(backoff, elapsed, ok, max_backoff, min_stable);
+                } else {
+                    backoff = std::cmp::min(backoff * 2, max_backoff);
+                }
+
                 warn!("Reconnecting in {:?}...", backoff);
                 sleep(backoff).await;
-                backoff = std::cmp::min(backoff * 2, Duration::from_secs(64));
             }
         });
     }
