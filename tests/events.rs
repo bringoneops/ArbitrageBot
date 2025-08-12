@@ -19,3 +19,16 @@ fn handles_unknown_event() {
     let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
     assert!(matches!(msg.data, Event::Unknown));
 }
+
+#[test]
+fn parses_agg_trade_event() {
+    let json = r#"{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","E":1,"s":"BTCUSDT","a":2,"p":"0.1","q":"2","f":1,"l":2,"T":3,"m":true,"M":true}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::AggTrade(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.agg_trade_id, 2);
+        }
+        _ => panic!("unexpected event"),
+    }
+}
