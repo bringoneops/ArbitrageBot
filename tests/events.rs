@@ -103,3 +103,17 @@ fn parses_book_ticker_event() {
         _ => panic!("unexpected event"),
     }
 }
+
+#[test]
+fn parses_mark_price_event() {
+    let json = r#"{"stream":"btcusdt@markPrice","data":{"e":"markPriceUpdate","E":1,"s":"BTCUSDT","p":"1.0","i":"1.1","r":"0.001","T":2,"P":"1.0"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::MarkPrice(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.mark_price, "1.0");
+            assert_eq!(ev.index_price, "1.1");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
