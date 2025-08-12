@@ -176,12 +176,24 @@ async fn spawn_exchange(
     let mut books_map: HashMap<String, OrderBook> = HashMap::new();
     for sym in &symbols {
         let depth_url = format!("{}depth?symbol={}", depth_base, sym);
-        if let Ok(resp) = client.get(&depth_url).send().await {
-            if let Ok(resp) = resp.error_for_status() {
-                if let Ok(snapshot) = resp.json::<DepthSnapshot>().await {
-                    books_map.insert(sym.clone(), snapshot.into());
-                }
+        let resp = match client.get(&depth_url).send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                warn!("depth snapshot GET failed for {} ({}): {}", sym, depth_url, e);
+                continue;
             }
+        };
+
+        let resp = match resp.error_for_status() {
+            Ok(resp) => resp,
+            Err(e) => {
+                warn!("depth snapshot non-2xx for {} ({}): {}", sym, depth_url, e);
+                continue;
+            }
+        };
+
+        if let Ok(snapshot) = resp.json::<DepthSnapshot>().await {
+            books_map.insert(sym.clone(), snapshot.into());
         }
     }
     let orderbooks = Arc::new(Mutex::new(books_map));
