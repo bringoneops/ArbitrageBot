@@ -39,6 +39,40 @@ struct SymbolInfo {
     status: String,
 }
 
+struct ExchangeConfig {
+    name: &'static str,
+    info_url: &'static str,
+    ws_base: &'static str,
+}
+
+static EXCHANGES: &[ExchangeConfig] = &[
+    ExchangeConfig {
+        name: "Binance.US Spot",
+        info_url: "https://api.binance.us/api/v3/exchangeInfo",
+        ws_base: "wss://stream.binance.us:9443/stream?streams=",
+    },
+    ExchangeConfig {
+        name: "Binance Global Spot",
+        info_url: "https://api.binance.com/api/v3/exchangeInfo",
+        ws_base: "wss://stream.binance.com:9443/stream?streams=",
+    },
+    ExchangeConfig {
+        name: "Binance Futures",
+        info_url: "https://fapi.binance.com/fapi/v1/exchangeInfo",
+        ws_base: "wss://fstream.binance.com/stream?streams=",
+    },
+    ExchangeConfig {
+        name: "Binance Delivery",
+        info_url: "https://dapi.binance.com/dapi/v1/exchangeInfo",
+        ws_base: "wss://dstream.binance.com/stream?streams=",
+    },
+    ExchangeConfig {
+        name: "Binance Options",
+        info_url: "https://vapi.binance.com/vapi/v1/exchangeInfo",
+        ws_base: "wss://vstream.binance.com/stream?streams=",
+    },
+];
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -72,115 +106,19 @@ async fn main() -> Result<()> {
     let mut inits: Vec<Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>> =
         Vec::new();
 
-    {
+    for cfg in EXCHANGES.iter() {
         let tasks = tasks.clone();
         let client = client.clone();
         let proxy_url = proxy_url.clone();
         let event_tx = event_tx.clone();
+        let name = cfg.name;
+        let info_url = cfg.info_url;
+        let ws_base = cfg.ws_base;
         inits.push(Box::pin(async move {
             (
-                "Binance.US Spot",
+                name,
                 spawn_exchange(
-                    "Binance.US Spot",
-                    "https://api.binance.us/api/v3/exchangeInfo",
-                    "wss://stream.binance.us:9443/stream?streams=",
-                    &client,
-                    chunk_size,
-                    &proxy_url,
-                    tasks,
-                    event_tx,
-                )
-                .await,
-            )
-        }));
-    }
-
-    {
-        let tasks = tasks.clone();
-        let client = client.clone();
-        let proxy_url = proxy_url.clone();
-        let event_tx = event_tx.clone();
-        inits.push(Box::pin(async move {
-            (
-                "Binance Global Spot",
-                spawn_exchange(
-                    "Binance Global Spot",
-                    "https://api.binance.com/api/v3/exchangeInfo",
-                    "wss://stream.binance.com:9443/stream?streams=",
-                    &client,
-                    chunk_size,
-                    &proxy_url,
-                    tasks,
-                    event_tx,
-                )
-                .await,
-            )
-        }));
-    }
-
-    {
-        let tasks = tasks.clone();
-        let client = client.clone();
-        let proxy_url = proxy_url.clone();
-        let event_tx = event_tx.clone();
-        inits.push(Box::pin(async move {
-            (
-                "Binance Futures",
-                spawn_exchange(
-                    "Binance Futures",
-                    "https://fapi.binance.com/fapi/v1/exchangeInfo",
-                    "wss://fstream.binance.com/stream?streams=",
-                    &client,
-                    chunk_size,
-                    &proxy_url,
-                    tasks,
-                    event_tx,
-                )
-                .await,
-            )
-        }));
-    }
-
-    {
-        let tasks = tasks.clone();
-        let client = client.clone();
-        let proxy_url = proxy_url.clone();
-        let event_tx = event_tx.clone();
-        inits.push(Box::pin(async move {
-            (
-                "Binance Delivery",
-                spawn_exchange(
-                    "Binance Delivery",
-                    "https://dapi.binance.com/dapi/v1/exchangeInfo",
-                    "wss://dstream.binance.com/stream?streams=",
-                    &client,
-                    chunk_size,
-                    &proxy_url,
-                    tasks,
-                    event_tx,
-                )
-                .await,
-            )
-        }));
-    }
-
-    {
-        let tasks = tasks.clone();
-        let client = client.clone();
-        let proxy_url = proxy_url.clone();
-        let event_tx = event_tx.clone();
-        inits.push(Box::pin(async move {
-            (
-                "Binance Options",
-                spawn_exchange(
-                    "Binance Options",
-                    "https://vapi.binance.com/vapi/v1/exchangeInfo",
-                    "wss://vstream.binance.com/stream?streams=",
-                    &client,
-                    chunk_size,
-                    &proxy_url,
-                    tasks,
-                    event_tx,
+                    name, info_url, ws_base, &client, chunk_size, &proxy_url, tasks, event_tx,
                 )
                 .await,
             )
