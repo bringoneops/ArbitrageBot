@@ -45,14 +45,7 @@ as defined in [`streams.json`](streams.json):
 
 - `trade`
 - `aggTrade`
-- `depth`
-- `depth5`
-- `depth10`
-- `depth20`
 - `depth@100ms`
-- `depth5@100ms`
-- `depth10@100ms`
-- `depth20@100ms`
 - `kline_1m`
 - `kline_3m`
 - `kline_5m`
