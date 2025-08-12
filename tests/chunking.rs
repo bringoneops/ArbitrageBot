@@ -18,10 +18,23 @@ fn includes_global_streams() {
 
 #[test]
 fn returns_expected_number_of_chunks() {
+    let chunk_size = 50;
+    let global_count = chunk_streams(&[], chunk_size)
+        .iter()
+        .map(|c| c.len())
+        .sum::<usize>();
+    let one_symbol_count = chunk_streams(&["SYM0"], chunk_size)
+        .iter()
+        .map(|c| c.len())
+        .sum::<usize>();
+    let per_symbol = one_symbol_count - global_count;
+
     let symbols: Vec<String> = (0..2).map(|i| format!("SYM{}", i)).collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let chunks = chunk_streams(&symbol_refs, 50);
-    assert_eq!(chunks.len(), 2); // 10 globals + 70 per-symbol streams = 80 total
+    let expected_total = global_count + symbol_refs.len() * per_symbol;
+    let expected_chunks = (expected_total + chunk_size - 1) / chunk_size;
+    let chunks = chunk_streams(&symbol_refs, chunk_size);
+    assert_eq!(chunks.len(), expected_chunks);
 }
 
 #[test]
