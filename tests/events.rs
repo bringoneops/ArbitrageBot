@@ -119,6 +119,19 @@ fn parses_mark_price_event() {
 }
 
 #[test]
+fn parses_index_price_event() {
+    let json = r#"{"stream":"btcusdt@indexPrice","data":{"e":"indexPriceUpdate","E":1,"s":"BTCUSDT","p":"1.1"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::IndexPrice(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.index_price, "1.1");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
 fn parses_force_order_event() {
     let json = r#"{"stream":"btcusdt@forceOrder","data":{"e":"forceOrder","E":1,"o":{"s":"BTCUSDT","S":"SELL","o":"LIMIT","f":"IOC","q":"0.1","p":"10000","ap":"10000","X":"FILLED","l":"0.1","z":"0.1","T":2,"L":"10000","t":1,"b":"0","a":"0","m":false,"R":false}}}"#;
     let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");

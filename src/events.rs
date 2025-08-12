@@ -23,6 +23,8 @@ pub enum Event {
     Ticker(TickerEvent),
     #[serde(rename = "bookTicker")]
     BookTicker(BookTickerEvent),
+    #[serde(rename = "indexPriceUpdate")]
+    IndexPrice(IndexPriceEvent),
     #[serde(rename = "markPriceUpdate")]
     MarkPrice(MarkPriceEvent),
     #[serde(rename = "forceOrder")]
@@ -195,6 +197,16 @@ pub struct BookTickerEvent {
     pub best_ask_price: String,
     #[serde(rename = "A")]
     pub best_ask_qty: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IndexPriceEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "p", alias = "i")]
+    pub index_price: String,
 }
 
 #[derive(Debug, Deserialize)]
