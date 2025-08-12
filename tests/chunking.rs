@@ -14,7 +14,21 @@ fn chunks_do_not_exceed_hundred_streams() {
 #[test]
 fn includes_global_streams() {
     let chunks = chunk_streams(&[], 100);
-    assert!(chunks.iter().flatten().any(|s| s == "!miniTicker@arr"));
+    let streams: Vec<&String> = chunks.iter().flatten().collect();
+    assert!(streams.iter().any(|s| *s == "!miniTicker@arr"));
+    assert!(streams.iter().any(|s| *s == "!markPrice@arr"));
+}
+
+#[test]
+fn includes_per_symbol_streams() {
+    let chunks = chunk_streams(&["BTCUSDT"], 100);
+    let streams: Vec<String> = chunks.into_iter().flatten().collect();
+    assert!(streams.contains(&"btcusdt@miniTicker".to_string()));
+    assert!(streams.contains(&"btcusdt@ticker".to_string()));
+    assert!(streams.contains(&"btcusdt@bookTicker".to_string()));
+    assert!(streams.contains(&"btcusdt@markPrice".to_string()));
+    assert!(streams.contains(&"btcusdt@markPrice@1s".to_string()));
+    assert!(streams.contains(&"btcusdt@forceOrder".to_string()));
 }
 
 #[test]
