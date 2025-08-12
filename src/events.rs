@@ -175,8 +175,20 @@ pub struct TickerEvent {
     pub price_change_percent: String,
     #[serde(rename = "w")]
     pub weighted_avg_price: String,
+    #[serde(rename = "x")]
+    pub prev_close_price: String,
     #[serde(rename = "c")]
     pub last_price: String,
+    #[serde(rename = "Q")]
+    pub last_qty: String,
+    #[serde(rename = "b")]
+    pub best_bid_price: String,
+    #[serde(rename = "B")]
+    pub best_bid_qty: String,
+    #[serde(rename = "a")]
+    pub best_ask_price: String,
+    #[serde(rename = "A")]
+    pub best_ask_qty: String,
     #[serde(rename = "o")]
     pub open_price: String,
     #[serde(rename = "h")]
@@ -187,6 +199,16 @@ pub struct TickerEvent {
     pub volume: String,
     #[serde(rename = "q")]
     pub quote_volume: String,
+    #[serde(rename = "O")]
+    pub open_time: u64,
+    #[serde(rename = "C")]
+    pub close_time: u64,
+    #[serde(rename = "F")]
+    pub first_trade_id: u64,
+    #[serde(rename = "L")]
+    pub last_trade_id: u64,
+    #[serde(rename = "n")]
+    pub count: u64,
 }
 
 #[derive(Debug, Deserialize)]
