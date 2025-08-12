@@ -1,6 +1,6 @@
 pub mod events;
 
-pub fn chunk_streams(symbols: &[&str]) -> Vec<Vec<String>> {
+pub fn chunk_streams(symbols: &[&str], chunk_size: usize) -> Vec<Vec<String>> {
     // Global streams including rolling-window tickers
     let mut streams = vec![
         "!miniTicker@arr".to_string(),
@@ -48,7 +48,6 @@ pub fn chunk_streams(symbols: &[&str]) -> Vec<Vec<String>> {
         }
     }
 
-    let chunk_size = 100;
     let mut result = Vec::new();
     for chunk in streams.chunks(chunk_size) {
         result.push(chunk.to_vec());

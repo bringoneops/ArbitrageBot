@@ -14,10 +14,10 @@ use tokio_tungstenite::{
     client_async_tls_with_config, connect_async, tungstenite::protocol::Message, MaybeTlsStream,
     WebSocketStream,
 };
+use tracing::{error, info, warn};
 use url::Url;
 
-mod events;
-use events::{Event, StreamMessage};
+use binance_us_and_global::{chunk_streams, events::{Event, StreamMessage}};
 
 #[derive(Deserialize)]
 struct ExchangeInfo {
@@ -32,6 +32,8 @@ struct SymbolInfo {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
     // Optional SOCKS5 proxy, e.g. "host:port"
     let proxy_url = env::var("SOCKS5_PROXY").unwrap_or_default();
 
@@ -58,55 +60,16 @@ async fn main() -> Result<()> {
         .await
         .context("parsing exchangeInfo JSON")?;
 
-    // 2) Prepare global "@arr" streams, including 1h & 4h rolling-window tickers
-    let mut streams = vec![
-        "!miniTicker@arr".to_string(),
-        "!ticker@arr".to_string(),
-        "!bookTicker@arr".to_string(),
-        "!ticker_1h@arr".to_string(),
-        "!ticker_4h@arr".to_string(),
-    ];
+    // 2) Gather all TRADING symbols
+    let symbols: Vec<String> = info
+        .symbols
+        .into_iter()
+        .filter(|s| s.status == "TRADING")
+        .map(|s| s.symbol)
+        .collect();
+    let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
-    // 3) Define per-symbol suffixes (spot only), incl. rolling-window tickers
-    let suffixes = &[
-        "trade",
-        "aggTrade",
-        "depth",
-        "depth5",
-        "depth10",
-        "depth20",
-        "depth@100ms",
-        "kline_1m",
-        "kline_3m",
-        "kline_5m",
-        "kline_15m",
-        "kline_30m",
-        "kline_1h",
-        "kline_2h",
-        "kline_4h",
-        "kline_6h",
-        "kline_8h",
-        "kline_12h",
-        "kline_1d",
-        "kline_3d",
-        "kline_1w",
-        "kline_1M",
-        "miniTicker",
-        "ticker",
-        "bookTicker",
-        "ticker_1h",
-        "ticker_4h",
-    ];
-
-    // 4) Build full list of streams for all TRADING symbols
-    for s in info.symbols.into_iter().filter(|s| s.status == "TRADING") {
-        let sym = s.symbol.to_lowercase();
-        for &suffix in suffixes.iter() {
-            streams.push(format!("{}@{}", sym, suffix));
-        }
-    }
-
-    // 5) Chunk the list to avoid exceeding URL length/connection limits
+    // 3) Chunk the list to avoid exceeding URL length/connection limits
     //    Binance says ~100 streams per connection works.
     const MAX_STREAMS_PER_CONN: usize = 100;
     let chunk_size = env::var("CHUNK_SIZE")
@@ -115,13 +78,14 @@ async fn main() -> Result<()> {
         .filter(|&n| n > 0)
         .unwrap_or(MAX_STREAMS_PER_CONN);
 
-    let total_streams = streams.len();
-    println!("🔌 Total Binance.US streams: {}", total_streams);
+    let chunks = chunk_streams(&symbol_refs, chunk_size);
+    let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
+    info!("🔌 Total Binance.US streams: {}", total_streams);
 
     let ws_base = "wss://stream.binance.us:9443/stream?streams=";
     let mut handles = Vec::new();
 
-    for chunk in streams.chunks(chunk_size) {
+    for chunk in chunks {
         // Build URL per chunk
         let param = chunk.join("/");
         let chunk_len = chunk.len();
@@ -133,7 +97,7 @@ async fn main() -> Result<()> {
         handles.push(task::spawn(async move {
             let mut backoff = Duration::from_secs(1);
             loop {
-                println!("→ opening WS: {} ({} streams)", url, chunk_len);
+                info!("→ opening WS: {} ({} streams)", url, chunk_len);
                 let result = if proxy.is_empty() {
                     match connect_async(url.clone()).await {
                         Ok((ws_stream, _)) => run_ws(ws_stream).await,
@@ -147,19 +111,19 @@ async fn main() -> Result<()> {
                 };
 
                 if let Err(e) = result {
-                    eprintln!("❌ WS error: {}", e);
+                    error!("WS error: {}", e);
                 } else {
-                    eprintln!("WS stream closed");
+                    warn!("WS stream closed");
                 }
 
-                eprintln!("Reconnecting in {:?}...", backoff);
+                warn!("Reconnecting in {:?}...", backoff);
                 sleep(backoff).await;
                 backoff = std::cmp::min(backoff * 2, Duration::from_secs(64));
             }
         }));
     }
 
-    // 6) Await all connection tasks (runs indefinitely)
+    // 4) Await all connection tasks (runs indefinitely)
     for handle in handles {
         handle.await?;
     }
@@ -197,8 +161,8 @@ where
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
-                Ok(event) => println!("{:#?}", event),
-                Err(e) => eprintln!("failed to parse message: {}", e),
+                Ok(event) => info!("{:#?}", event),
+                Err(e) => error!("failed to parse message: {}", e),
             },
             Ok(_) => {} // ignore pings/pongs and binary
             Err(e) => return Err(e.into()),

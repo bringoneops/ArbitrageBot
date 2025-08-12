@@ -12,3 +12,10 @@ fn parses_trade_event() {
         _ => panic!("unexpected event"),
     }
 }
+
+#[test]
+fn handles_unknown_event() {
+    let json = r#"{"stream":"test","data":{"e":"mystery"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    assert!(matches!(msg.data, Event::Unknown));
+}
