@@ -20,8 +20,9 @@ use tracing_subscriber::EnvFilter;
 use url::Url;
 
 use binance_us_and_global::{
-    chunk_streams,
+    chunk_streams_with_config,
     events::{Event, StreamMessage},
+    stream_config_for_exchange,
 };
 
 #[derive(Deserialize)]
@@ -214,7 +215,8 @@ async fn spawn_exchange(
         .collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
-    let chunks = chunk_streams(&symbol_refs, chunk_size);
+    let cfg = stream_config_for_exchange(name);
+    let chunks = chunk_streams_with_config(&symbol_refs, chunk_size, cfg);
     let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
     info!("🔌 Total {} streams: {}", name, total_streams);
 

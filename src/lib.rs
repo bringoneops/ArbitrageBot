@@ -27,9 +27,35 @@ static STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
         .expect("invalid default stream configuration")
 });
 
+// Exchange specific configurations
+static SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    serde_json::from_str(include_str!("../streams_spot.json"))
+        .expect("invalid spot stream configuration")
+});
+
+static FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    serde_json::from_str(include_str!("../streams_futures.json"))
+        .expect("invalid futures stream configuration")
+});
+
+static OPTIONS_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    serde_json::from_str(include_str!("../streams_options.json"))
+        .expect("invalid options stream configuration")
+});
+
 /// Returns the default stream configuration.
 pub fn default_stream_config() -> &'static StreamConfig {
     &STREAM_CONFIG
+}
+
+/// Returns the stream configuration for the given exchange name.
+pub fn stream_config_for_exchange(name: &str) -> &'static StreamConfig {
+    match name {
+        "Binance.US Spot" | "Binance Global Spot" => &SPOT_STREAM_CONFIG,
+        "Binance Futures" | "Binance Delivery" => &FUTURES_STREAM_CONFIG,
+        "Binance Options" => &OPTIONS_STREAM_CONFIG,
+        _ => default_stream_config(),
+    }
 }
 
 /// Builds a list of Binance WebSocket stream names split into chunks using the
