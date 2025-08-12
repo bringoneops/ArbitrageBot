@@ -80,12 +80,21 @@ fn parses_mini_ticker_event() {
 
 #[test]
 fn parses_ticker_event() {
-    let json = r#"{"stream":"btcusdt@ticker","data":{"e":"24hrTicker","E":1,"s":"BTCUSDT","p":"0.1","P":"1","w":"0.6","c":"0.7","o":"0.6","h":"0.8","l":"0.5","v":"1000","q":"600"}}"#;
+    let json = r#"{"stream":"btcusdt@ticker","data":{"e":"24hrTicker","E":1,"s":"BTCUSDT","p":"0.1","P":"1","w":"0.6","x":"0.5","c":"0.7","Q":"4","b":"0.69","B":"5","a":"0.71","A":"6","o":"0.6","h":"0.8","l":"0.5","v":"1000","q":"600","O":10,"C":20,"F":100,"L":200,"n":300}}"#;
     let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
     match msg.data {
         Event::Ticker(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
             assert_eq!(ev.last_price, "0.7");
+            assert_eq!(ev.prev_close_price, "0.5");
+            assert_eq!(ev.last_qty, "4");
+            assert_eq!(ev.best_bid_price, "0.69");
+            assert_eq!(ev.best_ask_qty, "6");
+            assert_eq!(ev.open_time, 10);
+            assert_eq!(ev.close_time, 20);
+            assert_eq!(ev.first_trade_id, 100);
+            assert_eq!(ev.last_trade_id, 200);
+            assert_eq!(ev.count, 300);
         }
         _ => panic!("unexpected event"),
     }
