@@ -1,13 +1,17 @@
+use binance_us_and_global::canonical::{BookKind, MdEvent, Side};
 use binance_us_and_global::events::{Event, StreamMessage};
 
 #[test]
 fn parses_trade_event() {
     let json = r#"{"stream":"btcusdt@trade","data":{"e":"trade","E":123456789,"s":"BTCUSDT","t":12345,"p":"0.001","q":"100","b":88,"a":50,"T":123456785,"m":true,"M":true}}"#;
     let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::Trade(ev) => {
+    let md = MdEvent::try_from(msg.data).expect("failed to convert");
+    match md {
+        MdEvent::Trade(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.trade_id, 12345);
+            assert_eq!(ev.trade_id, Some(12345));
+            assert_eq!(ev.side, Some(Side::Sell));
+            assert_eq!(ev.timestamp, 123456785000000);
         }
         _ => panic!("unexpected event"),
     }
@@ -37,14 +41,18 @@ fn parses_agg_trade_event() {
 fn parses_depth_update_event() {
     let json = r#"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1,"s":"BTCUSDT","U":2,"u":3,"pu":1,"b":[["1.0","2.0"],["1.5","3.0"]],"a":[["2.0","1.0"],["2.5","4.0"]]}}"#;
     let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::DepthUpdate(ev) => {
+    let md = MdEvent::try_from(msg.data).expect("failed to convert");
+    match md {
+        MdEvent::Book(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.bids[0][0], "1.0");
-            assert_eq!(ev.bids[0][1], "2.0");
-            assert_eq!(ev.asks[0][0], "2.0");
-            assert_eq!(ev.asks[0][1], "1.0");
-            assert_eq!(ev.previous_final_update_id, 1);
+            assert_eq!(ev.event_time, 1_000_000);
+            assert_eq!(ev.bids[0].price, 1.0);
+            assert_eq!(ev.bids[0].quantity, 2.0);
+            assert_eq!(ev.bids[0].kind, BookKind::Bid);
+            assert_eq!(ev.asks[0].price, 2.0);
+            assert_eq!(ev.asks[0].quantity, 1.0);
+            assert_eq!(ev.asks[0].kind, BookKind::Ask);
+            assert_eq!(ev.previous_final_update_id, Some(1));
         }
         _ => panic!("unexpected event"),
     }
