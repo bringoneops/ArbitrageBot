@@ -15,15 +15,14 @@ use tokio_tungstenite::{
     client_async_tls_with_config, connect_async, tungstenite::protocol::Message, MaybeTlsStream,
     WebSocketStream,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
 use binance_us_and_global::{
     chunk_streams_with_config,
     events::{Event, StreamMessage},
-    next_backoff,
-    stream_config_for_exchange,
+    handle_stream_event, next_backoff, stream_config_for_exchange,
 };
 
 #[derive(Deserialize)]
@@ -65,7 +64,8 @@ async fn main() -> Result<()> {
 
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
-    let mut inits: Vec<Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>> = Vec::new();
+    let mut inits: Vec<Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>> =
+        Vec::new();
 
     {
         let tasks = tasks.clone();
@@ -317,41 +317,7 @@ where
         match msg {
             Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
                 Ok(event) => {
-                    match &event.data {
-                        Event::Trade(data) => info!(event = "trade", symbol = %data.symbol),
-                        Event::AggTrade(data) => info!(event = "aggTrade", symbol = %data.symbol),
-                        Event::DepthUpdate(data) => {
-                            info!(event = "depthUpdate", symbol = %data.symbol)
-                        }
-                        Event::Kline(data) => info!(event = "kline", symbol = %data.symbol),
-                        Event::MiniTicker(data) => {
-                            info!(event = "miniTicker", symbol = %data.symbol)
-                        }
-                        Event::Ticker(data) => info!(event = "ticker", symbol = %data.symbol),
-                        Event::BookTicker(data) => {
-                            info!(event = "bookTicker", symbol = %data.symbol)
-                        }
-                        Event::IndexPrice(data) => {
-                            info!(event = "indexPriceUpdate", symbol = %data.symbol)
-                        }
-                        Event::MarkPrice(data) => {
-                            info!(event = "markPriceUpdate", symbol = %data.symbol)
-                        }
-                        Event::MarkPriceKline(data) => {
-                            info!(event = "markPriceKline", symbol = %data.symbol)
-                        }
-                        Event::IndexPriceKline(data) => {
-                            info!(event = "indexPriceKline", symbol = %data.symbol)
-                        }
-                        Event::ContinuousKline(data) => {
-                            info!(event = "continuous_kline", pair = %data.pair, contract_type = %data.contract_type)
-                        }
-                        Event::ForceOrder(data) => {
-                            info!(event = "forceOrder", symbol = %data.order.symbol)
-                        }
-                        Event::Unknown => info!(event = "unknown", stream = %event.stream),
-                    }
-                    debug!(?event);
+                    handle_stream_event(&event, &text);
                 }
                 Err(e) => error!("failed to parse message: {}", e),
             },

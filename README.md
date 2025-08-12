@@ -22,6 +22,13 @@ To change the number of streams per connection:
 CHUNK_SIZE=50 cargo run --release
 ```
 
+## Unknown Events
+
+Any WebSocket message with an unrecognized `e` field is logged at the warning
+level along with its raw payload. If a metrics recorder is installed, an
+`unknown_events` counter is also incremented so operators can set up alerts for
+protocol changes.
+
 ## Default Channels
 
 By default, the aggregator subscribes to the following Binance WebSocket channels
