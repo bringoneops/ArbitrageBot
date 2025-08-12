@@ -41,6 +41,10 @@ const PER_SYMBOL_SUFFIXES: &[&str] = &[
 ];
 
 pub fn chunk_streams(symbols: &[&str], chunk_size: usize) -> Vec<Vec<String>> {
+    if chunk_size == 0 {
+        return Vec::new();
+    }
+
     let mut streams =
         Vec::with_capacity(GLOBAL_STREAMS.len() + symbols.len() * PER_SYMBOL_SUFFIXES.len());
     streams.extend(GLOBAL_STREAMS.iter().map(|s| s.to_string()));
@@ -52,7 +56,8 @@ pub fn chunk_streams(symbols: &[&str], chunk_size: usize) -> Vec<Vec<String>> {
         }
     }
 
-    let mut result = Vec::with_capacity(streams.len().div_ceil(chunk_size));
+    let capacity = (streams.len() + chunk_size - 1) / chunk_size;
+    let mut result = Vec::with_capacity(capacity);
     for chunk in streams.chunks(chunk_size) {
         result.push(chunk.to_vec());
     }

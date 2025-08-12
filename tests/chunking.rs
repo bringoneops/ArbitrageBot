@@ -23,3 +23,9 @@ fn returns_expected_number_of_chunks() {
     let chunks = chunk_streams(&symbol_refs, 50);
     assert_eq!(chunks.len(), 2); // 5 globals + 54 per-symbol streams = 59 total
 }
+
+#[test]
+fn zero_chunk_size_returns_empty_vec() {
+    let chunks = chunk_streams(&[], 0);
+    assert!(chunks.is_empty());
+}
