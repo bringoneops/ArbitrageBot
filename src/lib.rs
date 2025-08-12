@@ -3,7 +3,7 @@ pub mod events;
 use metrics::counter;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::{collections::HashSet, env, fs, time::Duration};
+use std::{collections::{HashMap, HashSet}, env, fs, time::Duration};
 use tracing::{debug, info, warn};
 
 use crate::events::{Event, StreamMessage};
@@ -157,3 +157,69 @@ pub fn handle_stream_event(event: &StreamMessage<Event>, raw: &str) {
     }
     debug!(?event);
 }
+
+// Order book handling -------------------------------------------------------
+
+use events::DepthUpdateEvent;
+
+/// Snapshot of the order book returned by the REST `depth` endpoint.
+#[derive(Debug, Deserialize)]
+pub struct DepthSnapshot {
+    #[serde(rename = "lastUpdateId")]
+    pub last_update_id: u64,
+    pub bids: Vec<[String; 2]>,
+    pub asks: Vec<[String; 2]>,
+}
+
+/// In-memory representation of an order book for a single symbol.
+#[derive(Debug, Clone, Default)]
+pub struct OrderBook {
+    pub bids: HashMap<String, String>,
+    pub asks: HashMap<String, String>,
+    pub last_update_id: u64,
+}
+
+impl From<DepthSnapshot> for OrderBook {
+    fn from(snapshot: DepthSnapshot) -> Self {
+        Self {
+            bids: snapshot
+                .bids
+                .into_iter()
+                .map(|[p, q]| (p, q))
+                .collect(),
+            asks: snapshot
+                .asks
+                .into_iter()
+                .map(|[p, q]| (p, q))
+                .collect(),
+            last_update_id: snapshot.last_update_id,
+        }
+    }
+}
+
+/// Applies a websocket depth update diff to an existing order book snapshot.
+pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) {
+    // Ignore outdated updates.
+    if update.final_update_id <= book.last_update_id {
+        return;
+    }
+
+    for [price, qty] in &update.bids {
+        if qty == "0" {
+            book.bids.remove(price);
+        } else {
+            book.bids.insert(price.clone(), qty.clone());
+        }
+    }
+
+    for [price, qty] in &update.asks {
+        if qty == "0" {
+            book.asks.remove(price);
+        } else {
+            book.asks.insert(price.clone(), qty.clone());
+        }
+    }
+
+    book.last_update_id = update.final_update_id;
+}
+

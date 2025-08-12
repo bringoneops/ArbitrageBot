@@ -20,9 +20,9 @@ use tracing_subscriber::EnvFilter;
 use url::Url;
 
 use binance_us_and_global::{
-    chunk_streams_with_config,
+    apply_depth_update, chunk_streams_with_config,
     events::{Event, StreamMessage},
-    handle_stream_event, next_backoff, stream_config_for_exchange,
+    handle_stream_event, next_backoff, stream_config_for_exchange, DepthSnapshot, OrderBook,
 };
 
 #[derive(Deserialize)]
@@ -216,6 +216,21 @@ async fn spawn_exchange(
         .collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
+    // Fetch depth snapshots for each symbol before starting WebSocket streams.
+    let depth_base = exchange_info_url.trim_end_matches("exchangeInfo");
+    let mut books_map = std::collections::HashMap::new();
+    for sym in &symbols {
+        let depth_url = format!("{}depth?symbol={}", depth_base, sym);
+        if let Ok(resp) = client.get(&depth_url).send().await {
+            if let Ok(resp) = resp.error_for_status() {
+                if let Ok(snapshot) = resp.json::<DepthSnapshot>().await {
+                    books_map.insert(sym.clone(), snapshot.into());
+                }
+            }
+        }
+    }
+    let orderbooks = Arc::new(Mutex::new(books_map));
+
     let cfg = stream_config_for_exchange(name);
     let chunks = chunk_streams_with_config(&symbol_refs, chunk_size, cfg);
     let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
@@ -228,6 +243,7 @@ async fn spawn_exchange(
         let proxy = proxy_url.to_string();
         let name = name.to_string();
         let tasks = tasks.clone();
+        let books = orderbooks.clone();
 
         tasks.lock().await.spawn(async move {
             let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
@@ -246,7 +262,7 @@ async fn spawn_exchange(
                         Ok((ws_stream, _)) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream).await
+                            run_ws(ws_stream, books.clone()).await
                         }
                         Err(e) => Err(e.into()),
                     }
@@ -255,7 +271,7 @@ async fn spawn_exchange(
                         Ok(ws_stream) => {
                             connected = true;
                             backoff = Duration::from_secs(1);
-                            run_ws(ws_stream).await
+                            run_ws(ws_stream, books.clone()).await
                         }
                         Err(e) => Err(e),
                     }
@@ -307,7 +323,10 @@ async fn connect_via_socks5(
 }
 
 // Shared WebSocket read loop for both direct and proxied connections.
-async fn run_ws<S>(ws_stream: WebSocketStream<S>) -> Result<()>
+async fn run_ws<S>(
+    ws_stream: WebSocketStream<S>,
+    books: Arc<Mutex<std::collections::HashMap<String, OrderBook>>>,
+) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -317,7 +336,15 @@ where
         match msg {
             Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
                 Ok(event) => {
-                    handle_stream_event(&event, &text);
+                    if let Event::DepthUpdate(ref update) = event.data {
+                        handle_stream_event(&event, &text);
+                        let mut map = books.lock().await;
+                        if let Some(book) = map.get_mut(&update.symbol) {
+                            apply_depth_update(book, update);
+                        }
+                    } else {
+                        handle_stream_event(&event, &text);
+                    }
                 }
                 Err(e) => error!("failed to parse message: {}", e),
             },
