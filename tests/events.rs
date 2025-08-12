@@ -117,3 +117,29 @@ fn parses_mark_price_event() {
         _ => panic!("unexpected event"),
     }
 }
+
+#[test]
+fn parses_force_order_event() {
+    let json = r#"{"stream":"btcusdt@forceOrder","data":{"e":"forceOrder","E":1,"o":{"s":"BTCUSDT","S":"SELL","o":"LIMIT","f":"IOC","q":"0.1","p":"10000","ap":"10000","X":"FILLED","l":"0.1","z":"0.1","T":2,"L":"10000","t":1,"b":"0","a":"0","m":false,"R":false}}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::ForceOrder(ev) => {
+            assert_eq!(ev.order.symbol, "BTCUSDT");
+            assert_eq!(ev.order.side, "SELL");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn parses_force_order_arr_event() {
+    let json = r#"{"stream":"forceOrder@arr","data":{"e":"forceOrder","E":1,"o":{"s":"ETHUSDT","S":"BUY","o":"LIMIT","f":"IOC","q":"1","p":"2000","ap":"2000","X":"FILLED","l":"1","z":"1","T":2,"L":"2000","t":2,"b":"0","a":"0","m":true,"R":false}}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::ForceOrder(ev) => {
+            assert_eq!(ev.order.symbol, "ETHUSDT");
+            assert!(ev.order.is_maker);
+        }
+        _ => panic!("unexpected event"),
+    }
+}

@@ -232,6 +232,9 @@ where
                         Event::MarkPrice(data) => {
                             info!(event = "markPriceUpdate", symbol = %data.symbol)
                         }
+                        Event::ForceOrder(data) => {
+                            info!(event = "forceOrder", symbol = %data.order.symbol)
+                        }
                         Event::Unknown => info!(event = "unknown", stream = %event.stream),
                     }
                     debug!(?event);

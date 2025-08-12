@@ -25,6 +25,8 @@ pub enum Event {
     BookTicker(BookTickerEvent),
     #[serde(rename = "markPriceUpdate")]
     MarkPrice(MarkPriceEvent),
+    #[serde(rename = "forceOrder")]
+    ForceOrder(ForceOrderEvent),
     #[serde(other)]
     Unknown,
 }
@@ -211,4 +213,50 @@ pub struct MarkPriceEvent {
     pub next_funding_time: u64,
     #[serde(rename = "P", default)]
     pub estimated_settle_price: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForceOrderEvent {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "o")]
+    pub order: ForceOrder,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForceOrder {
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "S")]
+    pub side: String,
+    #[serde(rename = "o")]
+    pub order_type: String,
+    #[serde(rename = "f")]
+    pub time_in_force: String,
+    #[serde(rename = "q")]
+    pub original_quantity: String,
+    #[serde(rename = "p")]
+    pub price: String,
+    #[serde(rename = "ap")]
+    pub average_price: String,
+    #[serde(rename = "X")]
+    pub status: String,
+    #[serde(rename = "l")]
+    pub last_filled_quantity: String,
+    #[serde(rename = "z")]
+    pub filled_accumulated_quantity: String,
+    #[serde(rename = "T")]
+    pub trade_time: u64,
+    #[serde(rename = "L")]
+    pub last_filled_price: String,
+    #[serde(rename = "t")]
+    pub trade_id: u64,
+    #[serde(rename = "b")]
+    pub bids_notional: String,
+    #[serde(rename = "a")]
+    pub ask_notional: String,
+    #[serde(rename = "m")]
+    pub is_maker: bool,
+    #[serde(rename = "R")]
+    pub reduce_only: bool,
 }
