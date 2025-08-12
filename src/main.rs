@@ -184,6 +184,9 @@ where
                         Event::BookTicker(data) => {
                             info!(event = "bookTicker", symbol = %data.symbol)
                         }
+                        Event::MarkPrice(data) => {
+                            info!(event = "markPriceUpdate", symbol = %data.symbol)
+                        }
                         Event::Unknown => info!(event = "unknown", stream = %event.stream),
                     }
                     debug!(?event);

@@ -21,7 +21,7 @@ fn returns_expected_number_of_chunks() {
     let symbols: Vec<String> = (0..2).map(|i| format!("SYM{}", i)).collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
     let chunks = chunk_streams(&symbol_refs, 50);
-    assert_eq!(chunks.len(), 2); // 8 globals + 66 per-symbol streams = 74 total
+    assert_eq!(chunks.len(), 2); // 10 globals + 70 per-symbol streams = 80 total
 }
 
 #[test]
