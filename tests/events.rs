@@ -205,3 +205,46 @@ fn parses_force_order_arr_event() {
         _ => panic!("unexpected event"),
     }
 }
+
+#[test]
+fn parses_greeks_event() {
+    let json = r#"{"stream":"btcusdt@greeks","data":{"e":"greeks","E":1,"s":"BTCUSDT","d":"0.1","g":"0.2","v":"0.3","t":"0.4","r":"0.5"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::Greeks(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.delta, "0.1");
+            assert_eq!(ev.gamma, "0.2");
+            assert_eq!(ev.vega, "0.3");
+            assert_eq!(ev.theta, "0.4");
+            assert_eq!(ev.rho.unwrap(), "0.5");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn parses_open_interest_event() {
+    let json = r#"{"stream":"btcusdt@openInterest","data":{"e":"openInterest","E":1,"s":"BTCUSDT","o":"123"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::OpenInterest(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.open_interest, "123");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn parses_implied_volatility_event() {
+    let json = r#"{"stream":"btcusdt@impliedVolatility","data":{"e":"impliedVolatility","E":1,"s":"BTCUSDT","v":"0.6"}}"#;
+    let msg: StreamMessage<Event> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::ImpliedVolatility(ev) => {
+            assert_eq!(ev.symbol, "BTCUSDT");
+            assert_eq!(ev.implied_volatility, "0.6");
+        }
+        _ => panic!("unexpected event"),
+    }
+}
