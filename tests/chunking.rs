@@ -9,3 +9,9 @@ fn chunks_do_not_exceed_hundred_streams() {
 
     assert!(chunks.iter().all(|c| c.len() <= 100));
 }
+
+#[test]
+fn includes_global_streams() {
+    let chunks = chunk_streams(&[]);
+    assert!(chunks.iter().flatten().any(|s| s == "!miniTicker@arr"));
+}
