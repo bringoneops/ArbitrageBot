@@ -98,6 +98,9 @@ as defined in [`streams.json`](streams.json):
 - `continuousKline_8h_next_quarter`
 - `continuousKline_8h_perpetual`
 - `depth@100ms`
+- `depth5@100ms`
+- `depth10@100ms`
+- `depth20@100ms`
 - `forceOrder`
 - `indexPrice`
 - `indexPrice@1s`
@@ -149,11 +152,15 @@ as defined in [`streams.json`](streams.json):
 - `markPriceKline_6h`
 - `markPriceKline_8h`
 - `miniTicker`
+- `openInterest`
+- `takerBuySellVolume`
 - `ticker`
 - `ticker_1M`
 - `ticker_1d`
 - `ticker_1h`
 - `ticker_1w`
 - `ticker_4h`
+- `topLongShortAccountRatio`
+- `topLongShortPositionRatio`
 - `trade`
 
