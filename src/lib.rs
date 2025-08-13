@@ -12,6 +12,7 @@ use std::{
     env, fs,
     time::Duration,
 };
+use simd_json::serde::from_slice;
 #[cfg(feature = "debug-logs")]
 use tracing::debug;
 use tracing::warn;
@@ -31,30 +32,30 @@ pub struct StreamConfig {
 /// fails to load, a built-in default configuration is used.
 static STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     if let Ok(path) = env::var("STREAMS_CONFIG") {
-        if let Ok(content) = fs::read_to_string(path) {
-            if let Ok(cfg) = serde_json::from_str(&content) {
+        if let Ok(mut content) = fs::read(path) {
+            if let Ok(cfg) = from_slice(&mut content) {
                 return cfg;
             }
         }
     }
-    serde_json::from_str(include_str!("../streams.json"))
-        .expect("invalid default stream configuration")
+    let mut data = include_bytes!("../streams.json").to_vec();
+    from_slice(&mut data).expect("invalid default stream configuration")
 });
 
 // Exchange specific configurations
 static SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    serde_json::from_str(include_str!("../streams_spot.json"))
-        .expect("invalid spot stream configuration")
+    let mut data = include_bytes!("../streams_spot.json").to_vec();
+    from_slice(&mut data).expect("invalid spot stream configuration")
 });
 
 static FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    serde_json::from_str(include_str!("../streams_futures.json"))
-        .expect("invalid futures stream configuration")
+    let mut data = include_bytes!("../streams_futures.json").to_vec();
+    from_slice(&mut data).expect("invalid futures stream configuration")
 });
 
 static OPTIONS_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    serde_json::from_str(include_str!("../streams_options.json"))
-        .expect("invalid options stream configuration")
+    let mut data = include_bytes!("../streams_options.json").to_vec();
+    from_slice(&mut data).expect("invalid options stream configuration")
 });
 
 /// Returns the default stream configuration.

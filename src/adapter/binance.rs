@@ -22,6 +22,7 @@ use tokio_tungstenite::{
     Connector, MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
+use simd_json::serde::from_slice;
 
 use crate::events::{Event, StreamMessage};
 
@@ -386,14 +387,18 @@ where
                 };
 
                 match msg {
-                    Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<'static>>(&text) {
+                    Ok(Message::Text(text)) => {
+                        let mut bytes = text.into_bytes();
+                        match from_slice::<StreamMessage<'static>>(&mut bytes) {
                         Ok(event) => {
                             if crate::config::metrics_enabled() {
                                 metrics::counter!("ws_events").increment(1);
                             }
                             #[cfg(feature = "debug-logs")]
                             tracing::debug!(?event);
-                            handle_stream_event(&event, &text);
+                            // original text no longer available; reconstruct from bytes for logging
+                            let raw = unsafe { std::str::from_utf8_unchecked(&bytes) };
+                            handle_stream_event(&event, raw);
                             if let Event::DepthUpdate(ref update) = event.data {
                                 let symbol = update.symbol.clone();
                                 let mut map = books.lock().await;
@@ -423,6 +428,7 @@ where
                             }
                         }
                         Err(e) => tracing::error!("failed to parse message: {}", e),
+                    }
                     },
                     Ok(Message::Ping(payload)) => {
                         write.send(Message::Pong(payload)).await?;
