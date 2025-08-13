@@ -93,7 +93,7 @@ pub struct AggTradeEvent {
     pub best_match: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DepthUpdateEvent {
     #[serde(rename = "E")]
     pub event_time: u64,

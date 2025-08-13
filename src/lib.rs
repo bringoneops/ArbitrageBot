@@ -175,8 +175,16 @@ impl From<DepthSnapshot> for OrderBook {
     }
 }
 
+/// Result of attempting to apply a depth update to an order book.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ApplyResult {
+    Applied,
+    Outdated,
+    Gap,
+}
+
 /// Applies a websocket depth update diff to an existing order book snapshot.
-pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) {
+pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) -> ApplyResult {
     let next_expected = book.last_update_id + 1;
 
     // Ignore outdated updates.
@@ -186,18 +194,21 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) {
             final_update_id = update.final_update_id,
             "outdated depth update"
         );
-        return;
+        return ApplyResult::Outdated;
     }
 
     // Detect gaps in the update sequence.
-    if update.first_update_id > next_expected {
+    if update.first_update_id > next_expected
+        || update.previous_final_update_id != book.last_update_id
+    {
         warn!(
             expected = next_expected,
             first_update_id = update.first_update_id,
+            previous_final_update_id = update.previous_final_update_id,
             final_update_id = update.final_update_id,
             "non-contiguous depth update"
         );
-        return;
+        return ApplyResult::Gap;
     }
 
     for [price, qty] in &update.bids {
@@ -217,4 +228,12 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) {
     }
 
     book.last_update_id = update.final_update_id;
+    ApplyResult::Applied
+}
+
+/// Fast-forwards an order book by applying a sequence of buffered depth updates.
+pub fn fast_forward(book: &mut OrderBook, updates: &[DepthUpdateEvent]) {
+    for update in updates {
+        apply_depth_update(book, update);
+    }
 }
