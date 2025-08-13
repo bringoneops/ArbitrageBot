@@ -70,7 +70,7 @@ pub struct BinanceAdapter {
     chunk_size: usize,
     proxy_url: String,
     tasks: Arc<Mutex<JoinSet<()>>>,
-    event_tx: mpsc::Sender<StreamMessage<Event>>,
+    event_tx: mpsc::Sender<StreamMessage<'static>>,
     symbols: Vec<String>,
     orderbooks: Arc<Mutex<HashMap<String, OrderBook>>>,
     tls_config: Arc<ClientConfig>,
@@ -83,7 +83,7 @@ impl BinanceAdapter {
         chunk_size: usize,
         proxy_url: String,
         tasks: Arc<Mutex<JoinSet<()>>>,
-        event_tx: mpsc::Sender<StreamMessage<Event>>,
+        event_tx: mpsc::Sender<StreamMessage<'static>>,
         symbols: Vec<String>,
         tls_config: Arc<ClientConfig>,
     ) -> Self {
@@ -343,7 +343,7 @@ async fn fetch_depth_snapshot(
 async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
     books: Arc<Mutex<HashMap<String, OrderBook>>>,
-    event_tx: mpsc::Sender<StreamMessage<Event>>,
+    event_tx: mpsc::Sender<StreamMessage<'static>>,
     client: Client,
     depth_base: String,
 ) -> Result<()>
@@ -386,7 +386,7 @@ where
                 };
 
                 match msg {
-                    Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
+                    Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<'static>>(&text) {
                         Ok(event) => {
                             if crate::config::metrics_enabled() {
                                 metrics::counter!("ws_events").increment(1);

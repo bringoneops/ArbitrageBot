@@ -134,7 +134,7 @@ pub fn next_backoff(
 }
 
 /// Logs a warning for unknown events. The raw payload is included for easier troubleshooting.
-pub fn handle_stream_event(event: &StreamMessage<Event>, raw: &str) {
+pub fn handle_stream_event(event: &StreamMessage<'_>, raw: &str) {
     if matches!(event.data, Event::Unknown) {
         warn!(
             event = "unknown",
@@ -188,7 +188,7 @@ pub enum ApplyResult {
 }
 
 /// Applies a websocket depth update diff to an existing order book snapshot.
-pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) -> ApplyResult {
+pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent<'_>) -> ApplyResult {
     let next_expected = book.last_update_id + 1;
 
     // Ignore outdated updates.
@@ -216,18 +216,22 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) -> Ap
     }
 
     for [price, qty] in &update.bids {
-        if qty == "0" {
-            book.bids.remove(price);
+        if qty.as_ref() == "0" {
+            book.bids.remove(price.as_ref());
         } else {
-            book.bids.insert(price.clone(), qty.clone());
+            book
+                .bids
+                .insert(price.to_string(), qty.to_string());
         }
     }
 
     for [price, qty] in &update.asks {
-        if qty == "0" {
-            book.asks.remove(price);
+        if qty.as_ref() == "0" {
+            book.asks.remove(price.as_ref());
         } else {
-            book.asks.insert(price.clone(), qty.clone());
+            book
+                .asks
+                .insert(price.to_string(), qty.to_string());
         }
     }
 
@@ -236,7 +240,7 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent) -> Ap
 }
 
 /// Fast-forwards an order book by applying a sequence of buffered depth updates.
-pub fn fast_forward(book: &mut OrderBook, updates: &[DepthUpdateEvent]) {
+pub fn fast_forward(book: &mut OrderBook, updates: &[DepthUpdateEvent<'_>]) {
     for update in updates {
         apply_depth_update(book, update);
     }

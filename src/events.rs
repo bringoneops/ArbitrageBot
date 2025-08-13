@@ -1,52 +1,55 @@
 use serde::Deserialize;
+use std::borrow::Cow;
+use std::str::FromStr;
+use rust_decimal::Decimal;
 
 #[derive(Debug, Deserialize)]
-pub struct StreamMessage<T> {
+pub struct StreamMessage<'a> {
     pub stream: String,
-    pub data: T,
+    pub data: Event<'a>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "e")]
-pub enum Event {
+pub enum Event<'a> {
     #[serde(rename = "trade")]
-    Trade(TradeEvent),
+    Trade(TradeEvent<'a>),
     #[serde(rename = "aggTrade")]
-    AggTrade(AggTradeEvent),
+    AggTrade(AggTradeEvent<'a>),
     #[serde(rename = "depthUpdate")]
-    DepthUpdate(DepthUpdateEvent),
+    DepthUpdate(DepthUpdateEvent<'a>),
     #[serde(rename = "kline")]
-    Kline(KlineEvent),
+    Kline(KlineEvent<'a>),
     #[serde(rename = "24hrMiniTicker")]
-    MiniTicker(MiniTickerEvent),
+    MiniTicker(MiniTickerEvent<'a>),
     #[serde(rename = "24hrTicker")]
-    Ticker(TickerEvent),
+    Ticker(TickerEvent<'a>),
     #[serde(rename = "bookTicker")]
-    BookTicker(BookTickerEvent),
+    BookTicker(BookTickerEvent<'a>),
     #[serde(rename = "indexPriceUpdate")]
-    IndexPrice(IndexPriceEvent),
+    IndexPrice(IndexPriceEvent<'a>),
     #[serde(rename = "markPriceUpdate")]
-    MarkPrice(MarkPriceEvent),
+    MarkPrice(MarkPriceEvent<'a>),
     #[serde(rename = "markPriceKline")]
-    MarkPriceKline(MarkPriceKlineEvent),
+    MarkPriceKline(MarkPriceKlineEvent<'a>),
     #[serde(rename = "indexPriceKline")]
-    IndexPriceKline(IndexPriceKlineEvent),
+    IndexPriceKline(IndexPriceKlineEvent<'a>),
     #[serde(rename = "continuous_kline")]
-    ContinuousKline(ContinuousKlineEvent),
+    ContinuousKline(ContinuousKlineEvent<'a>),
     #[serde(rename = "forceOrder")]
-    ForceOrder(ForceOrderEvent),
+    ForceOrder(ForceOrderEvent<'a>),
     #[serde(rename = "greeks")]
-    Greeks(GreeksEvent),
+    Greeks(GreeksEvent<'a>),
     #[serde(rename = "openInterest")]
-    OpenInterest(OpenInterestEvent),
+    OpenInterest(OpenInterestEvent<'a>),
     #[serde(rename = "impliedVolatility")]
-    ImpliedVolatility(ImpliedVolatilityEvent),
+    ImpliedVolatility(ImpliedVolatilityEvent<'a>),
     #[serde(other)]
     Unknown,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TradeEvent {
+pub struct TradeEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
@@ -54,9 +57,9 @@ pub struct TradeEvent {
     #[serde(rename = "t")]
     pub trade_id: u64,
     #[serde(rename = "p")]
-    pub price: String,
+    pub price: Cow<'a, str>,
     #[serde(rename = "q")]
-    pub quantity: String,
+    pub quantity: Cow<'a, str>,
     #[serde(rename = "b")]
     pub buyer_order_id: u64,
     #[serde(rename = "a")]
@@ -70,7 +73,7 @@ pub struct TradeEvent {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AggTradeEvent {
+pub struct AggTradeEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
@@ -78,9 +81,9 @@ pub struct AggTradeEvent {
     #[serde(rename = "a")]
     pub agg_trade_id: u64,
     #[serde(rename = "p")]
-    pub price: String,
+    pub price: Cow<'a, str>,
     #[serde(rename = "q")]
-    pub quantity: String,
+    pub quantity: Cow<'a, str>,
     #[serde(rename = "f")]
     pub first_trade_id: u64,
     #[serde(rename = "l")]
@@ -94,7 +97,7 @@ pub struct AggTradeEvent {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct DepthUpdateEvent {
+pub struct DepthUpdateEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
@@ -106,23 +109,23 @@ pub struct DepthUpdateEvent {
     #[serde(rename = "pu")]
     pub previous_final_update_id: u64,
     #[serde(rename = "b")]
-    pub bids: Vec<[String; 2]>,
+    pub bids: Vec<[Cow<'a, str>; 2]>,
     #[serde(rename = "a")]
-    pub asks: Vec<[String; 2]>,
+    pub asks: Vec<[Cow<'a, str>; 2]>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct KlineEvent {
+pub struct KlineEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "k")]
-    pub kline: Kline,
+    pub kline: Kline<'a>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Kline {
+pub struct Kline<'a> {
     #[serde(rename = "t")]
     pub start_time: u64,
     #[serde(rename = "T")]
@@ -130,83 +133,83 @@ pub struct Kline {
     #[serde(rename = "i")]
     pub interval: String,
     #[serde(rename = "o")]
-    pub open: String,
+    pub open: Cow<'a, str>,
     #[serde(rename = "c")]
-    pub close: String,
+    pub close: Cow<'a, str>,
     #[serde(rename = "h")]
-    pub high: String,
+    pub high: Cow<'a, str>,
     #[serde(rename = "l")]
-    pub low: String,
+    pub low: Cow<'a, str>,
     #[serde(rename = "v")]
-    pub volume: String,
+    pub volume: Cow<'a, str>,
     #[serde(rename = "n")]
     pub trades: u64,
     #[serde(rename = "x")]
     pub is_closed: bool,
     #[serde(rename = "q")]
-    pub quote_volume: String,
+    pub quote_volume: Cow<'a, str>,
     #[serde(rename = "V")]
-    pub taker_buy_base_volume: String,
+    pub taker_buy_base_volume: Cow<'a, str>,
     #[serde(rename = "Q")]
-    pub taker_buy_quote_volume: String,
+    pub taker_buy_quote_volume: Cow<'a, str>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MiniTickerEvent {
+pub struct MiniTickerEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "c")]
-    pub close_price: String,
+    pub close_price: Cow<'a, str>,
     #[serde(rename = "o")]
-    pub open_price: String,
+    pub open_price: Cow<'a, str>,
     #[serde(rename = "h")]
-    pub high_price: String,
+    pub high_price: Cow<'a, str>,
     #[serde(rename = "l")]
-    pub low_price: String,
+    pub low_price: Cow<'a, str>,
     #[serde(rename = "v")]
-    pub volume: String,
+    pub volume: Cow<'a, str>,
     #[serde(rename = "q")]
-    pub quote_volume: String,
+    pub quote_volume: Cow<'a, str>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TickerEvent {
+pub struct TickerEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "p")]
-    pub price_change: String,
+    pub price_change: Cow<'a, str>,
     #[serde(rename = "P")]
-    pub price_change_percent: String,
+    pub price_change_percent: Cow<'a, str>,
     #[serde(rename = "w")]
-    pub weighted_avg_price: String,
+    pub weighted_avg_price: Cow<'a, str>,
     #[serde(rename = "x")]
-    pub prev_close_price: String,
+    pub prev_close_price: Cow<'a, str>,
     #[serde(rename = "c")]
-    pub last_price: String,
+    pub last_price: Cow<'a, str>,
     #[serde(rename = "Q")]
-    pub last_qty: String,
+    pub last_qty: Cow<'a, str>,
     #[serde(rename = "b")]
-    pub best_bid_price: String,
+    pub best_bid_price: Cow<'a, str>,
     #[serde(rename = "B")]
-    pub best_bid_qty: String,
+    pub best_bid_qty: Cow<'a, str>,
     #[serde(rename = "a")]
-    pub best_ask_price: String,
+    pub best_ask_price: Cow<'a, str>,
     #[serde(rename = "A")]
-    pub best_ask_qty: String,
+    pub best_ask_qty: Cow<'a, str>,
     #[serde(rename = "o")]
-    pub open_price: String,
+    pub open_price: Cow<'a, str>,
     #[serde(rename = "h")]
-    pub high_price: String,
+    pub high_price: Cow<'a, str>,
     #[serde(rename = "l")]
-    pub low_price: String,
+    pub low_price: Cow<'a, str>,
     #[serde(rename = "v")]
-    pub volume: String,
+    pub volume: Cow<'a, str>,
     #[serde(rename = "q")]
-    pub quote_volume: String,
+    pub quote_volume: Cow<'a, str>,
     #[serde(rename = "O")]
     pub open_time: u64,
     #[serde(rename = "C")]
@@ -220,71 +223,71 @@ pub struct TickerEvent {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BookTickerEvent {
+pub struct BookTickerEvent<'a> {
     #[serde(rename = "u")]
     pub update_id: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "b")]
-    pub best_bid_price: String,
+    pub best_bid_price: Cow<'a, str>,
     #[serde(rename = "B")]
-    pub best_bid_qty: String,
+    pub best_bid_qty: Cow<'a, str>,
     #[serde(rename = "a")]
-    pub best_ask_price: String,
+    pub best_ask_price: Cow<'a, str>,
     #[serde(rename = "A")]
-    pub best_ask_qty: String,
+    pub best_ask_qty: Cow<'a, str>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct IndexPriceEvent {
+pub struct IndexPriceEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "p", alias = "i")]
-    pub index_price: String,
+    pub index_price: Cow<'a, str>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MarkPriceEvent {
+pub struct MarkPriceEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "p")]
-    pub mark_price: String,
+    pub mark_price: Cow<'a, str>,
     #[serde(rename = "i")]
-    pub index_price: String,
+    pub index_price: Cow<'a, str>,
     #[serde(rename = "r")]
-    pub funding_rate: String,
+    pub funding_rate: Cow<'a, str>,
     #[serde(rename = "T")]
     pub next_funding_time: u64,
     #[serde(rename = "P", default)]
-    pub estimated_settle_price: Option<String>,
+    pub estimated_settle_price: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MarkPriceKlineEvent {
+pub struct MarkPriceKlineEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "k")]
-    pub kline: Kline,
+    pub kline: Kline<'a>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct IndexPriceKlineEvent {
+pub struct IndexPriceKlineEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "k")]
-    pub kline: Kline,
+    pub kline: Kline<'a>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ContinuousKlineEvent {
+pub struct ContinuousKlineEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "ps")]
@@ -292,19 +295,19 @@ pub struct ContinuousKlineEvent {
     #[serde(rename = "ct")]
     pub contract_type: String,
     #[serde(rename = "k")]
-    pub kline: Kline,
+    pub kline: Kline<'a>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ForceOrderEvent {
+pub struct ForceOrderEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "o")]
-    pub order: ForceOrder,
+    pub order: ForceOrder<'a>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ForceOrder {
+pub struct ForceOrder<'a> {
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "S")]
@@ -314,27 +317,27 @@ pub struct ForceOrder {
     #[serde(rename = "f")]
     pub time_in_force: String,
     #[serde(rename = "q")]
-    pub original_quantity: String,
+    pub original_quantity: Cow<'a, str>,
     #[serde(rename = "p")]
-    pub price: String,
+    pub price: Cow<'a, str>,
     #[serde(rename = "ap")]
-    pub average_price: String,
+    pub average_price: Cow<'a, str>,
     #[serde(rename = "X")]
     pub status: String,
     #[serde(rename = "l")]
-    pub last_filled_quantity: String,
+    pub last_filled_quantity: Cow<'a, str>,
     #[serde(rename = "z")]
-    pub filled_accumulated_quantity: String,
+    pub filled_accumulated_quantity: Cow<'a, str>,
     #[serde(rename = "T")]
     pub trade_time: u64,
     #[serde(rename = "L")]
-    pub last_filled_price: String,
+    pub last_filled_price: Cow<'a, str>,
     #[serde(rename = "t")]
     pub trade_id: u64,
     #[serde(rename = "b")]
-    pub bids_notional: String,
+    pub bids_notional: Cow<'a, str>,
     #[serde(rename = "a")]
-    pub ask_notional: String,
+    pub ask_notional: Cow<'a, str>,
     #[serde(rename = "m")]
     pub is_maker: bool,
     #[serde(rename = "R")]
@@ -342,39 +345,77 @@ pub struct ForceOrder {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GreeksEvent {
+pub struct GreeksEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "d")]
-    pub delta: String,
+    pub delta: Cow<'a, str>,
     #[serde(rename = "g")]
-    pub gamma: String,
+    pub gamma: Cow<'a, str>,
     #[serde(rename = "v")]
-    pub vega: String,
+    pub vega: Cow<'a, str>,
     #[serde(rename = "t")]
-    pub theta: String,
+    pub theta: Cow<'a, str>,
     #[serde(rename = "r", default)]
-    pub rho: Option<String>,
+    pub rho: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct OpenInterestEvent {
+pub struct OpenInterestEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "o")]
-    pub open_interest: String,
+    pub open_interest: Cow<'a, str>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ImpliedVolatilityEvent {
+pub struct ImpliedVolatilityEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
     #[serde(rename = "s")]
     pub symbol: String,
     #[serde(rename = "v")]
-    pub implied_volatility: String,
+    pub implied_volatility: Cow<'a, str>,
 }
+
+fn parse_decimal(s: &Cow<'_, str>) -> Decimal {
+    Decimal::from_str(s.as_ref()).unwrap_or_default()
+}
+
+macro_rules! decimal_accessors {
+    ($ty:ident { $($field:ident => $name:ident),* $(,)? }) => {
+        impl<'a> $ty<'a> {
+            $(pub fn $name(&self) -> Decimal { parse_decimal(&self.$field) })*
+        }
+    };
+}
+
+macro_rules! decimal_option_accessors {
+    ($ty:ident { $($field:ident => $name:ident),* $(,)? }) => {
+        impl<'a> $ty<'a> {
+            $(pub fn $name(&self) -> Option<Decimal> {
+                self.$field.as_ref().map(|s| parse_decimal(s))
+            })*
+        }
+    };
+}
+
+decimal_accessors!(TradeEvent { price => price_decimal, quantity => quantity_decimal });
+decimal_accessors!(AggTradeEvent { price => price_decimal, quantity => quantity_decimal });
+decimal_accessors!(Kline { open => open_decimal, close => close_decimal, high => high_decimal, low => low_decimal, volume => volume_decimal, quote_volume => quote_volume_decimal, taker_buy_base_volume => taker_buy_base_volume_decimal, taker_buy_quote_volume => taker_buy_quote_volume_decimal });
+decimal_accessors!(MiniTickerEvent { close_price => close_price_decimal, open_price => open_price_decimal, high_price => high_price_decimal, low_price => low_price_decimal, volume => volume_decimal, quote_volume => quote_volume_decimal });
+decimal_accessors!(TickerEvent { price_change => price_change_decimal, price_change_percent => price_change_percent_decimal, weighted_avg_price => weighted_avg_price_decimal, prev_close_price => prev_close_price_decimal, last_price => last_price_decimal, last_qty => last_qty_decimal, best_bid_price => best_bid_price_decimal, best_bid_qty => best_bid_qty_decimal, best_ask_price => best_ask_price_decimal, best_ask_qty => best_ask_qty_decimal, open_price => open_price_decimal, high_price => high_price_decimal, low_price => low_price_decimal, volume => volume_decimal, quote_volume => quote_volume_decimal });
+decimal_accessors!(BookTickerEvent { best_bid_price => best_bid_price_decimal, best_bid_qty => best_bid_qty_decimal, best_ask_price => best_ask_price_decimal, best_ask_qty => best_ask_qty_decimal });
+decimal_accessors!(IndexPriceEvent { index_price => index_price_decimal });
+decimal_accessors!(MarkPriceEvent { mark_price => mark_price_decimal, index_price => index_price_decimal, funding_rate => funding_rate_decimal });
+decimal_option_accessors!(MarkPriceEvent { estimated_settle_price => estimated_settle_price_decimal });
+decimal_accessors!(ForceOrder { original_quantity => original_quantity_decimal, price => price_decimal, average_price => average_price_decimal, last_filled_quantity => last_filled_quantity_decimal, filled_accumulated_quantity => filled_accumulated_quantity_decimal, last_filled_price => last_filled_price_decimal, bids_notional => bids_notional_decimal, ask_notional => ask_notional_decimal });
+decimal_accessors!(GreeksEvent { delta => delta_decimal, gamma => gamma_decimal, vega => vega_decimal, theta => theta_decimal });
+decimal_option_accessors!(GreeksEvent { rho => rho_decimal });
+decimal_accessors!(OpenInterestEvent { open_interest => open_interest_decimal });
+decimal_accessors!(ImpliedVolatilityEvent { implied_volatility => implied_volatility_decimal });
+
