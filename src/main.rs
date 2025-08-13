@@ -1,15 +1,16 @@
 use anyhow::{Context, Result};
 use futures::future;
 use reqwest::{Client, Proxy};
+use serde::Deserialize;
 use std::{env, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
-use tracing::{error};
+use tracing::error;
 use tracing_subscriber::EnvFilter;
 
-use binance_us_and_global::events::{Event, StreamMessage};
-use binance_us_and_global::adapter::{ExchangeAdapter};
 use binance_us_and_global::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
+use binance_us_and_global::adapter::ExchangeAdapter;
+use binance_us_and_global::events::{Event, StreamMessage};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -38,7 +39,17 @@ async fn main() -> Result<()> {
         .unwrap_or(MAX_STREAMS_PER_CONN);
 
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
-    let (event_tx, _event_rx) = mpsc::unbounded_channel::<StreamMessage<Event>>();
+
+    #[derive(Deserialize)]
+    struct EventConfig {
+        event_buffer_size: usize,
+    }
+
+    let EventConfig { event_buffer_size } =
+        toml::from_str::<EventConfig>(include_str!("../config/default.toml"))
+            .context("parsing event channel config")?;
+
+    let (event_tx, _event_rx) = mpsc::channel::<StreamMessage<Event>>(event_buffer_size);
 
     let mut adapters: Vec<Box<dyn ExchangeAdapter + Send>> = Vec::new();
     for cfg in BINANCE_EXCHANGES {
@@ -75,4 +86,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-

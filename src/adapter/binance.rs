@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use futures::{stream, StreamExt, SinkExt};
+use futures::{stream, SinkExt, StreamExt};
 use reqwest::Client;
 use serde::Deserialize;
 use std::{collections::HashMap, env, sync::Arc};
@@ -80,7 +80,7 @@ pub struct BinanceAdapter {
     chunk_size: usize,
     proxy_url: String,
     tasks: Arc<Mutex<JoinSet<()>>>,
-    event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
+    event_tx: mpsc::Sender<StreamMessage<Event>>,
     symbols: Vec<String>,
     orderbooks: Arc<Mutex<HashMap<String, OrderBook>>>,
 }
@@ -92,7 +92,7 @@ impl BinanceAdapter {
         chunk_size: usize,
         proxy_url: String,
         tasks: Arc<Mutex<JoinSet<()>>>,
-        event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
+        event_tx: mpsc::Sender<StreamMessage<Event>>,
     ) -> Self {
         Self {
             cfg,
@@ -114,7 +114,11 @@ impl ExchangeAdapter for BinanceAdapter {
         let cfg = stream_config_for_exchange(self.cfg.name);
         let chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
         let total_streams: usize = chunks.iter().map(|c| c.len()).sum();
-        tracing::info!("\u{1F50C} Total {} streams: {}", self.cfg.name, total_streams);
+        tracing::info!(
+            "\u{1F50C} Total {} streams: {}",
+            self.cfg.name,
+            total_streams
+        );
 
         for chunk in chunks {
             let chunk_len = chunk.len();
@@ -237,7 +241,9 @@ impl ExchangeAdapter for BinanceAdapter {
                         Err(e) => {
                             tracing::warn!(
                                 "depth snapshot GET failed for {} ({}): {}",
-                                sym, depth_url, e
+                                sym,
+                                depth_url,
+                                e
                             );
                             return None;
                         }
@@ -248,7 +254,9 @@ impl ExchangeAdapter for BinanceAdapter {
                         Err(e) => {
                             tracing::warn!(
                                 "depth snapshot non-2xx for {} ({}): {}",
-                                sym, depth_url, e
+                                sym,
+                                depth_url,
+                                e
                             );
                             return None;
                         }
@@ -300,7 +308,7 @@ async fn connect_via_socks5(
 async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
     books: Arc<Mutex<HashMap<String, OrderBook>>>,
-    event_tx: mpsc::UnboundedSender<StreamMessage<Event>>,
+    event_tx: mpsc::Sender<StreamMessage<Event>>,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -321,7 +329,7 @@ where
                             apply_depth_update(book, update);
                         }
                     }
-                    if let Err(e) = event_tx.send(event) {
+                    if let Err(e) = event_tx.send(event).await {
                         tracing::warn!("failed to send event: {}", e);
                     }
                 }
@@ -337,4 +345,3 @@ where
     }
     Ok(())
 }
-
