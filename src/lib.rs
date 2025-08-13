@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod canonical;
 pub mod config;
 pub mod events;
+pub mod tls;
 
 use metrics::counter;
 use once_cell::sync::Lazy;

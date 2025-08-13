@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use futures::{stream, SinkExt, StreamExt};
 use rand::Rng;
 use reqwest::Client;
+use rustls::ClientConfig;
 use std::{collections::HashMap, env, sync::Arc};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -17,8 +18,8 @@ use tokio::{
 };
 use tokio_socks::tcp::Socks5Stream;
 use tokio_tungstenite::{
-    client_async_tls_with_config, connect_async, tungstenite::protocol::Message, MaybeTlsStream,
-    WebSocketStream,
+    client_async_tls_with_config, connect_async_tls_with_config, tungstenite::protocol::Message,
+    Connector, MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
 
@@ -72,6 +73,7 @@ pub struct BinanceAdapter {
     event_tx: mpsc::Sender<StreamMessage<Event>>,
     symbols: Vec<String>,
     orderbooks: Arc<Mutex<HashMap<String, OrderBook>>>,
+    tls_config: Arc<ClientConfig>,
 }
 
 impl BinanceAdapter {
@@ -83,6 +85,7 @@ impl BinanceAdapter {
         tasks: Arc<Mutex<JoinSet<()>>>,
         event_tx: mpsc::Sender<StreamMessage<Event>>,
         symbols: Vec<String>,
+        tls_config: Arc<ClientConfig>,
     ) -> Self {
         Self {
             cfg,
@@ -93,6 +96,7 @@ impl BinanceAdapter {
             event_tx,
             symbols,
             orderbooks: Arc::new(Mutex::new(HashMap::new())),
+            tls_config,
         }
     }
 }
@@ -115,6 +119,7 @@ impl ExchangeAdapter for BinanceAdapter {
             .info_url
             .trim_end_matches("exchangeInfo")
             .to_string();
+        let tls_cfg = self.tls_config.clone();
 
         for chunk in chunks {
             let chunk_len = chunk.len();
@@ -128,6 +133,7 @@ impl ExchangeAdapter for BinanceAdapter {
             let event_tx = self.event_tx.clone();
             let client = self.client.clone();
             let depth_base = depth_base.clone();
+            let tls_config = tls_cfg.clone();
 
             tasks.lock().await.spawn(async move {
                 let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
@@ -152,7 +158,14 @@ impl ExchangeAdapter for BinanceAdapter {
                     let start = Instant::now();
                     let mut connected = false;
                     let result = if proxy.is_empty() {
-                        match connect_async(url.clone()).await {
+                        match connect_async_tls_with_config(
+                            url.clone(),
+                            None,
+                            false,
+                            Some(Connector::Rustls(tls_config.clone())),
+                        )
+                        .await
+                        {
                             Ok((ws_stream, _)) => {
                                 connected = true;
                                 backoff = Duration::from_secs(1);
@@ -168,7 +181,7 @@ impl ExchangeAdapter for BinanceAdapter {
                             Err(e) => Err(e.into()),
                         }
                     } else {
-                        match connect_via_socks5(url.clone(), &proxy).await {
+                        match connect_via_socks5(url.clone(), &proxy, tls_config.clone()).await {
                             Ok(ws_stream) => {
                                 connected = true;
                                 backoff = Duration::from_secs(1);
@@ -298,6 +311,7 @@ impl ExchangeAdapter for BinanceAdapter {
 async fn connect_via_socks5(
     url: Url,
     proxy_addr: &str,
+    tls_config: Arc<ClientConfig>,
 ) -> Result<WebSocketStream<MaybeTlsStream<Socks5Stream<TcpStream>>>> {
     let host = url.host_str().context("URL missing host")?;
     let port = url.port_or_known_default().context("URL missing port")?;
@@ -307,9 +321,10 @@ async fn connect_via_socks5(
         .await
         .context("connecting via SOCKS5 proxy")?;
 
-    let (ws_stream, _) = client_async_tls_with_config(url, stream, None, None)
-        .await
-        .context("WebSocket handshake via proxy")?;
+    let (ws_stream, _) =
+        client_async_tls_with_config(url, stream, None, Some(Connector::Rustls(tls_config)))
+            .await
+            .context("WebSocket handshake via proxy")?;
 
     Ok(ws_stream)
 }
