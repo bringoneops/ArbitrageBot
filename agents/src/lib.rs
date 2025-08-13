@@ -1,14 +1,9 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use anyhow::Result;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+/// Spawns exchange adapters.
+///
+/// This is a placeholder implementation to illustrate how the ingestor crate
+/// will rely on the `agents` crate for adapter management.
+pub async fn spawn_adapters() -> Result<()> {
+    Ok(())
 }

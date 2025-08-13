@@ -29,6 +29,8 @@ sha2              = "0.10"
 hex               = "0.4"
 rust_decimal      = "1"
 arb_core = { path = "../core" }
+agents = { path = "../agents" }
+canonical = { path = "../canonical" }
 
 [features]
 default = []
