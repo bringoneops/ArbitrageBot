@@ -2,9 +2,10 @@ use crate::{
     apply_depth_update, chunk_streams_with_config, handle_stream_event, next_backoff,
     stream_config_for_exchange, DepthSnapshot, OrderBook,
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures::{stream, SinkExt, StreamExt};
+use rand::Rng;
 use reqwest::Client;
 use serde::Deserialize;
 use std::{collections::HashMap, env, sync::Arc};
@@ -13,7 +14,7 @@ use tokio::{
     net::TcpStream,
     sync::{mpsc, Mutex},
     task::JoinSet,
-    time::{sleep, Duration, Instant},
+    time::{interval, sleep, timeout, Duration, Instant, MissedTickBehavior},
 };
 use tokio_socks::tcp::Socks5Stream;
 use tokio_tungstenite::{
@@ -139,6 +140,11 @@ impl ExchangeAdapter for BinanceAdapter {
                 let max_backoff = Duration::from_secs(max_backoff_secs);
                 let min_stable = Duration::from_secs(30);
                 let mut backoff = Duration::from_secs(1);
+                let mut failures: u32 = 0;
+                let max_failures = env::var("MAX_FAILURES")
+                    .ok()
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(10);
                 loop {
                     tracing::info!(
                         "\u{2192} opening WS ({}): {} ({} streams)",
@@ -173,8 +179,14 @@ impl ExchangeAdapter for BinanceAdapter {
                         if let Err(e) = &result {
                             tracing::error!("WS error: {}", e);
                         }
+                        failures += 1;
+                        if failures >= max_failures {
+                            tracing::error!("max WS failures reached, giving up");
+                            break;
+                        }
                     } else {
                         tracing::warn!("WS stream closed");
+                        failures = 0;
                     }
 
                     let elapsed = start.elapsed();
@@ -184,8 +196,11 @@ impl ExchangeAdapter for BinanceAdapter {
                         backoff = std::cmp::min(backoff * 2, max_backoff);
                     }
 
-                    tracing::warn!("Reconnecting in {:?}...", backoff);
-                    sleep(backoff).await;
+                    let jitter: f32 = rand::thread_rng().gen_range(0.8..1.2);
+                    let sleep_dur = backoff.mul_f32(jitter);
+                    tracing::warn!("Reconnecting in {:?}...", sleep_dur);
+                    metrics::counter!("ws_reconnects").increment(1);
+                    sleep(sleep_dur).await;
                 }
             });
         }
@@ -314,34 +329,71 @@ where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let (mut write, mut read) = ws_stream.split();
+    let mut ping_interval = interval(Duration::from_secs(30));
+    ping_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let mut last_pong = Instant::now();
 
-    while let Some(msg) = read.next().await {
-        match msg {
-            Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
-                Ok(event) => {
-                    metrics::counter!("ws_events").increment(1);
-                    #[cfg(feature = "debug-logs")]
-                    tracing::debug!(?event);
-                    handle_stream_event(&event, &text);
-                    if let Event::DepthUpdate(ref update) = event.data {
-                        let mut map = books.lock().await;
-                        if let Some(book) = map.get_mut(&update.symbol) {
-                            apply_depth_update(book, update);
-                        }
+    loop {
+        tokio::select! {
+            _ = ping_interval.tick() => {
+                if let Err(e) = write.send(Message::Ping(Vec::new())).await {
+                    let _ = write.close().await;
+                    return Err(e.into());
+                }
+                if last_pong.elapsed() > Duration::from_secs(60) {
+                    tracing::warn!("no pong received in 60s, closing socket");
+                    metrics::counter!("ws_heartbeat_failures").increment(1);
+                    let _ = write.close().await;
+                    return Err(anyhow!("heartbeat timeout"));
+                }
+            }
+            msg = timeout(Duration::from_secs(60), read.next()) => {
+                let msg = match msg {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) => break,
+                    Err(_) => {
+                        tracing::warn!("WS read timeout, closing socket");
+                        metrics::counter!("ws_heartbeat_failures").increment(1);
+                        let _ = write.close().await;
+                        return Err(anyhow!("read timeout"));
                     }
-                    if let Err(e) = event_tx.send(event).await {
-                        tracing::warn!("failed to send event: {}", e);
+                };
+
+                match msg {
+                    Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
+                        Ok(event) => {
+                            metrics::counter!("ws_events").increment(1);
+                            #[cfg(feature = "debug-logs")]
+                            tracing::debug!(?event);
+                            handle_stream_event(&event, &text);
+                            if let Event::DepthUpdate(ref update) = event.data {
+                                let mut map = books.lock().await;
+                                if let Some(book) = map.get_mut(&update.symbol) {
+                                    apply_depth_update(book, update);
+                                }
+                            }
+                            if let Err(e) = event_tx.send(event).await {
+                                tracing::warn!("failed to send event: {}", e);
+                            }
+                        }
+                        Err(e) => tracing::error!("failed to parse message: {}", e),
+                    },
+                    Ok(Message::Ping(payload)) => {
+                        write.send(Message::Pong(payload)).await?;
+                    }
+                    Ok(Message::Pong(_)) => {
+                        last_pong = Instant::now();
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        let _ = write.close().await;
+                        return Err(e.into());
                     }
                 }
-                Err(e) => tracing::error!("failed to parse message: {}", e),
-            },
-            Ok(Message::Ping(payload)) => {
-                write.send(Message::Pong(payload)).await?;
             }
-            Ok(Message::Pong(_)) => {}
-            Ok(_) => {}
-            Err(e) => return Err(e.into()),
         }
     }
+
+    let _ = write.close().await;
     Ok(())
 }
