@@ -140,6 +140,9 @@ impl Config {
 pub fn load() -> Result<&'static Config> {
     let cfg = Config::from_env()?;
     cfg.validate()?;
+    if cfg.enable_metrics {
+        let _ = crate::metrics::init_exporter();
+    }
     Ok(CONFIG.get_or_init(|| cfg))
 }
 

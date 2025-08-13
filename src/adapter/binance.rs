@@ -176,6 +176,7 @@ impl ExchangeAdapter for BinanceAdapter {
                                     event_tx.clone(),
                                     client.clone(),
                                     depth_base.clone(),
+                                    name.clone(),
                                 )
                                 .await
                             }
@@ -192,6 +193,7 @@ impl ExchangeAdapter for BinanceAdapter {
                                     event_tx.clone(),
                                     client.clone(),
                                     depth_base.clone(),
+                                    name.clone(),
                                 )
                                 .await
                             }
@@ -225,7 +227,7 @@ impl ExchangeAdapter for BinanceAdapter {
                     let sleep_dur = backoff.mul_f32(jitter);
                     tracing::warn!("Reconnecting in {:?}...", sleep_dur);
                     if crate::config::metrics_enabled() {
-                        metrics::counter!("ws_reconnects").increment(1);
+                        metrics::counter!("md_ws_reconnects_total").increment(1);
                     }
                     sleep(sleep_dur).await;
                 }
@@ -347,6 +349,7 @@ async fn run_ws<S>(
     event_tx: mpsc::Sender<StreamMessage<'static>>,
     client: Client,
     depth_base: String,
+    exchange: String,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -391,8 +394,32 @@ where
                         let mut bytes = text.into_bytes();
                         match from_slice::<StreamMessage<'static>>(&mut bytes) {
                         Ok(event) => {
+                            let event_time = event.data.event_time();
+                            let symbol = event
+                                .data
+                                .symbol()
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| {
+                                    event
+                                        .stream
+                                        .split('@')
+                                        .next()
+                                        .unwrap_or("")
+                                        .to_string()
+                                });
+                            let span = tracing::info_span!("ws_event", exchange = %exchange, symbol = %symbol);
+                            let _enter = span.enter();
+                            let pipeline_start = Instant::now();
                             if crate::config::metrics_enabled() {
-                                metrics::counter!("ws_events").increment(1);
+                                metrics::counter!("md_ws_events_total").increment(1);
+                                if let Some(ev_time) = event_time {
+                                    let now_ns = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_nanos();
+                                    let lag_ns = now_ns.saturating_sub(ev_time as u128 * 1_000_000);
+                                    metrics::gauge!("md_ws_lag_ns").set(lag_ns as f64);
+                                }
                             }
                             #[cfg(feature = "debug-logs")]
                             tracing::debug!(?event);
@@ -406,9 +433,6 @@ where
                                     match apply_depth_update(book, update) {
                                         ApplyResult::Applied | ApplyResult::Outdated => {}
                                         ApplyResult::Gap => {
-                                            if crate::config::metrics_enabled() {
-                                                metrics::counter!("depth_gap").increment(1);
-                                            }
                                             let buffer = vec![update.clone()];
                                             drop(map);
                                             if let Some(mut new_book) =
@@ -426,10 +450,14 @@ where
                             if let Err(e) = event_tx.send(event).await {
                                 tracing::warn!("failed to send event: {}", e);
                             }
+                            if crate::config::metrics_enabled() {
+                                metrics::gauge!("md_pipeline_p99_us")
+                                    .set(pipeline_start.elapsed().as_micros() as f64);
+                            }
                         }
                         Err(e) => tracing::error!("failed to parse message: {}", e),
                     }
-                    },
+                },
                     Ok(Message::Ping(payload)) => {
                         write.send(Message::Pong(payload)).await?;
                     }

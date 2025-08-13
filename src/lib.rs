@@ -2,9 +2,9 @@ pub mod adapter;
 pub mod canonical;
 pub mod config;
 pub mod events;
+pub mod metrics;
 pub mod tls;
 
-use metrics::counter;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::{
@@ -144,7 +144,7 @@ pub fn handle_stream_event(event: &StreamMessage<'_>, raw: &str) {
             "unknown event",
         );
         if crate::config::metrics_enabled() {
-            counter!("unknown_events").increment(1);
+            ::metrics::counter!("unknown_events").increment(1);
         }
     }
 }
@@ -213,6 +213,9 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent<'_>) -
             final_update_id = update.final_update_id,
             "non-contiguous depth update"
         );
+        if crate::config::metrics_enabled() {
+            ::metrics::counter!("md_ws_gap_total").increment(1);
+        }
         return ApplyResult::Gap;
     }
 
