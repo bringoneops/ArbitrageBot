@@ -3,7 +3,7 @@ use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 
-use binance_us_and_global::adapter::ExchangeAdapter;
+use ingestor::adapter::ExchangeAdapter;
 
 struct MockAdapter {
     calls: Arc<Mutex<Vec<&'static str>>>,

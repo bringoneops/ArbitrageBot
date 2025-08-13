@@ -1,4 +1,5 @@
-use binance_us_and_global::config::{Config, Credentials};
+use arb_core as core;
+use core::config::{Config, Credentials};
 
 #[test]
 fn empty_spot_symbols_fails() {

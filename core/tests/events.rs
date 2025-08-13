@@ -1,5 +1,6 @@
-use binance_us_and_global::canonical::{BookKind, MdEvent, Side};
-use binance_us_and_global::events::{Event, StreamMessage};
+use canonical::{BookKind, MdEvent, Side};
+use arb_core as core;
+use core::events::{Event, StreamMessage};
 
 #[test]
 fn parses_trade_event() {

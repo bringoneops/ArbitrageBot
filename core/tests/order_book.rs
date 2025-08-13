@@ -1,5 +1,6 @@
-use binance_us_and_global::{apply_depth_update, fast_forward, ApplyResult, DepthSnapshot, OrderBook};
-use binance_us_and_global::events::DepthUpdateEvent;
+use arb_core as core;
+use core::{apply_depth_update, fast_forward, ApplyResult, DepthSnapshot, OrderBook};
+use core::events::DepthUpdateEvent;
 
 #[test]
 fn merges_snapshot_and_diff() {

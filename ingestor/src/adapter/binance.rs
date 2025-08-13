@@ -1,4 +1,5 @@
-use crate::{
+use arb_core as core;
+use core::{
     apply_depth_update, chunk_streams_with_config, fast_forward, handle_stream_event, next_backoff,
     stream_config_for_exchange, ApplyResult, DepthSnapshot, OrderBook,
 };
@@ -24,8 +25,8 @@ use tokio_tungstenite::{
 };
 use url::Url;
 
-use crate::events::{Event, StreamMessage};
-use crate::rate_limit::TokenBucket;
+use core::events::{Event, StreamMessage};
+use core::rate_limit::TokenBucket;
 
 use super::ExchangeAdapter;
 
@@ -236,7 +237,7 @@ impl ExchangeAdapter for BinanceAdapter {
                     let jitter: f32 = rand::thread_rng().gen_range(0.8..1.2);
                     let sleep_dur = backoff.mul_f32(jitter);
                     tracing::warn!("Reconnecting in {:?}...", sleep_dur);
-                    if crate::config::metrics_enabled() {
+                    if core::config::metrics_enabled() {
                         metrics::counter!("md_ws_reconnects_total").increment(1);
                     }
                     sleep(sleep_dur).await;
@@ -392,7 +393,7 @@ where
                 }
                 if last_pong.elapsed() > Duration::from_secs(60) {
                     tracing::warn!("no pong received in 60s, closing socket");
-                    if crate::config::metrics_enabled() {
+                    if core::config::metrics_enabled() {
                         metrics::counter!("ws_heartbeat_failures").increment(1);
                     }
                     let _ = write.close().await;
@@ -405,7 +406,7 @@ where
                     Ok(None) => break,
                     Err(_) => {
                         tracing::warn!("WS read timeout, closing socket");
-                        if crate::config::metrics_enabled() {
+                        if core::config::metrics_enabled() {
                             metrics::counter!("ws_heartbeat_failures").increment(1);
                         }
                         let _ = write.close().await;
@@ -434,7 +435,7 @@ where
                             let span = tracing::info_span!("ws_event", exchange = %exchange, symbol = %symbol);
                             let _enter = span.enter();
                             let pipeline_start = Instant::now();
-                            if crate::config::metrics_enabled() {
+                            if core::config::metrics_enabled() {
                                 metrics::counter!("md_ws_events_total").increment(1);
                                 if let Some(ev_time) = event_time {
                                     let now_ns = std::time::SystemTime::now()
@@ -474,7 +475,7 @@ where
                             if let Err(e) = event_tx.send(event).await {
                                 tracing::warn!("failed to send event: {}", e);
                             }
-                            if crate::config::metrics_enabled() {
+                            if core::config::metrics_enabled() {
                                 metrics::gauge!("md_pipeline_p99_us")
                                     .set(pipeline_start.elapsed().as_micros() as f64);
                             }

@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use binance_us_and_global::next_backoff;
+use arb_core as core;
+use core::next_backoff;
 
 #[test]
 fn backoff_resets_after_stable_run() {

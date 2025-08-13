@@ -1,6 +1,7 @@
+use arb_core as core;
 use std::convert::TryFrom;
 
-use crate::events;
+use core::events;
 use rust_decimal::prelude::ToPrimitive;
 
 #[derive(Debug, Clone, PartialEq)]

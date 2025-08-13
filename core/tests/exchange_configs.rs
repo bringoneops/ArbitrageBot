@@ -1,4 +1,5 @@
-use binance_us_and_global::stream_config_for_exchange;
+use arb_core as core;
+use core::stream_config_for_exchange;
 
 #[test]
 fn spot_config_excludes_futures_streams() {

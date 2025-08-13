@@ -18,6 +18,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
 [[package]]
+name = "agents"
+version = "0.1.0"
+dependencies = [
+ "arb_core",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -72,6 +79,33 @@ name = "anyhow"
 version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+
+[[package]]
+name = "arb_core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "canonical",
+ "criterion",
+ "hex",
+ "metrics",
+ "metrics-exporter-dogstatsd",
+ "metrics-exporter-prometheus",
+ "once_cell",
+ "rust_decimal",
+ "rustls 0.21.12",
+ "rustls-native-certs 0.6.3",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sha2",
+ "simd-json",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-test",
+]
 
 [[package]]
 name = "arrayvec"
@@ -151,40 +185,6 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "binance_us_and_global"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "criterion",
- "futures",
- "hex",
- "metrics",
- "metrics-exporter-dogstatsd",
- "metrics-exporter-prometheus",
- "once_cell",
- "rand 0.8.5",
- "reqwest",
- "rust_decimal",
- "rustls 0.21.12",
- "rustls-native-certs 0.6.3",
- "rustls-pemfile",
- "serde",
- "serde_json",
- "serial_test",
- "sha2",
- "simd-json",
- "tokio",
- "tokio-socks",
- "tokio-tungstenite",
- "toml",
- "tracing",
- "tracing-subscriber",
- "tracing-test",
- "url",
-]
 
 [[package]]
 name = "bindgen"
@@ -304,6 +304,14 @@ name = "bytes"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
+
+[[package]]
+name = "canonical"
+version = "0.1.0"
+dependencies = [
+ "arb_core",
+ "rust_decimal",
+]
 
 [[package]]
 name = "cast"
@@ -1193,6 +1201,41 @@ checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.3",
+]
+
+[[package]]
+name = "ingestor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arb_core",
+ "async-trait",
+ "criterion",
+ "futures",
+ "hex",
+ "metrics",
+ "metrics-exporter-dogstatsd",
+ "metrics-exporter-prometheus",
+ "once_cell",
+ "rand 0.8.5",
+ "reqwest",
+ "rust_decimal",
+ "rustls 0.21.12",
+ "rustls-native-certs 0.6.3",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sha2",
+ "simd-json",
+ "tokio",
+ "tokio-socks",
+ "tokio-tungstenite",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-test",
+ "url",
 ]
 
 [[package]]

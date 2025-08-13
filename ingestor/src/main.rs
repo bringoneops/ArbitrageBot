@@ -7,11 +7,12 @@ use tokio::task::JoinSet;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use binance_us_and_global::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
-use binance_us_and_global::adapter::ExchangeAdapter;
-use binance_us_and_global::config;
-use binance_us_and_global::events::StreamMessage;
-use binance_us_and_global::tls;
+use ingestor::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
+use ingestor::adapter::ExchangeAdapter;
+use arb_core as core;
+use core::config;
+use core::events::StreamMessage;
+use core::tls;
 
 #[tokio::main]
 async fn main() -> Result<()> {
