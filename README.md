@@ -31,11 +31,12 @@ protocol changes.
 
 ## Event Channel and Logging
 
-Parsed WebSocket events are sent over an unbounded Tokio `mpsc` channel.
-Downstream tasks can consume the messages directly:
+Parsed WebSocket events are sent over a bounded Tokio `mpsc` channel. The
+buffer size is configurable via [`config/default.toml`](config/default.toml)
+and defaults to `1024`. Downstream tasks can consume the messages directly:
 
 ```rust
-let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
 tokio::spawn(async move {
     while let Some(event) = rx.recv().await {
         // handle event
