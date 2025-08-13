@@ -48,6 +48,53 @@ pub enum Event<'a> {
     Unknown,
 }
 
+impl<'a> Event<'a> {
+    /// Returns the event timestamp if available.
+    pub fn event_time(&self) -> Option<u64> {
+        match self {
+            Event::Trade(e) => Some(e.event_time),
+            Event::AggTrade(e) => Some(e.event_time),
+            Event::DepthUpdate(e) => Some(e.event_time),
+            Event::Kline(e) => Some(e.event_time),
+            Event::MiniTicker(e) => Some(e.event_time),
+            Event::Ticker(e) => Some(e.event_time),
+            Event::IndexPrice(e) => Some(e.event_time),
+            Event::MarkPrice(e) => Some(e.event_time),
+            Event::MarkPriceKline(e) => Some(e.event_time),
+            Event::IndexPriceKline(e) => Some(e.event_time),
+            Event::ContinuousKline(e) => Some(e.event_time),
+            Event::ForceOrder(e) => Some(e.event_time),
+            Event::Greeks(e) => Some(e.event_time),
+            Event::OpenInterest(e) => Some(e.event_time),
+            Event::ImpliedVolatility(e) => Some(e.event_time),
+            Event::BookTicker(_) | Event::Unknown => None,
+        }
+    }
+
+    /// Returns the symbol or pair identifier if available.
+    pub fn symbol(&self) -> Option<&str> {
+        match self {
+            Event::Trade(e) => Some(&e.symbol),
+            Event::AggTrade(e) => Some(&e.symbol),
+            Event::DepthUpdate(e) => Some(&e.symbol),
+            Event::Kline(e) => Some(&e.symbol),
+            Event::MiniTicker(e) => Some(&e.symbol),
+            Event::Ticker(e) => Some(&e.symbol),
+            Event::BookTicker(e) => Some(&e.symbol),
+            Event::IndexPrice(e) => Some(&e.symbol),
+            Event::MarkPrice(e) => Some(&e.symbol),
+            Event::MarkPriceKline(e) => Some(&e.symbol),
+            Event::IndexPriceKline(e) => Some(&e.symbol),
+            Event::ContinuousKline(e) => Some(&e.pair),
+            Event::ForceOrder(e) => Some(&e.order.symbol),
+            Event::Greeks(e) => Some(&e.symbol),
+            Event::OpenInterest(e) => Some(&e.symbol),
+            Event::ImpliedVolatility(e) => Some(&e.symbol),
+            Event::Unknown => None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TradeEvent<'a> {
     #[serde(rename = "E")]
