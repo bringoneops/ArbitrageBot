@@ -10,7 +10,7 @@ use tracing_subscriber::EnvFilter;
 use binance_us_and_global::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
 use binance_us_and_global::adapter::ExchangeAdapter;
 use binance_us_and_global::config;
-use binance_us_and_global::events::{Event, StreamMessage};
+use binance_us_and_global::events::StreamMessage;
 use binance_us_and_global::tls;
 
 #[tokio::main]
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
     let event_buffer_size = cfg.event_buffer_size;
-    let (event_tx, _event_rx) = mpsc::channel::<StreamMessage<Event>>(event_buffer_size);
+    let (event_tx, _event_rx) = mpsc::channel::<StreamMessage<'static>>(event_buffer_size);
 
     let mut adapters: Vec<Box<dyn ExchangeAdapter + Send>> = Vec::new();
     for exch in BINANCE_EXCHANGES {

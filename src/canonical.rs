@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use crate::events;
+use rust_decimal::prelude::ToPrimitive;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MdEvent {
@@ -50,17 +51,19 @@ pub enum BookKind {
     Ask,
 }
 
-impl From<events::TradeEvent> for Trade {
-    fn from(ev: events::TradeEvent) -> Self {
+impl<'a> From<events::TradeEvent<'a>> for Trade {
+    fn from(ev: events::TradeEvent<'a>) -> Self {
         let side = if ev.buyer_is_maker {
             Side::Sell
         } else {
             Side::Buy
         };
+        let price = ev.price_decimal().to_f64().unwrap_or_default();
+        let quantity = ev.quantity_decimal().to_f64().unwrap_or_default();
         Self {
             symbol: ev.symbol,
-            price: ev.price.parse().unwrap_or_default(),
-            quantity: ev.quantity.parse().unwrap_or_default(),
+            price,
+            quantity,
             trade_id: Some(ev.trade_id),
             buyer_order_id: Some(ev.buyer_order_id),
             seller_order_id: Some(ev.seller_order_id),
@@ -70,14 +73,14 @@ impl From<events::TradeEvent> for Trade {
     }
 }
 
-impl From<events::TradeEvent> for MdEvent {
-    fn from(ev: events::TradeEvent) -> Self {
+impl<'a> From<events::TradeEvent<'a>> for MdEvent {
+    fn from(ev: events::TradeEvent<'a>) -> Self {
         MdEvent::Trade(ev.into())
     }
 }
 
-impl From<events::DepthUpdateEvent> for Book {
-    fn from(ev: events::DepthUpdateEvent) -> Self {
+impl<'a> From<events::DepthUpdateEvent<'a>> for Book {
+    fn from(ev: events::DepthUpdateEvent<'a>) -> Self {
         let bids = ev
             .bids
             .into_iter()
@@ -112,15 +115,15 @@ impl From<events::DepthUpdateEvent> for Book {
     }
 }
 
-impl From<events::DepthUpdateEvent> for MdEvent {
-    fn from(ev: events::DepthUpdateEvent) -> Self {
+impl<'a> From<events::DepthUpdateEvent<'a>> for MdEvent {
+    fn from(ev: events::DepthUpdateEvent<'a>) -> Self {
         MdEvent::Book(ev.into())
     }
 }
 
-impl TryFrom<events::Event> for MdEvent {
+impl<'a> TryFrom<events::Event<'a>> for MdEvent {
     type Error = ();
-    fn try_from(ev: events::Event) -> Result<Self, Self::Error> {
+    fn try_from(ev: events::Event<'a>) -> Result<Self, Self::Error> {
         match ev {
             events::Event::Trade(e) => Ok(MdEvent::from(e)),
             events::Event::DepthUpdate(e) => Ok(MdEvent::from(e)),
