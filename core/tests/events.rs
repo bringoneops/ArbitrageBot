@@ -1,6 +1,5 @@
+use canonical::events::{Event, StreamMessage};
 use canonical::{BookKind, MdEvent, Side};
-use arb_core as core;
-use core::events::{Event, StreamMessage};
 
 #[test]
 fn parses_trade_event() {
