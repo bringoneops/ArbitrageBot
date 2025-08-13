@@ -1,7 +1,22 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
-use std::env;
+use std::{env, fs};
+
+#[derive(Clone, Deserialize)]
+pub struct Credentials {
+    pub api_key: String,
+    pub api_secret: String,
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("api_key", &"***redacted***")
+            .field("api_secret", &"***redacted***")
+            .finish()
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -13,9 +28,36 @@ pub struct Config {
     pub enable_spot: bool,
     pub enable_futures: bool,
     pub enable_metrics: bool,
+    pub credentials: Credentials,
+    pub ca_bundle: Option<String>,
+    pub cert_pins: Vec<String>,
 }
 
 static CONFIG: OnceCell<Config> = OnceCell::new();
+
+fn load_credentials() -> Result<Credentials> {
+    if let (Ok(api_key), Ok(api_secret)) = (env::var("API_KEY"), env::var("API_SECRET")) {
+        if !api_key.is_empty() && !api_secret.is_empty() {
+            return Ok(Credentials {
+                api_key,
+                api_secret,
+            });
+        }
+    }
+
+    if let Ok(path) = env::var("API_CREDENTIALS_FILE") {
+        let content = fs::read_to_string(&path).context("reading credentials file")?;
+        let creds: Credentials =
+            serde_json::from_str(&content).context("parsing credentials file")?;
+        if !creds.api_key.is_empty() && !creds.api_secret.is_empty() {
+            return Ok(creds);
+        }
+    }
+
+    Err(anyhow!(
+        "API_KEY and API_SECRET must be set via env or credentials file"
+    ))
+}
 
 impl Config {
     pub fn from_env() -> Result<Self> {
@@ -49,6 +91,16 @@ impl Config {
         let enable_metrics = env::var("ENABLE_METRICS")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
+
+        let credentials = load_credentials()?;
+        let ca_bundle = env::var("CA_BUNDLE").ok();
+        let cert_pins = env::var("CERT_PINS")
+            .unwrap_or_default()
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+
         Ok(Config {
             proxy_url,
             spot_symbols,
@@ -58,10 +110,16 @@ impl Config {
             enable_spot,
             enable_futures,
             enable_metrics,
+            credentials,
+            ca_bundle,
+            cert_pins,
         })
     }
 
     pub fn validate(&self) -> Result<()> {
+        if self.credentials.api_key.is_empty() || self.credentials.api_secret.is_empty() {
+            return Err(anyhow!("API credentials are required"));
+        }
         if self.enable_spot && self.spot_symbols.is_empty() {
             return Err(anyhow!("spot symbol list cannot be empty"));
         }

@@ -1,4 +1,4 @@
-use binance_us_and_global::config::Config;
+use binance_us_and_global::config::{Config, Credentials};
 
 #[test]
 fn empty_spot_symbols_fails() {
@@ -11,6 +11,12 @@ fn empty_spot_symbols_fails() {
         enable_spot: true,
         enable_futures: false,
         enable_metrics: false,
+        credentials: Credentials {
+            api_key: "k".into(),
+            api_secret: "s".into(),
+        },
+        ca_bundle: None,
+        cert_pins: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }
@@ -26,6 +32,12 @@ fn empty_futures_symbols_fails() {
         enable_spot: false,
         enable_futures: true,
         enable_metrics: false,
+        credentials: Credentials {
+            api_key: "k".into(),
+            api_secret: "s".into(),
+        },
+        ca_bundle: None,
+        cert_pins: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }
@@ -41,6 +53,12 @@ fn invalid_chunk_size_fails() {
         enable_spot: true,
         enable_futures: false,
         enable_metrics: false,
+        credentials: Credentials {
+            api_key: "k".into(),
+            api_secret: "s".into(),
+        },
+        ca_bundle: None,
+        cert_pins: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }
@@ -56,6 +74,12 @@ fn invalid_event_buffer_size_fails() {
         enable_spot: true,
         enable_futures: false,
         enable_metrics: false,
+        credentials: Credentials {
+            api_key: "k".into(),
+            api_secret: "s".into(),
+        },
+        ca_bundle: None,
+        cert_pins: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }

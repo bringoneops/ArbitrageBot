@@ -4,13 +4,14 @@ use reqwest::{Client, Proxy};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
-use tracing::error;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 use binance_us_and_global::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
 use binance_us_and_global::adapter::ExchangeAdapter;
 use binance_us_and_global::config;
 use binance_us_and_global::events::{Event, StreamMessage};
+use binance_us_and_global::tls;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,10 +22,12 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = config::load()?;
+    info!(?cfg, "loaded config");
 
+    let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
     let mut client_builder = Client::builder()
         .user_agent("binance-us-all-streams")
-        .use_rustls_tls();
+        .use_preconfigured_tls(tls_config.clone());
     if let Some(proxy) = &cfg.proxy_url {
         if !proxy.is_empty() {
             client_builder = client_builder
@@ -62,6 +65,7 @@ async fn main() -> Result<()> {
             tasks.clone(),
             event_tx.clone(),
             symbols,
+            tls_config.clone(),
         )));
     }
 
