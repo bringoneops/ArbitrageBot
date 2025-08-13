@@ -1,8 +1,7 @@
 use anyhow::{Context, Result};
 use futures::future;
 use reqwest::{Client, Proxy};
-use serde::Deserialize;
-use std::{env, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinSet;
 use tracing::error;
@@ -10,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 use binance_us_and_global::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
 use binance_us_and_global::adapter::ExchangeAdapter;
+use binance_us_and_global::config;
 use binance_us_and_global::events::{Event, StreamMessage};
 
 #[tokio::main]
@@ -20,46 +20,48 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let proxy_url = env::var("SOCKS5_PROXY").unwrap_or_default();
+    let cfg = config::load()?;
 
     let mut client_builder = Client::builder()
         .user_agent("binance-us-all-streams")
         .use_rustls_tls();
-    if !proxy_url.is_empty() {
-        client_builder = client_builder
-            .proxy(Proxy::all(format!("socks5h://{}", proxy_url)).context("invalid proxy URL")?);
+    if let Some(proxy) = &cfg.proxy_url {
+        if !proxy.is_empty() {
+            client_builder = client_builder
+                .proxy(Proxy::all(format!("socks5h://{}", proxy)).context("invalid proxy URL")?);
+        }
     }
     let client = client_builder.build().context("building HTTP client")?;
 
-    const MAX_STREAMS_PER_CONN: usize = 100;
-    let chunk_size = env::var("CHUNK_SIZE")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(MAX_STREAMS_PER_CONN);
+    let chunk_size = cfg.chunk_size;
 
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
-    #[derive(Deserialize)]
-    struct EventConfig {
-        event_buffer_size: usize,
-    }
-
-    let EventConfig { event_buffer_size } =
-        toml::from_str::<EventConfig>(include_str!("../config/default.toml"))
-            .context("parsing event channel config")?;
-
+    let event_buffer_size = cfg.event_buffer_size;
     let (event_tx, _event_rx) = mpsc::channel::<StreamMessage<Event>>(event_buffer_size);
 
     let mut adapters: Vec<Box<dyn ExchangeAdapter + Send>> = Vec::new();
-    for cfg in BINANCE_EXCHANGES {
+    for exch in BINANCE_EXCHANGES {
+        let is_spot = exch.name.contains("Spot");
+        let is_derivative = exch.name.contains("Futures")
+            || exch.name.contains("Delivery")
+            || exch.name.contains("Options");
+        if (is_spot && !cfg.enable_spot) || (is_derivative && !cfg.enable_futures) {
+            continue;
+        }
+        let symbols = if is_spot {
+            cfg.spot_symbols.clone()
+        } else {
+            cfg.futures_symbols.clone()
+        };
         adapters.push(Box::new(BinanceAdapter::new(
-            cfg,
+            exch,
             client.clone(),
             chunk_size,
-            proxy_url.clone(),
+            cfg.proxy_url.clone().unwrap_or_default(),
             tasks.clone(),
             event_tx.clone(),
+            symbols,
         )));
     }
 

@@ -1,13 +1,12 @@
 use crate::{
-    apply_depth_update, fast_forward, chunk_streams_with_config, handle_stream_event,
-    next_backoff, stream_config_for_exchange, ApplyResult, DepthSnapshot, OrderBook,
+    apply_depth_update, chunk_streams_with_config, fast_forward, handle_stream_event, next_backoff,
+    stream_config_for_exchange, ApplyResult, DepthSnapshot, OrderBook,
 };
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures::{stream, SinkExt, StreamExt};
 use rand::Rng;
 use reqwest::Client;
-use serde::Deserialize;
 use std::{collections::HashMap, env, sync::Arc};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -26,17 +25,6 @@ use url::Url;
 use crate::events::{Event, StreamMessage};
 
 use super::ExchangeAdapter;
-
-#[derive(Deserialize)]
-struct ExchangeInfo {
-    symbols: Vec<SymbolInfo>,
-}
-
-#[derive(Deserialize)]
-struct SymbolInfo {
-    symbol: String,
-    status: String,
-}
 
 /// Configuration for a single Binance exchange endpoint.
 pub struct BinanceConfig {
@@ -94,6 +82,7 @@ impl BinanceAdapter {
         proxy_url: String,
         tasks: Arc<Mutex<JoinSet<()>>>,
         event_tx: mpsc::Sender<StreamMessage<Event>>,
+        symbols: Vec<String>,
     ) -> Self {
         Self {
             cfg,
@@ -102,7 +91,7 @@ impl BinanceAdapter {
             proxy_url,
             tasks,
             event_tx,
-            symbols: Vec::new(),
+            symbols,
             orderbooks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -121,7 +110,11 @@ impl ExchangeAdapter for BinanceAdapter {
             total_streams
         );
 
-        let depth_base = self.cfg.info_url.trim_end_matches("exchangeInfo").to_string();
+        let depth_base = self
+            .cfg
+            .info_url
+            .trim_end_matches("exchangeInfo")
+            .to_string();
 
         for chunk in chunks {
             let chunk_len = chunk.len();
@@ -217,7 +210,9 @@ impl ExchangeAdapter for BinanceAdapter {
                     let jitter: f32 = rand::thread_rng().gen_range(0.8..1.2);
                     let sleep_dur = backoff.mul_f32(jitter);
                     tracing::warn!("Reconnecting in {:?}...", sleep_dur);
-                    metrics::counter!("ws_reconnects").increment(1);
+                    if crate::config::metrics_enabled() {
+                        metrics::counter!("ws_reconnects").increment(1);
+                    }
                     sleep(sleep_dur).await;
                 }
             });
@@ -241,26 +236,7 @@ impl ExchangeAdapter for BinanceAdapter {
     }
 
     async fn backfill(&mut self) -> Result<()> {
-        let info: ExchangeInfo = self
-            .client
-            .get(self.cfg.info_url)
-            .send()
-            .await
-            .context("sending exchangeInfo request")?
-            .error_for_status()
-            .context("non-2xx status fetching exchangeInfo")?
-            .json()
-            .await
-            .context("parsing exchangeInfo JSON")?;
-
-        let symbols: Vec<String> = info
-            .symbols
-            .into_iter()
-            .filter(|s| s.status == "TRADING")
-            .map(|s| s.symbol)
-            .collect();
-        let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-
+        let symbols = self.symbols.clone();
         let depth_base = self.cfg.info_url.trim_end_matches("exchangeInfo");
         let mut books_map: HashMap<String, OrderBook> = HashMap::new();
 
@@ -311,7 +287,7 @@ impl ExchangeAdapter for BinanceAdapter {
             }
         }
 
-        self.symbols = symbol_refs.into_iter().map(|s| s.to_string()).collect();
+        self.symbols = symbols;
         self.orderbooks = Arc::new(Mutex::new(books_map));
         Ok(())
     }
@@ -373,7 +349,9 @@ where
                 }
                 if last_pong.elapsed() > Duration::from_secs(60) {
                     tracing::warn!("no pong received in 60s, closing socket");
-                    metrics::counter!("ws_heartbeat_failures").increment(1);
+                    if crate::config::metrics_enabled() {
+                        metrics::counter!("ws_heartbeat_failures").increment(1);
+                    }
                     let _ = write.close().await;
                     return Err(anyhow!("heartbeat timeout"));
                 }
@@ -384,7 +362,9 @@ where
                     Ok(None) => break,
                     Err(_) => {
                         tracing::warn!("WS read timeout, closing socket");
-                        metrics::counter!("ws_heartbeat_failures").increment(1);
+                        if crate::config::metrics_enabled() {
+                            metrics::counter!("ws_heartbeat_failures").increment(1);
+                        }
                         let _ = write.close().await;
                         return Err(anyhow!("read timeout"));
                     }
@@ -393,7 +373,9 @@ where
                 match msg {
                     Ok(Message::Text(text)) => match serde_json::from_str::<StreamMessage<Event>>(&text) {
                         Ok(event) => {
-                            metrics::counter!("ws_events").increment(1);
+                            if crate::config::metrics_enabled() {
+                                metrics::counter!("ws_events").increment(1);
+                            }
                             #[cfg(feature = "debug-logs")]
                             tracing::debug!(?event);
                             handle_stream_event(&event, &text);
@@ -404,7 +386,9 @@ where
                                     match apply_depth_update(book, update) {
                                         ApplyResult::Applied | ApplyResult::Outdated => {}
                                         ApplyResult::Gap => {
-                                            metrics::counter!("depth_gap").increment(1);
+                                            if crate::config::metrics_enabled() {
+                                                metrics::counter!("depth_gap").increment(1);
+                                            }
                                             let buffer = vec![update.clone()];
                                             drop(map);
                                             if let Some(mut new_book) =
