@@ -6,8 +6,9 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures::{stream, SinkExt, StreamExt};
 use rand::Rng;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use rustls::ClientConfig;
+use simd_json::serde::from_slice;
 use std::{collections::HashMap, env, sync::Arc};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -22,9 +23,9 @@ use tokio_tungstenite::{
     Connector, MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
-use simd_json::serde::from_slice;
 
 use crate::events::{Event, StreamMessage};
+use crate::rate_limit::TokenBucket;
 
 use super::ExchangeAdapter;
 
@@ -75,6 +76,8 @@ pub struct BinanceAdapter {
     symbols: Vec<String>,
     orderbooks: Arc<Mutex<HashMap<String, OrderBook>>>,
     tls_config: Arc<ClientConfig>,
+    http_bucket: Arc<TokenBucket>,
+    ws_bucket: Arc<TokenBucket>,
 }
 
 impl BinanceAdapter {
@@ -98,6 +101,8 @@ impl BinanceAdapter {
             symbols,
             orderbooks: Arc::new(Mutex::new(HashMap::new())),
             tls_config,
+            http_bucket: Arc::new(TokenBucket::new(10, 10, Duration::from_secs(1))),
+            ws_bucket: Arc::new(TokenBucket::new(5, 5, Duration::from_secs(1))),
         }
     }
 }
@@ -135,6 +140,8 @@ impl ExchangeAdapter for BinanceAdapter {
             let client = self.client.clone();
             let depth_base = depth_base.clone();
             let tls_config = tls_cfg.clone();
+            let http_bucket = self.http_bucket.clone();
+            let ws_bucket = self.ws_bucket.clone();
 
             tasks.lock().await.spawn(async move {
                 let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
@@ -150,6 +157,7 @@ impl ExchangeAdapter for BinanceAdapter {
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(10);
                 loop {
+                    ws_bucket.acquire(1).await;
                     tracing::info!(
                         "\u{2192} opening WS ({}): {} ({} streams)",
                         name,
@@ -177,6 +185,7 @@ impl ExchangeAdapter for BinanceAdapter {
                                     client.clone(),
                                     depth_base.clone(),
                                     name.clone(),
+                                    http_bucket.clone(),
                                 )
                                 .await
                             }
@@ -194,6 +203,7 @@ impl ExchangeAdapter for BinanceAdapter {
                                     client.clone(),
                                     depth_base.clone(),
                                     name.clone(),
+                                    http_bucket.clone(),
                                 )
                                 .await
                             }
@@ -256,29 +266,18 @@ impl ExchangeAdapter for BinanceAdapter {
         let depth_base = self.cfg.info_url.trim_end_matches("exchangeInfo");
         let mut books_map: HashMap<String, OrderBook> = HashMap::new();
 
+        let bucket = self.http_bucket.clone();
         let fetches = stream::iter(symbols.clone())
             .map(|sym| {
                 let depth_url = format!("{}depth?symbol={}", depth_base, sym);
                 let client = self.client.clone();
+                let bucket = bucket.clone();
                 async move {
-                    let resp = match client.get(&depth_url).send().await {
+                    let resp = match rate_limited_get(&client, &depth_url, &bucket).await {
                         Ok(resp) => resp,
                         Err(e) => {
                             tracing::warn!(
                                 "depth snapshot GET failed for {} ({}): {}",
-                                sym,
-                                depth_url,
-                                e
-                            );
-                            return None;
-                        }
-                    };
-
-                    let resp = match resp.error_for_status() {
-                        Ok(resp) => resp,
-                        Err(e) => {
-                            tracing::warn!(
-                                "depth snapshot non-2xx for {} ({}): {}",
                                 sym,
                                 depth_url,
                                 e
@@ -332,14 +331,38 @@ async fn connect_via_socks5(
     Ok(ws_stream)
 }
 
+async fn rate_limited_get(
+    client: &Client,
+    url: &str,
+    bucket: &TokenBucket,
+) -> Result<reqwest::Response> {
+    let mut backoff = Duration::from_secs(1);
+    let max_backoff = Duration::from_secs(64);
+    loop {
+        bucket.acquire(1).await;
+        match client.get(url).send().await {
+            Ok(resp) => {
+                if resp.status() == StatusCode::TOO_MANY_REQUESTS {
+                    tracing::warn!("HTTP 429 for {}", url);
+                    sleep(backoff).await;
+                    backoff = std::cmp::min(backoff * 2, max_backoff);
+                    continue;
+                }
+                return resp.error_for_status().map_err(|e| e.into());
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
 async fn fetch_depth_snapshot(
     client: &Client,
     depth_base: &str,
     symbol: &str,
+    bucket: &TokenBucket,
 ) -> Option<OrderBook> {
     let depth_url = format!("{}depth?symbol={}", depth_base, symbol);
-    let resp = client.get(&depth_url).send().await.ok()?;
-    let resp = resp.error_for_status().ok()?;
+    let resp = rate_limited_get(client, &depth_url, bucket).await.ok()?;
     resp.json::<DepthSnapshot>().await.ok().map(|s| s.into())
 }
 
@@ -350,6 +373,7 @@ async fn run_ws<S>(
     client: Client,
     depth_base: String,
     exchange: String,
+    http_bucket: Arc<TokenBucket>,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -436,7 +460,7 @@ where
                                             let buffer = vec![update.clone()];
                                             drop(map);
                                             if let Some(mut new_book) =
-                                                fetch_depth_snapshot(&client, &depth_base, &symbol)
+                                                fetch_depth_snapshot(&client, &depth_base, &symbol, &http_bucket)
                                                     .await
                                             {
                                                 fast_forward(&mut new_book, &buffer);
