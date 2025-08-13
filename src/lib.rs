@@ -1,6 +1,7 @@
-pub mod canonical;
-pub mod events;
 pub mod adapter;
+pub mod canonical;
+pub mod config;
+pub mod events;
 
 use metrics::counter;
 use once_cell::sync::Lazy;
@@ -140,7 +141,9 @@ pub fn handle_stream_event(event: &StreamMessage<Event>, raw: &str) {
             payload = %raw,
             "unknown event",
         );
-        counter!("unknown_events").increment(1);
+        if crate::config::metrics_enabled() {
+            counter!("unknown_events").increment(1);
+        }
     }
 }
 
