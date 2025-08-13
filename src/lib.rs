@@ -3,16 +3,17 @@ pub mod canonical;
 pub mod config;
 pub mod events;
 pub mod metrics;
+pub mod rate_limit;
 pub mod tls;
 
 use once_cell::sync::Lazy;
 use serde::Deserialize;
+use simd_json::serde::from_slice;
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
     time::Duration,
 };
-use simd_json::serde::from_slice;
 #[cfg(feature = "debug-logs")]
 use tracing::debug;
 use tracing::warn;
@@ -223,9 +224,7 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent<'_>) -
         if qty.as_ref() == "0" {
             book.bids.remove(price.as_ref());
         } else {
-            book
-                .bids
-                .insert(price.to_string(), qty.to_string());
+            book.bids.insert(price.to_string(), qty.to_string());
         }
     }
 
@@ -233,9 +232,7 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent<'_>) -
         if qty.as_ref() == "0" {
             book.asks.remove(price.as_ref());
         } else {
-            book
-                .asks
-                .insert(price.to_string(), qty.to_string());
+            book.asks.insert(price.to_string(), qty.to_string());
         }
     }
 
