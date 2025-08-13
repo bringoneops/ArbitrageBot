@@ -1,6 +1,6 @@
 use crate::{
-    apply_depth_update, chunk_streams_with_config, handle_stream_event, next_backoff,
-    stream_config_for_exchange, DepthSnapshot, OrderBook,
+    apply_depth_update, fast_forward, chunk_streams_with_config, handle_stream_event,
+    next_backoff, stream_config_for_exchange, ApplyResult, DepthSnapshot, OrderBook,
 };
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -121,6 +121,8 @@ impl ExchangeAdapter for BinanceAdapter {
             total_streams
         );
 
+        let depth_base = self.cfg.info_url.trim_end_matches("exchangeInfo").to_string();
+
         for chunk in chunks {
             let chunk_len = chunk.len();
             let param = chunk.join("/");
@@ -131,6 +133,8 @@ impl ExchangeAdapter for BinanceAdapter {
             let tasks = self.tasks.clone();
             let books = self.orderbooks.clone();
             let event_tx = self.event_tx.clone();
+            let client = self.client.clone();
+            let depth_base = depth_base.clone();
 
             tasks.lock().await.spawn(async move {
                 let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
@@ -159,7 +163,14 @@ impl ExchangeAdapter for BinanceAdapter {
                             Ok((ws_stream, _)) => {
                                 connected = true;
                                 backoff = Duration::from_secs(1);
-                                run_ws(ws_stream, books.clone(), event_tx.clone()).await
+                                run_ws(
+                                    ws_stream,
+                                    books.clone(),
+                                    event_tx.clone(),
+                                    client.clone(),
+                                    depth_base.clone(),
+                                )
+                                .await
                             }
                             Err(e) => Err(e.into()),
                         }
@@ -168,7 +179,14 @@ impl ExchangeAdapter for BinanceAdapter {
                             Ok(ws_stream) => {
                                 connected = true;
                                 backoff = Duration::from_secs(1);
-                                run_ws(ws_stream, books.clone(), event_tx.clone()).await
+                                run_ws(
+                                    ws_stream,
+                                    books.clone(),
+                                    event_tx.clone(),
+                                    client.clone(),
+                                    depth_base.clone(),
+                                )
+                                .await
                             }
                             Err(e) => Err(e),
                         }
@@ -320,10 +338,23 @@ async fn connect_via_socks5(
     Ok(ws_stream)
 }
 
+async fn fetch_depth_snapshot(
+    client: &Client,
+    depth_base: &str,
+    symbol: &str,
+) -> Option<OrderBook> {
+    let depth_url = format!("{}depth?symbol={}", depth_base, symbol);
+    let resp = client.get(&depth_url).send().await.ok()?;
+    let resp = resp.error_for_status().ok()?;
+    resp.json::<DepthSnapshot>().await.ok().map(|s| s.into())
+}
+
 async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
     books: Arc<Mutex<HashMap<String, OrderBook>>>,
     event_tx: mpsc::Sender<StreamMessage<Event>>,
+    client: Client,
+    depth_base: String,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -367,9 +398,25 @@ where
                             tracing::debug!(?event);
                             handle_stream_event(&event, &text);
                             if let Event::DepthUpdate(ref update) = event.data {
+                                let symbol = update.symbol.clone();
                                 let mut map = books.lock().await;
-                                if let Some(book) = map.get_mut(&update.symbol) {
-                                    apply_depth_update(book, update);
+                                if let Some(book) = map.get_mut(&symbol) {
+                                    match apply_depth_update(book, update) {
+                                        ApplyResult::Applied | ApplyResult::Outdated => {}
+                                        ApplyResult::Gap => {
+                                            metrics::counter!("depth_gap").increment(1);
+                                            let buffer = vec![update.clone()];
+                                            drop(map);
+                                            if let Some(mut new_book) =
+                                                fetch_depth_snapshot(&client, &depth_base, &symbol)
+                                                    .await
+                                            {
+                                                fast_forward(&mut new_book, &buffer);
+                                                let mut map = books.lock().await;
+                                                map.insert(symbol, new_book);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             if let Err(e) = event_tx.send(event).await {
