@@ -1,1 +1,1 @@
-pub mod adapter;
+// Ingestor library crate.

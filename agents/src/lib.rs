@@ -1,5 +1,9 @@
 use anyhow::Result;
 
+pub mod adapter;
+pub use adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
+pub use adapter::ExchangeAdapter;
+
 /// Spawns exchange adapters.
 ///
 /// This is a placeholder implementation to illustrate how the ingestor crate

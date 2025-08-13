@@ -1,10 +1,10 @@
+use anyhow::{anyhow, Context, Result};
 use arb_core as core;
+use async_trait::async_trait;
 use core::{
     apply_depth_update, chunk_streams_with_config, fast_forward, handle_stream_event, next_backoff,
     stream_config_for_exchange, ApplyResult, DepthSnapshot, OrderBook,
 };
-use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
 use futures::{stream, SinkExt, StreamExt};
 use rand::Rng;
 use reqwest::{Client, StatusCode};
