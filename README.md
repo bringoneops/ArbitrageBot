@@ -1,7 +1,27 @@
-# Binance Stream Aggregator
+# ArbitrageBot
+
+This workspace is split into several partitions that cooperate to
+aggregate and normalize exchange data:
+
+- **ingestor** – binary crate that orchestrates the data flow.  It
+  spawns exchange-specific **agents**, receives their raw events,
+  converts them into the **canonical** model and forwards the
+  normalized events to downstream consumers.
+- **agents** – library of exchange adapters. Each adapter implements a
+  common trait and streams raw [`arb_core`](core/) events through a
+  channel.
+- **canonical** – defines a stable representation of trades and order
+  book updates. It converts raw `arb_core` events into the `MdEvent`
+  types used across the system.
+- **core** – shared utilities such as event definitions, configuration
+  loading, rate limiting and TLS helpers.
+
+The ingestor owns a channel that all agents send `StreamMessage` values
+into. A task inside the ingestor receives these messages and uses the
+`canonical` crate to transform them into `MdEvent`s, ensuring that every
+exchange produces data in a common format.
 
 This project connects to the Binance.US, Binance.com (global), Binance Futures, Binance Delivery, and Binance Options WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
-
 ## Runtime Configuration
 
 The binary can be configured via environment variables:
