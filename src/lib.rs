@@ -1,5 +1,6 @@
 pub mod canonical;
 pub mod events;
+pub mod adapter;
 
 use metrics::counter;
 use once_cell::sync::Lazy;
@@ -11,7 +12,7 @@ use std::{
 };
 #[cfg(feature = "debug-logs")]
 use tracing::debug;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::events::{Event, StreamMessage};
 
