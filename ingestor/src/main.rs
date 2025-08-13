@@ -7,15 +7,16 @@ use tokio::task::JoinSet;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+use agents::spawn_adapters;
+use canonical::MdEvent;
 use ingestor::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
 use ingestor::adapter::ExchangeAdapter;
 use arb_core as core;
 use core::config;
-use core::events::StreamMessage;
+use core::events::{Event, StreamMessage};
 use core::tls;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+pub async fn run() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -42,7 +43,26 @@ async fn main() -> Result<()> {
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
     let event_buffer_size = cfg.event_buffer_size;
-    let (event_tx, _event_rx) = mpsc::channel::<StreamMessage<'static>>(event_buffer_size);
+    let (event_tx, mut event_rx) = mpsc::channel::<StreamMessage<'static>>(event_buffer_size);
+
+    {
+        let mut tasks_guard = tasks.lock().await;
+        tasks_guard.spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                match event.data {
+                    Event::Trade(e) => {
+                        let _ = MdEvent::from(e);
+                    }
+                    Event::DepthUpdate(e) => {
+                        let _ = MdEvent::from(e);
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    spawn_adapters().await?;
 
     let mut adapters: Vec<Box<dyn ExchangeAdapter + Send>> = Vec::new();
     for exch in BINANCE_EXCHANGES {
@@ -92,4 +112,9 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    run().await
 }
