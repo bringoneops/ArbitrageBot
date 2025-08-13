@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use std::{env, fs};
+use simd_json::serde::from_slice;
 
 #[derive(Clone, Deserialize)]
 pub struct Credentials {
@@ -46,9 +47,9 @@ fn load_credentials() -> Result<Credentials> {
     }
 
     if let Ok(path) = env::var("API_CREDENTIALS_FILE") {
-        let content = fs::read_to_string(&path).context("reading credentials file")?;
+        let mut content = fs::read(&path).context("reading credentials file")?;
         let creds: Credentials =
-            serde_json::from_str(&content).context("parsing credentials file")?;
+            from_slice(&mut content).context("parsing credentials file")?;
         if !creds.api_key.is_empty() && !creds.api_secret.is_empty() {
             return Ok(creds);
         }
