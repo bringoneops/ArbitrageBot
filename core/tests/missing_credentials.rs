@@ -1,4 +1,5 @@
-use binance_us_and_global::config::Config;
+use arb_core as core;
+use core::config::Config;
 use serial_test::serial;
 
 #[test]

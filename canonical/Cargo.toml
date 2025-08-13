@@ -1,0 +1,8 @@
+[package]
+name = "canonical"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arb_core = { path = "../core" }
+rust_decimal = "1"

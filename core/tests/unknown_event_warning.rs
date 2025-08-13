@@ -1,4 +1,5 @@
-use binance_us_and_global::{
+use arb_core as core;
+use core::{
     events::StreamMessage,
     handle_stream_event,
 };

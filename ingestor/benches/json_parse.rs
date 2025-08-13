@@ -1,5 +1,6 @@
+use arb_core as core;
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use binance_us_and_global::events::StreamMessage;
+use core::events::StreamMessage;
 use simd_json::serde::from_slice as simd_from_slice;
 use serde_json;
 

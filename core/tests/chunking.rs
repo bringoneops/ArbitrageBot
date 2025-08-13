@@ -1,4 +1,5 @@
-use binance_us_and_global::{chunk_streams, chunk_streams_with_config, StreamConfig};
+use arb_core as core;
+use core::{chunk_streams, chunk_streams_with_config, StreamConfig};
 use std::collections::HashSet;
 
 #[test]

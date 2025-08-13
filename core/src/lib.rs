@@ -1,5 +1,3 @@
-pub mod adapter;
-pub mod canonical;
 pub mod config;
 pub mod events;
 pub mod metrics;
@@ -39,23 +37,23 @@ static STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
             }
         }
     }
-    let mut data = include_bytes!("../streams.json").to_vec();
+    let mut data = include_bytes!("../../streams.json").to_vec();
     from_slice(&mut data).expect("invalid default stream configuration")
 });
 
 // Exchange specific configurations
 static SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../streams_spot.json").to_vec();
+    let mut data = include_bytes!("../../streams_spot.json").to_vec();
     from_slice(&mut data).expect("invalid spot stream configuration")
 });
 
 static FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../streams_futures.json").to_vec();
+    let mut data = include_bytes!("../../streams_futures.json").to_vec();
     from_slice(&mut data).expect("invalid futures stream configuration")
 });
 
 static OPTIONS_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../streams_options.json").to_vec();
+    let mut data = include_bytes!("../../streams_options.json").to_vec();
     from_slice(&mut data).expect("invalid options stream configuration")
 });
 

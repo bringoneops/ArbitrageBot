@@ -1,8 +1,9 @@
+use arb_core as core;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde::Deserialize;
-use binance_us_and_global::events::StreamMessage;
+use core::events::StreamMessage;
 
 struct CountingAlloc;
 
