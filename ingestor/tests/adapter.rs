@@ -3,7 +3,7 @@ use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 
-use ingestor::adapter::ExchangeAdapter;
+use agents::adapter::ExchangeAdapter;
 
 struct MockAdapter {
     calls: Arc<Mutex<Vec<&'static str>>>,
@@ -40,7 +40,9 @@ impl ExchangeAdapter for MockAdapter {
 #[tokio::test]
 async fn adapter_trait_is_callable() {
     let calls = Arc::new(Mutex::new(Vec::new()));
-    let mut adapter = MockAdapter { calls: calls.clone() };
+    let mut adapter = MockAdapter {
+        calls: calls.clone(),
+    };
 
     adapter.auth().await.unwrap();
     adapter.backfill().await.unwrap();
@@ -54,4 +56,3 @@ async fn adapter_trait_is_callable() {
         vec!["auth", "backfill", "subscribe", "heartbeat", "run"]
     );
 }
-

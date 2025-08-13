@@ -7,11 +7,11 @@ use tokio::task::JoinSet;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+use agents::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
+use agents::adapter::ExchangeAdapter;
 use agents::spawn_adapters;
-use canonical::MdEvent;
-use ingestor::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
-use ingestor::adapter::ExchangeAdapter;
 use arb_core as core;
+use canonical::MdEvent;
 use core::config;
 use core::events::{Event, StreamMessage};
 use core::tls;

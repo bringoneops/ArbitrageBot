@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 
 /// Trait implemented by exchange adapters to provide a unified interface
 /// for connecting to different exchanges.
@@ -23,4 +23,3 @@ pub trait ExchangeAdapter {
 }
 
 pub mod binance;
-
