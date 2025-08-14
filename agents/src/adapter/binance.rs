@@ -414,7 +414,7 @@ async fn fetch_depth_snapshot(
     resp.json::<DepthSnapshot>().await.ok().map(|s| s.into())
 }
 
-async fn run_ws<S>(
+pub async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
     books: Arc<DashMap<String, OrderBook>>,
     event_tx: mpsc::Sender<StreamMessage<'static>>,
