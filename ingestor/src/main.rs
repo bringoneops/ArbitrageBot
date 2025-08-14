@@ -6,8 +6,7 @@ use tokio::task::JoinSet;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use agents::adapter::binance::{fetch_symbols, BinanceAdapter, BINANCE_EXCHANGES};
-use agents::adapter::ExchangeAdapter;
+use agents::spawn_adapters;
 use arb_core as core;
 use canonical::MdEvent;
 use core::config;
@@ -36,8 +35,6 @@ pub async fn run() -> Result<()> {
     }
     let client = client_builder.build().context("building HTTP client")?;
 
-    let chunk_size = cfg.chunk_size;
-
     let tasks = Arc::new(Mutex::new(JoinSet::new()));
 
     let event_buffer_size = cfg.event_buffer_size;
@@ -62,44 +59,14 @@ pub async fn run() -> Result<()> {
     }
 
     // Create and spawn exchange adapters.
-    for exch in BINANCE_EXCHANGES {
-        let is_spot = exch.name.contains("Spot");
-        let is_derivative = exch.name.contains("Futures")
-            || exch.name.contains("Delivery")
-            || exch.name.contains("Options");
-        if (is_spot && !cfg.enable_spot) || (is_derivative && !cfg.enable_futures) {
-            continue;
-        }
-
-        let mut symbols = if is_spot {
-            cfg.spot_symbols.clone()
-        } else {
-            cfg.futures_symbols.clone()
-        };
-
-        if symbols.is_empty() {
-            symbols = fetch_symbols(exch.info_url).await?;
-        }
-
-        let adapter = BinanceAdapter::new(
-            exch,
-            client.clone(),
-            chunk_size,
-            cfg.proxy_url.clone().unwrap_or_default(),
-            tasks.clone(),
-            event_tx.clone(),
-            symbols,
-            tls_config.clone(),
-        );
-
-        let tasks_clone = tasks.clone();
-        tasks_clone.lock().await.spawn(async move {
-            let mut adapter = adapter;
-            if let Err(e) = adapter.run().await {
-                error!("Failed to run adapter: {}", e);
-            }
-        });
-    }
+    spawn_adapters(
+        cfg,
+        client,
+        tasks.clone(),
+        event_tx.clone(),
+        tls_config.clone(),
+    )
+    .await?;
 
     // Drop the original sender so the receiver can terminate once all adapters finish.
     drop(event_tx);

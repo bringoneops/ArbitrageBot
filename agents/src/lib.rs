@@ -1,13 +1,95 @@
 use anyhow::Result;
+use arb_core as core;
+use reqwest::Client;
+use rustls::ClientConfig;
+use std::sync::Arc;
+use tokio::{
+    sync::{mpsc, Mutex},
+    task::JoinSet,
+};
+use tracing::error;
 
 pub mod adapter;
-pub use adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
+pub use adapter::binance::{fetch_symbols, BinanceAdapter, BINANCE_EXCHANGES};
 pub use adapter::ExchangeAdapter;
 
-/// Spawns exchange adapters.
+/// Run a collection of exchange adapters to completion.
 ///
-/// This is a placeholder implementation to illustrate how the ingestor crate
-/// will rely on the `agents` crate for adapter management.
-pub async fn spawn_adapters() -> Result<()> {
+/// Each adapter is spawned on the Tokio runtime and awaited. Errors from
+/// individual adapters are logged but do not cause early termination.
+pub async fn run_adapters<A>(adapters: Vec<A>) -> Result<()>
+where
+    A: ExchangeAdapter + Send + 'static,
+{
+    let mut tasks: JoinSet<Result<()>> = JoinSet::new();
+
+    for mut adapter in adapters {
+        tasks.spawn(async move { adapter.run().await });
+    }
+
+    while let Some(res) = tasks.join_next().await {
+        match res {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => error!("adapter error: {}", e),
+            Err(e) => error!("task error: {}", e),
+        }
+    }
+
+    Ok(())
+}
+
+/// Instantiate and spawn exchange adapters based on the provided configuration.
+///
+/// Adapters are created for all enabled exchanges and spawned onto the supplied
+/// task set. Each adapter forwards its events through the provided channel.
+pub async fn spawn_adapters(
+    cfg: &'static core::config::Config,
+    client: Client,
+    tasks: Arc<Mutex<JoinSet<()>>>,
+    event_tx: mpsc::Sender<core::events::StreamMessage<'static>>,
+    tls_config: Arc<ClientConfig>,
+) -> Result<()> {
+    let chunk_size = cfg.chunk_size;
+
+    for exch in BINANCE_EXCHANGES {
+        let is_spot = exch.name.contains("Spot");
+        let is_derivative = exch.name.contains("Futures")
+            || exch.name.contains("Delivery")
+            || exch.name.contains("Options");
+
+        if (is_spot && !cfg.enable_spot) || (is_derivative && !cfg.enable_futures) {
+            continue;
+        }
+
+        let mut symbols = if is_spot {
+            cfg.spot_symbols.clone()
+        } else {
+            cfg.futures_symbols.clone()
+        };
+
+        if symbols.is_empty() {
+            symbols = fetch_symbols(exch.info_url).await?;
+        }
+
+        let adapter = BinanceAdapter::new(
+            exch,
+            client.clone(),
+            chunk_size,
+            cfg.proxy_url.clone().unwrap_or_default(),
+            tasks.clone(),
+            event_tx.clone(),
+            symbols,
+            tls_config.clone(),
+        );
+
+        let tasks_clone = tasks.clone();
+        tasks_clone.lock().await.spawn(async move {
+            let mut adapter = adapter;
+            if let Err(e) = adapter.run().await {
+                error!("Failed to run adapter: {}", e);
+            }
+        });
+    }
+
     Ok(())
 }
