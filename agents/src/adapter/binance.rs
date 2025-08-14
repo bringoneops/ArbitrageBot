@@ -9,6 +9,7 @@ use futures::{stream, SinkExt, StreamExt};
 use rand::Rng;
 use reqwest::{Client, StatusCode};
 use rustls::ClientConfig;
+use serde_json::Value;
 use simd_json::serde::from_slice;
 use std::{collections::HashMap, env, sync::Arc};
 use tokio::{
@@ -65,6 +66,40 @@ pub const BINANCE_EXCHANGES: &[BinanceConfig] = &[
         ws_base: "wss://vstream.binance.com/stream?streams=",
     },
 ];
+
+/// Retrieve all trading symbols for an exchange using its `exchangeInfo` endpoint.
+pub async fn fetch_symbols(info_url: &str) -> Result<Vec<String>> {
+    let resp = Client::new()
+        .get(info_url)
+        .send()
+        .await?
+        .error_for_status()?;
+    let data: Value = resp.json().await?;
+    let symbols = data
+        .get("symbols")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("missing symbols array"))?;
+
+    let mut result: Vec<String> = symbols
+        .iter()
+        .filter_map(|s| {
+            if s.get("status")
+                .and_then(|v| v.as_str())
+                .map(|st| st == "TRADING")
+                .unwrap_or(false)
+            {
+                s.get("symbol")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    result.sort();
+    result.dedup();
+    Ok(result)
+}
 
 /// Adapter implementing the `ExchangeAdapter` trait for Binance.
 pub struct BinanceAdapter {
