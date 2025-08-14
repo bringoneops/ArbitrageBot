@@ -3,10 +3,10 @@
 This workspace is split into several partitions that cooperate to
 aggregate and normalize exchange data:
 
-- **ingestor** – binary crate that orchestrates the data flow.  It
-  spawns exchange-specific **agents**, receives their raw events,
+- **ingestor** – command-line application that orchestrates the data flow.
+  It spawns exchange-specific **agents**, receives their raw events,
   converts them into the **canonical** model and forwards the
-  normalized events to downstream consumers.
+  normalized events to downstream consumers. No library API is exposed.
 - **agents** – library of exchange adapters. Each adapter implements a
   common trait and streams raw [`arb_core`](core/) events through a
   channel.
