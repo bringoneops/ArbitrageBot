@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
-use std::{env, fs};
 use simd_json::serde::from_slice;
+use std::{env, fs};
 
 #[derive(Clone, Deserialize)]
 pub struct Credentials {
@@ -48,8 +48,7 @@ fn load_credentials() -> Result<Credentials> {
 
     if let Ok(path) = env::var("API_CREDENTIALS_FILE") {
         let mut content = fs::read(&path).context("reading credentials file")?;
-        let creds: Credentials =
-            from_slice(&mut content).context("parsing credentials file")?;
+        let creds: Credentials = from_slice(&mut content).context("parsing credentials file")?;
         if !creds.api_key.is_empty() && !creds.api_secret.is_empty() {
             return Ok(creds);
         }
@@ -63,18 +62,24 @@ fn load_credentials() -> Result<Credentials> {
 impl Config {
     pub fn from_env() -> Result<Self> {
         let proxy_url = env::var("SOCKS5_PROXY").ok();
-        let spot_symbols = env::var("SPOT_SYMBOLS")
-            .unwrap_or_default()
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-            .collect();
-        let futures_symbols = env::var("FUTURES_SYMBOLS")
-            .unwrap_or_default()
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-            .collect();
+        let spot_symbols = match env::var("SPOT_SYMBOLS") {
+            Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
+            Ok(v) => v
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        let futures_symbols = match env::var("FUTURES_SYMBOLS") {
+            Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
+            Ok(v) => v
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect(),
+            Err(_) => Vec::new(),
+        };
         let chunk_size = env::var("CHUNK_SIZE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
@@ -121,10 +126,20 @@ impl Config {
         if self.credentials.api_key.is_empty() || self.credentials.api_secret.is_empty() {
             return Err(anyhow!("API credentials are required"));
         }
-        if self.enable_spot && self.spot_symbols.is_empty() {
+        if self.enable_spot
+            && self.spot_symbols.is_empty()
+            && !env::var("SPOT_SYMBOLS")
+                .unwrap_or_default()
+                .eq_ignore_ascii_case("ALL")
+        {
             return Err(anyhow!("spot symbol list cannot be empty"));
         }
-        if self.enable_futures && self.futures_symbols.is_empty() {
+        if self.enable_futures
+            && self.futures_symbols.is_empty()
+            && !env::var("FUTURES_SYMBOLS")
+                .unwrap_or_default()
+                .eq_ignore_ascii_case("ALL")
+        {
             return Err(anyhow!("futures symbol list cannot be empty"));
         }
         if self.chunk_size == 0 || self.chunk_size > 1024 {

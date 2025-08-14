@@ -29,6 +29,8 @@ The binary can be configured via environment variables:
 - `SOCKS5_PROXY` – optional `host:port` for routing all HTTP and WebSocket traffic through a SOCKS5 proxy.
 - `CHUNK_SIZE` – number of streams per WebSocket connection. Defaults to `100` if unset or invalid.
 - `STREAMS_CONFIG` – optional path to a JSON file specifying `global` and `per_symbol` stream lists. If omitted, a built-in `streams.json` configuration is used.
+- `SPOT_SYMBOLS` – comma-separated spot symbols to subscribe. Set to `ALL` to auto-discover all trading pairs (may subscribe to a very large number of streams).
+- `FUTURES_SYMBOLS` – comma-separated futures symbols. Set to `ALL` to fetch every trading pair, which can significantly increase the subscription load.
 
 Example using a local proxy:
 

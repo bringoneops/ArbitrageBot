@@ -6,7 +6,7 @@ use tokio::task::JoinSet;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use agents::adapter::binance::{BinanceAdapter, BINANCE_EXCHANGES};
+use agents::adapter::binance::{fetch_symbols, BinanceAdapter, BINANCE_EXCHANGES};
 use agents::adapter::ExchangeAdapter;
 use arb_core as core;
 use canonical::MdEvent;
@@ -71,11 +71,15 @@ pub async fn run() -> Result<()> {
             continue;
         }
 
-        let symbols = if is_spot {
+        let mut symbols = if is_spot {
             cfg.spot_symbols.clone()
         } else {
             cfg.futures_symbols.clone()
         };
+
+        if symbols.is_empty() {
+            symbols = fetch_symbols(exch.info_url).await?;
+        }
 
         let adapter = BinanceAdapter::new(
             exch,
