@@ -429,6 +429,70 @@ pub struct ImpliedVolatilityEvent<'a> {
     pub implied_volatility: Cow<'a, str>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MexcStreamMessage<'a> {
+    pub channel: String,
+    #[serde(flatten)]
+    pub data: MexcEvent<'a>,
+    pub symbol: String,
+    #[serde(rename = "sendtime")]
+    pub event_time: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum MexcEvent<'a> {
+    Trades { #[serde(rename = "publicdeals")] data: MexcTrades<'a> },
+    Depth { #[serde(rename = "publicincreasedepths")] data: MexcDepth<'a> },
+    BookTicker { #[serde(rename = "publicbookticker")] data: MexcBookTicker<'a> },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MexcTrades<'a> {
+    #[serde(rename = "dealsList")]
+    pub deals: Vec<MexcDeal<'a>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MexcDeal<'a> {
+    pub price: Cow<'a, str>,
+    pub quantity: Cow<'a, str>,
+    #[serde(rename = "tradetype")]
+    pub trade_type: u8,
+    #[serde(rename = "time")]
+    pub trade_time: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MexcDepth<'a> {
+    #[serde(rename = "bidsList")]
+    pub bids: Vec<MexcLevel<'a>>,
+    #[serde(rename = "asksList")]
+    pub asks: Vec<MexcLevel<'a>>,
+    #[serde(rename = "fromVersion", default)]
+    pub from_version: Option<String>,
+    #[serde(rename = "toVersion", default)]
+    pub to_version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MexcLevel<'a> {
+    pub price: Cow<'a, str>,
+    pub quantity: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MexcBookTicker<'a> {
+    #[serde(rename = "bidprice")]
+    pub bid_price: Cow<'a, str>,
+    #[serde(rename = "bidquantity")]
+    pub bid_qty: Cow<'a, str>,
+    #[serde(rename = "askprice")]
+    pub ask_price: Cow<'a, str>,
+    #[serde(rename = "askquantity")]
+    pub ask_qty: Cow<'a, str>,
+}
+
 fn parse_decimal(s: &Cow<'_, str>) -> Decimal {
     Decimal::from_str(s.as_ref()).unwrap_or_default()
 }
