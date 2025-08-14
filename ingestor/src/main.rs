@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, Proxy};
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use tokio::task::JoinSet;
+use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -35,34 +33,33 @@ pub async fn run() -> Result<()> {
     }
     let client = client_builder.build().context("building HTTP client")?;
 
-    let tasks = Arc::new(Mutex::new(JoinSet::new()));
+    let (task_tx, mut task_rx) = mpsc::unbounded_channel::<JoinHandle<()>>();
 
     let event_buffer_size = cfg.event_buffer_size;
     let (event_tx, mut event_rx) = mpsc::channel::<StreamMessage<'static>>(event_buffer_size);
 
     // Spawn a task to normalize and forward events from all adapters.
-    {
-        let mut tasks_guard = tasks.lock().await;
-        tasks_guard.spawn(async move {
-            while let Some(msg) = event_rx.recv().await {
-                match MdEvent::try_from(msg.data) {
-                    Ok(ev) => {
-                        // Forward normalized events to downstream handlers.
-                        info!(?ev, stream = %msg.stream, "normalized event");
-                    }
-                    Err(_) => {
-                        error!(stream = %msg.stream, "failed to normalize event");
-                    }
+    let tx = task_tx.clone();
+    let handle = tokio::spawn(async move {
+        while let Some(msg) = event_rx.recv().await {
+            match MdEvent::try_from(msg.data) {
+                Ok(ev) => {
+                    // Forward normalized events to downstream handlers.
+                    info!(?ev, stream = %msg.stream, "normalized event");
+                }
+                Err(_) => {
+                    error!(stream = %msg.stream, "failed to normalize event");
                 }
             }
-        });
-    }
+        }
+    });
+    let _ = tx.send(handle);
 
     // Create and spawn exchange adapters.
     spawn_adapters(
         cfg,
         client,
-        tasks.clone(),
+        task_tx.clone(),
         event_tx.clone(),
         tls_config.clone(),
     )
@@ -70,11 +67,11 @@ pub async fn run() -> Result<()> {
 
     // Drop the original sender so the receiver can terminate once all adapters finish.
     drop(event_tx);
+    drop(task_tx);
 
     // Await all spawned tasks and log any errors.
-    let mut tasks = tasks.lock().await;
-    while let Some(res) = tasks.join_next().await {
-        if let Err(e) = res {
+    while let Some(handle) = task_rx.recv().await {
+        if let Err(e) = handle.await {
             error!("task error: {}", e);
         }
     }

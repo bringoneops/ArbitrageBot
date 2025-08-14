@@ -16,7 +16,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
     sync::{mpsc, Mutex},
-    task::JoinSet,
+    task::JoinHandle,
     time::{interval, sleep, timeout, Duration, Instant, MissedTickBehavior},
 };
 use tokio_socks::tcp::Socks5Stream;
@@ -107,7 +107,7 @@ pub struct BinanceAdapter {
     client: Client,
     chunk_size: usize,
     proxy_url: String,
-    tasks: Arc<Mutex<JoinSet<()>>>,
+    task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
     event_tx: mpsc::Sender<StreamMessage<'static>>,
     symbols: Vec<String>,
     orderbooks: Arc<Mutex<HashMap<String, OrderBook>>>,
@@ -122,7 +122,7 @@ impl BinanceAdapter {
         client: Client,
         chunk_size: usize,
         proxy_url: String,
-        tasks: Arc<Mutex<JoinSet<()>>>,
+        task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
         event_tx: mpsc::Sender<StreamMessage<'static>>,
         symbols: Vec<String>,
         tls_config: Arc<ClientConfig>,
@@ -132,7 +132,7 @@ impl BinanceAdapter {
             client,
             chunk_size,
             proxy_url,
-            tasks,
+            task_tx,
             event_tx,
             symbols,
             orderbooks: Arc::new(Mutex::new(HashMap::new())),
@@ -170,7 +170,7 @@ impl ExchangeAdapter for BinanceAdapter {
                 .context("parsing WebSocket URL")?;
             let proxy = self.proxy_url.clone();
             let name = self.cfg.name.to_string();
-            let tasks = self.tasks.clone();
+            let task_tx = self.task_tx.clone();
             let books = self.orderbooks.clone();
             let event_tx = self.event_tx.clone();
             let client = self.client.clone();
@@ -179,7 +179,7 @@ impl ExchangeAdapter for BinanceAdapter {
             let http_bucket = self.http_bucket.clone();
             let ws_bucket = self.ws_bucket.clone();
 
-            tasks.lock().await.spawn(async move {
+            let handle = tokio::spawn(async move {
                 let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
                     .ok()
                     .and_then(|s| s.parse::<u64>().ok())
@@ -278,6 +278,8 @@ impl ExchangeAdapter for BinanceAdapter {
                     sleep(sleep_dur).await;
                 }
             });
+
+            let _ = task_tx.send(handle);
         }
 
         Ok(())

@@ -8,10 +8,7 @@ use arb_core as core;
 use async_trait::async_trait;
 use reqwest::Client;
 use rustls::{ClientConfig, RootCertStore};
-use tokio::{
-    sync::{mpsc, Mutex},
-    task::JoinSet,
-};
+use tokio::{sync::mpsc, task::JoinHandle};
 
 struct TestAdapter {
     counter: Arc<AtomicUsize>,
@@ -53,10 +50,10 @@ async fn spawn_adapters_ok() {
             .with_no_client_auth(),
     );
 
-    let tasks = Arc::new(Mutex::new(JoinSet::new()));
+    let (task_tx, _task_rx) = mpsc::unbounded_channel::<JoinHandle<()>>();
     let (tx, _rx) = mpsc::channel::<core::events::StreamMessage<'static>>(cfg.event_buffer_size);
 
-    assert!(spawn_adapters(cfg, client, tasks, tx, tls_config)
+    assert!(spawn_adapters(cfg, client, task_tx, tx, tls_config)
         .await
         .is_ok());
 }
