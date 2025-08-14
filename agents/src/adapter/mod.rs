@@ -23,3 +23,4 @@ pub trait ExchangeAdapter {
 }
 
 pub mod binance;
+pub mod mexc;
