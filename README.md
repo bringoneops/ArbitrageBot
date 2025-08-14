@@ -23,6 +23,10 @@ exchange produces data in a common format.
 
 This project connects to the Binance.US, Binance.com (global), Binance Futures, Binance Delivery, and Binance Options WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
 
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for coding style, testing, and PR guidelines.
+
 ## Building and Testing
 
 Compile all crates in the workspace:
