@@ -128,6 +128,7 @@ impl BinanceAdapter {
         symbols: Vec<String>,
         tls_config: Arc<ClientConfig>,
     ) -> Self {
+        let global_cfg = core::config::get();
         Self {
             cfg,
             client,
@@ -138,8 +139,16 @@ impl BinanceAdapter {
             symbols,
             orderbooks: Arc::new(DashMap::new()),
             tls_config,
-            http_bucket: Arc::new(TokenBucket::new(10, 10, Duration::from_secs(1))),
-            ws_bucket: Arc::new(TokenBucket::new(5, 5, Duration::from_secs(1))),
+            http_bucket: Arc::new(TokenBucket::new(
+                global_cfg.http_burst,
+                global_cfg.http_refill_per_sec,
+                Duration::from_secs(1),
+            )),
+            ws_bucket: Arc::new(TokenBucket::new(
+                global_cfg.ws_burst,
+                global_cfg.ws_refill_per_sec,
+                Duration::from_secs(1),
+            )),
         }
     }
 }

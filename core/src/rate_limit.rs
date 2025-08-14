@@ -1,55 +1,54 @@
-use std::time::{Duration, Instant};
-use tokio::{sync::Mutex, time::sleep};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Semaphore;
+use tokio::time;
 
+/// A simple token bucket implemented with a [`Semaphore`].
+///
+/// Tokens are represented by permits on the semaphore. A background task
+/// periodically replenishes permits up to the configured capacity.
 #[derive(Debug)]
 pub struct TokenBucket {
-    capacity: f64,
-    tokens_per_interval: f64,
-    interval: Duration,
-    state: Mutex<TokenState>,
-}
-
-#[derive(Debug)]
-struct TokenState {
-    tokens: f64,
-    last_refill: Instant,
+    semaphore: Arc<Semaphore>,
 }
 
 impl TokenBucket {
+    /// Create a new [`TokenBucket`].
+    ///
+    /// `capacity` is the maximum burst size. `tokens_per_interval` are added
+    /// every `interval` until the bucket reaches full capacity.
     pub fn new(capacity: u32, tokens_per_interval: u32, interval: Duration) -> Self {
-        Self {
-            capacity: capacity as f64,
-            tokens_per_interval: tokens_per_interval as f64,
-            interval,
-            state: Mutex::new(TokenState {
-                tokens: capacity as f64,
-                last_refill: Instant::now(),
-            }),
-        }
+        let semaphore = Arc::new(Semaphore::new(capacity as usize));
+        let refill_sem = semaphore.clone();
+        let cap = capacity as usize;
+        let add = tokens_per_interval as usize;
+        tokio::spawn(async move {
+            let mut ticker = time::interval(interval);
+            loop {
+                ticker.tick().await;
+                let available = refill_sem.available_permits();
+                if available < cap {
+                    let to_add = (cap - available).min(add);
+                    refill_sem.add_permits(to_add);
+                }
+            }
+        });
+        Self { semaphore }
     }
 
+    /// Acquire `tokens` from the bucket, waiting if necessary.
     pub async fn acquire(&self, tokens: u32) {
-        let needed = tokens as f64;
-        loop {
-            let wait_duration = {
-                let mut state = self.state.lock().await;
-                let now = Instant::now();
-                let elapsed = now.duration_since(state.last_refill);
-                if elapsed >= self.interval {
-                    let intervals = elapsed.as_secs_f64() / self.interval.as_secs_f64();
-                    state.tokens =
-                        (state.tokens + intervals * self.tokens_per_interval).min(self.capacity);
-                    state.last_refill = now;
-                }
-                if state.tokens >= needed {
-                    state.tokens -= needed;
-                    return;
-                }
-                let missing = needed - state.tokens;
-                let rate = self.tokens_per_interval / self.interval.as_secs_f64();
-                Duration::from_secs_f64(missing / rate)
-            };
-            sleep(wait_duration).await;
-        }
+        // `acquire_many` returns a permit guard that releases permits when
+        // dropped. We "forget" it to permanently consume the permits.
+        self.semaphore
+            .acquire_many(tokens)
+            .await
+            .expect("semaphore closed")
+            .forget();
+    }
+
+    /// Return the current number of available tokens.
+    pub fn available(&self) -> usize {
+        self.semaphore.available_permits()
     }
 }

@@ -76,6 +76,10 @@ The binary can be configured via environment variables:
 - `STREAMS_CONFIG` – optional path to a JSON file specifying `global` and `per_symbol` stream lists. If omitted, a built-in `streams.json` configuration is used.
 - `SPOT_SYMBOLS` – comma-separated spot symbols to subscribe. Set to `ALL` to auto-discover all trading pairs (may subscribe to a very large number of streams).
 - `FUTURES_SYMBOLS` – comma-separated futures symbols. Set to `ALL` to fetch every trading pair, which can significantly increase the subscription load.
+- `HTTP_BURST` – maximum number of HTTP requests allowed to accumulate. Defaults to `10`.
+- `HTTP_REFILL_PER_SEC` – HTTP token refill rate per second. Defaults to `10`.
+- `WS_BURST` – maximum burst of WebSocket messages. Defaults to `5`.
+- `WS_REFILL_PER_SEC` – WebSocket token refill rate per second. Defaults to `5`.
 
 Example using a local proxy:
 
