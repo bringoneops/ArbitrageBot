@@ -115,12 +115,12 @@ tokio::spawn(async move {
 });
 ```
 
-Each handled message increments a `ws_events` metrics counter. Per-event
-logging is disabled by default; enable the `debug-logs` feature to log every
-event at the `debug` level:
+Each handled message increments an `md_events_total` metrics counter. Per-event
+logging is disabled by default; set `RUST_LOG=debug` and enable the
+`debug-logs` feature to log every event at the `debug` level:
 
 ```bash
-cargo run --features debug-logs
+RUST_LOG=debug cargo run --features debug-logs
 ```
 
 ## Default Channels

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, Proxy};
 use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::{error, info};
+use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
 
 use agents::spawn_adapters;
@@ -19,7 +19,7 @@ pub async fn run() -> Result<()> {
         .init();
 
     let cfg = config::load()?;
-    info!(?cfg, "loaded config");
+    debug!(?cfg, "loaded config");
 
     let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
     let mut client_builder = Client::builder()
@@ -43,9 +43,12 @@ pub async fn run() -> Result<()> {
     let handle = tokio::spawn(async move {
         while let Some(msg) = event_rx.recv().await {
             match MdEvent::try_from(msg.data) {
-                Ok(ev) => {
-                    // Forward normalized events to downstream handlers.
-                    info!(?ev, stream = %msg.stream, "normalized event");
+                Ok(_ev) => {
+                    if core::config::metrics_enabled() {
+                        metrics::counter!("md_events_total").increment(1);
+                    }
+                    #[cfg(feature = "debug-logs")]
+                    debug!(?_ev, stream = %msg.stream, "normalized event");
                 }
                 Err(_) => {
                     error!(stream = %msg.stream, "failed to normalize event");
