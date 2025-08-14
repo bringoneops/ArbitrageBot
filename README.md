@@ -22,6 +22,51 @@ into. A task inside the ingestor receives these messages and uses the
 exchange produces data in a common format.
 
 This project connects to the Binance.US, Binance.com (global), Binance Futures, Binance Delivery, and Binance Options WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
+
+## Building and Testing
+
+Compile all crates in the workspace:
+
+```bash
+cargo build
+```
+
+Run the full test suite:
+
+```bash
+cargo test
+```
+
+### Feature Flags
+
+Optional capabilities are gated behind Cargo features. Enable them with the
+`--features` flag:
+
+```bash
+cargo run --features debug-logs
+cargo build --features "debug-logs prometheus-exporter"
+```
+
+Use `--all-features` to activate every flag.
+
+### Coverage
+
+Generate code coverage reports with
+[cargo-tarpaulin](https://crates.io/crates/cargo-tarpaulin):
+
+```bash
+cargo install cargo-tarpaulin
+cargo tarpaulin
+```
+
+### Benchmarks
+
+Criterion benchmarks live under `ingestor/benches`. Execute them with:
+
+```bash
+cargo bench
+```
+
 ## Runtime Configuration
 
 The binary can be configured via environment variables:
