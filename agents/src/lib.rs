@@ -11,7 +11,10 @@ use tokio::{
 use tracing::error;
 
 pub mod adapter;
-pub use adapter::binance::{fetch_symbols, BinanceAdapter, BINANCE_EXCHANGES};
+pub use adapter::binance::{
+    fetch_symbols as fetch_binance_symbols, BinanceAdapter, BINANCE_EXCHANGES,
+};
+pub use adapter::coinex::{CoinexAdapter, COINEX_EXCHANGES};
 pub use adapter::ExchangeAdapter;
 
 /// Run a collection of exchange adapters to completion.
@@ -71,7 +74,7 @@ pub async fn spawn_adapters(
         };
 
         if symbols.is_empty() {
-            symbols = fetch_symbols(exch.info_url).await?;
+            symbols = fetch_binance_symbols(exch.info_url).await?;
         }
 
         for symbol in &symbols {
@@ -90,6 +93,42 @@ pub async fn spawn_adapters(
             event_txs.clone(),
             symbols,
             tls_config.clone(),
+        );
+
+        let tx = task_tx.clone();
+        let handle = tokio::spawn(async move {
+            let mut adapter = adapter;
+            if let Err(e) = adapter.run().await {
+                error!("Failed to run adapter: {}", e);
+            }
+        });
+        let _ = tx.send(handle);
+    }
+
+    for exch in COINEX_EXCHANGES {
+        if !cfg.enable_spot {
+            continue;
+        }
+
+        let mut symbols = cfg.spot_symbols.clone();
+        if symbols.is_empty() {
+            symbols = adapter::coinex::fetch_symbols(exch.info_url).await?;
+        }
+
+        for symbol in &symbols {
+            let (tx, rx) = mpsc::channel(event_buffer_size);
+            let key = format!("{}:{}", exch.name, symbol);
+            event_txs.insert(key, tx);
+            receivers.push(rx);
+        }
+
+        let adapter = CoinexAdapter::new(
+            exch,
+            client.clone(),
+            chunk_size,
+            task_tx.clone(),
+            event_txs.clone(),
+            symbols,
         );
 
         let tx = task_tx.clone();
