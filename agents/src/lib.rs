@@ -11,7 +11,10 @@ use tokio::{
 use tracing::error;
 
 pub mod adapter;
-pub use adapter::binance::{fetch_symbols, BinanceAdapter, BINANCE_EXCHANGES};
+pub use adapter::binance::{
+    fetch_symbols as fetch_binance_symbols, BinanceAdapter, BINANCE_EXCHANGES,
+};
+pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
 pub use adapter::ExchangeAdapter;
 
 /// Run a collection of exchange adapters to completion.
@@ -71,7 +74,7 @@ pub async fn spawn_adapters(
         };
 
         if symbols.is_empty() {
-            symbols = fetch_symbols(exch.info_url).await?;
+            symbols = adapter::binance::fetch_symbols(exch.info_url).await?;
         }
 
         for symbol in &symbols {
@@ -100,6 +103,35 @@ pub async fn spawn_adapters(
             }
         });
         let _ = tx.send(handle);
+    }
+
+    if cfg.enable_mexc {
+        for exch in MEXC_EXCHANGES {
+            let mut symbols = cfg.mexc_symbols.clone();
+
+            if symbols.is_empty() {
+                symbols = fetch_symbols(exch.info_url).await?;
+            }
+
+            for symbol in &symbols {
+                let (tx, rx) = mpsc::channel(event_buffer_size);
+                let key = format!("{}:{}", exch.name, symbol);
+                event_txs.insert(key, tx);
+                receivers.push(rx);
+            }
+
+            let adapter =
+                MexcAdapter::new(exch, client.clone(), chunk_size, task_tx.clone(), symbols);
+
+            let tx = task_tx.clone();
+            let handle = tokio::spawn(async move {
+                let mut adapter = adapter;
+                if let Err(e) = adapter.run().await {
+                    error!("Failed to run adapter: {}", e);
+                }
+            });
+            let _ = tx.send(handle);
+        }
     }
 
     Ok(receivers)

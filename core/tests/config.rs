@@ -7,6 +7,7 @@ fn empty_spot_symbols_fails() {
         proxy_url: None,
         spot_symbols: vec![],
         futures_symbols: vec![],
+        mexc_symbols: vec![],
         chunk_size: 1,
         event_buffer_size: 1,
         http_burst: 1,
@@ -15,6 +16,7 @@ fn empty_spot_symbols_fails() {
         ws_refill_per_sec: 1,
         enable_spot: true,
         enable_futures: false,
+        enable_mexc: false,
         enable_metrics: false,
         credentials: Credentials {
             api_key: "k".into(),
@@ -32,6 +34,7 @@ fn empty_futures_symbols_fails() {
         proxy_url: None,
         spot_symbols: vec![],
         futures_symbols: vec![],
+        mexc_symbols: vec![],
         chunk_size: 1,
         event_buffer_size: 1,
         http_burst: 1,
@@ -40,6 +43,7 @@ fn empty_futures_symbols_fails() {
         ws_refill_per_sec: 1,
         enable_spot: false,
         enable_futures: true,
+        enable_mexc: false,
         enable_metrics: false,
         credentials: Credentials {
             api_key: "k".into(),
@@ -57,6 +61,7 @@ fn invalid_chunk_size_fails() {
         proxy_url: None,
         spot_symbols: vec!["BTCUSDT".into()],
         futures_symbols: vec![],
+        mexc_symbols: vec![],
         chunk_size: 0,
         event_buffer_size: 1,
         http_burst: 1,
@@ -65,6 +70,7 @@ fn invalid_chunk_size_fails() {
         ws_refill_per_sec: 1,
         enable_spot: true,
         enable_futures: false,
+        enable_mexc: false,
         enable_metrics: false,
         credentials: Credentials {
             api_key: "k".into(),
@@ -82,6 +88,7 @@ fn invalid_event_buffer_size_fails() {
         proxy_url: None,
         spot_symbols: vec!["BTCUSDT".into()],
         futures_symbols: vec![],
+        mexc_symbols: vec![],
         chunk_size: 10,
         event_buffer_size: 0,
         http_burst: 1,
@@ -90,6 +97,7 @@ fn invalid_event_buffer_size_fails() {
         ws_refill_per_sec: 1,
         enable_spot: true,
         enable_futures: false,
+        enable_mexc: false,
         enable_metrics: false,
         credentials: Credentials {
             api_key: "k".into(),

@@ -24,6 +24,7 @@ pub struct Config {
     pub proxy_url: Option<String>,
     pub spot_symbols: Vec<String>,
     pub futures_symbols: Vec<String>,
+    pub mexc_symbols: Vec<String>,
     pub chunk_size: usize,
     pub event_buffer_size: usize,
     pub http_burst: u32,
@@ -32,6 +33,7 @@ pub struct Config {
     pub ws_refill_per_sec: u32,
     pub enable_spot: bool,
     pub enable_futures: bool,
+    pub enable_mexc: bool,
     pub enable_metrics: bool,
     pub credentials: Credentials,
     pub ca_bundle: Option<String>,
@@ -84,6 +86,15 @@ impl Config {
                 .collect(),
             Err(_) => Vec::new(),
         };
+        let mexc_symbols = match env::var("MEXC_SYMBOLS") {
+            Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
+            Ok(v) => v
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect(),
+            Err(_) => Vec::new(),
+        };
         let chunk_size = env::var("CHUNK_SIZE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
@@ -114,6 +125,9 @@ impl Config {
         let enable_futures = env::var("ENABLE_FUTURES")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
+        let enable_mexc = env::var("ENABLE_MEXC")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
         let enable_metrics = env::var("ENABLE_METRICS")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
@@ -131,6 +145,7 @@ impl Config {
             proxy_url,
             spot_symbols,
             futures_symbols,
+            mexc_symbols,
             chunk_size,
             event_buffer_size,
             http_burst,
@@ -139,6 +154,7 @@ impl Config {
             ws_refill_per_sec,
             enable_spot,
             enable_futures,
+            enable_mexc,
             enable_metrics,
             credentials,
             ca_bundle,
@@ -165,6 +181,14 @@ impl Config {
                 .eq_ignore_ascii_case("ALL")
         {
             return Err(anyhow!("futures symbol list cannot be empty"));
+        }
+        if self.enable_mexc
+            && self.mexc_symbols.is_empty()
+            && !env::var("MEXC_SYMBOLS")
+                .unwrap_or_default()
+                .eq_ignore_ascii_case("ALL")
+        {
+            return Err(anyhow!("mexc symbol list cannot be empty"));
         }
         if self.chunk_size == 0 || self.chunk_size > 1024 {
             return Err(anyhow!("chunk_size must be between 1 and 1024"));
