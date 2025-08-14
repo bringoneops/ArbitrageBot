@@ -26,6 +26,10 @@ pub struct Config {
     pub futures_symbols: Vec<String>,
     pub chunk_size: usize,
     pub event_buffer_size: usize,
+    pub http_burst: u32,
+    pub http_refill_per_sec: u32,
+    pub ws_burst: u32,
+    pub ws_refill_per_sec: u32,
     pub enable_spot: bool,
     pub enable_futures: bool,
     pub enable_metrics: bool,
@@ -88,6 +92,22 @@ impl Config {
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(1024);
+        let http_burst = env::var("HTTP_BURST")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(10);
+        let http_refill_per_sec = env::var("HTTP_REFILL_PER_SEC")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(10);
+        let ws_burst = env::var("WS_BURST")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(5);
+        let ws_refill_per_sec = env::var("WS_REFILL_PER_SEC")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(5);
         let enable_spot = env::var("ENABLE_SPOT")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
@@ -113,6 +133,10 @@ impl Config {
             futures_symbols,
             chunk_size,
             event_buffer_size,
+            http_burst,
+            http_refill_per_sec,
+            ws_burst,
+            ws_refill_per_sec,
             enable_spot,
             enable_futures,
             enable_metrics,
@@ -147,6 +171,13 @@ impl Config {
         }
         if self.event_buffer_size == 0 || self.event_buffer_size > 65536 {
             return Err(anyhow!("event_buffer_size must be between 1 and 65536"));
+        }
+        if self.http_burst == 0
+            || self.http_refill_per_sec == 0
+            || self.ws_burst == 0
+            || self.ws_refill_per_sec == 0
+        {
+            return Err(anyhow!("rate limit values must be greater than zero"));
         }
         Ok(())
     }
