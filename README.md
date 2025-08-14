@@ -102,12 +102,20 @@ protocol changes.
 
 ## Event Channel and Logging
 
-Parsed WebSocket events are sent over a bounded Tokio `mpsc` channel. The
-buffer size is configurable via [`config/default.toml`](config/default.toml)
-and defaults to `1024`. Downstream tasks can consume the messages directly:
+Parsed WebSocket events are now partitioned across channels keyed by
+`<exchange>:<symbol>`. Each partition has its own bounded Tokio `mpsc`
+queue, allowing consumers to normalize events in parallel and improving
+throughput under heavy load. The buffer size for each partition is
+configurable via [`config/default.toml`](config/default.toml) and
+defaults to `1024`.
+
+To consume a specific partition, obtain the corresponding receiver and
+spawn a task:
 
 ```rust
+// channel map is keyed by "Exchange:SYMBOL"
 let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
+channels.insert("Binance:BTCUSDT".into(), tx);
 tokio::spawn(async move {
     while let Some(event) = rx.recv().await {
         // handle event
@@ -122,6 +130,14 @@ logging is disabled by default; set `RUST_LOG=debug` and enable the
 ```bash
 RUST_LOG=debug cargo run --features debug-logs
 ```
+
+### Tuning
+
+The total number of partitions equals the number of enabled symbol and
+exchange combinations. Increasing the `event_buffer_size` can smooth out
+bursts at the cost of memory. Adjusting `CHUNK_SIZE` controls how many
+streams share a WebSocket connection, trading connection count for per
+stream latency.
 
 ## Default Channels
 

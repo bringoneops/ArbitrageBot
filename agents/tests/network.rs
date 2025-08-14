@@ -30,12 +30,14 @@ async fn run_ws_emits_event() {
 
     let books = Arc::new(DashMap::new());
     let (tx, mut rx) = mpsc::channel(1);
+    let channels = Arc::new(DashMap::new());
+    channels.insert("Test:BTCUSDT".into(), tx);
     let http_bucket = Arc::new(TokenBucket::new(1, 1, Duration::from_secs(1)));
 
     run_ws(
         ws_stream,
         books,
-        tx,
+        channels,
         Client::new(),
         "http://localhost/".into(),
         "Test".into(),
@@ -70,7 +72,9 @@ async fn subscribe_handles_reconnect_failures() {
     std::env::set_var("MAX_FAILURES", "1");
     let client = Client::new();
     let (task_tx, mut task_rx) = mpsc::unbounded_channel();
-    let (event_tx, _event_rx) = mpsc::channel(1);
+    let event_txs = Arc::new(DashMap::new());
+    let (tx, _rx) = mpsc::channel(1);
+    event_txs.insert("Test:BTCUSDT".into(), tx);
     let tls = Arc::new(
         ClientConfig::builder()
             .with_safe_defaults()
@@ -83,7 +87,7 @@ async fn subscribe_handles_reconnect_failures() {
         1,
         String::new(),
         task_tx.clone(),
-        event_tx,
+        event_txs,
         vec!["BTCUSDT".to_string()],
         tls,
     );
@@ -99,5 +103,7 @@ async fn token_bucket_enforces_rate_limit() {
     let bucket = TokenBucket::new(1, 0, Duration::from_secs(60));
     bucket.acquire(1).await;
     let fut = bucket.acquire(1);
-    assert!(tokio::time::timeout(Duration::from_millis(50), fut).await.is_err());
+    assert!(tokio::time::timeout(Duration::from_millis(50), fut)
+        .await
+        .is_err());
 }

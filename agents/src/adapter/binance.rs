@@ -109,7 +109,7 @@ pub struct BinanceAdapter {
     chunk_size: usize,
     proxy_url: String,
     task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
-    event_tx: mpsc::Sender<StreamMessage<'static>>,
+    event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
     symbols: Vec<String>,
     orderbooks: Arc<DashMap<String, OrderBook>>,
     tls_config: Arc<ClientConfig>,
@@ -124,7 +124,7 @@ impl BinanceAdapter {
         chunk_size: usize,
         proxy_url: String,
         task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
-        event_tx: mpsc::Sender<StreamMessage<'static>>,
+        event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
         symbols: Vec<String>,
         tls_config: Arc<ClientConfig>,
     ) -> Self {
@@ -135,7 +135,7 @@ impl BinanceAdapter {
             chunk_size,
             proxy_url,
             task_tx,
-            event_tx,
+            event_txs,
             symbols,
             orderbooks: Arc::new(DashMap::new()),
             tls_config,
@@ -182,7 +182,7 @@ impl ExchangeAdapter for BinanceAdapter {
             let name = self.cfg.name.to_string();
             let task_tx = self.task_tx.clone();
             let books = self.orderbooks.clone();
-            let event_tx = self.event_tx.clone();
+            let event_txs = self.event_txs.clone();
             let client = self.client.clone();
             let depth_base = depth_base.clone();
             let tls_config = tls_cfg.clone();
@@ -227,7 +227,7 @@ impl ExchangeAdapter for BinanceAdapter {
                                 run_ws(
                                     ws_stream,
                                     books.clone(),
-                                    event_tx.clone(),
+                                    event_txs.clone(),
                                     client.clone(),
                                     depth_base.clone(),
                                     name.clone(),
@@ -245,7 +245,7 @@ impl ExchangeAdapter for BinanceAdapter {
                                 run_ws(
                                     ws_stream,
                                     books.clone(),
-                                    event_tx.clone(),
+                                    event_txs.clone(),
                                     client.clone(),
                                     depth_base.clone(),
                                     name.clone(),
@@ -417,7 +417,7 @@ async fn fetch_depth_snapshot(
 pub async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
     books: Arc<DashMap<String, OrderBook>>,
-    event_tx: mpsc::Sender<StreamMessage<'static>>,
+    event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
     client: Client,
     depth_base: String,
     exchange: String,
@@ -517,8 +517,13 @@ where
                                     }
                                 }
                             }
-                            if let Err(e) = event_tx.send(event).await {
-                                tracing::warn!("failed to send event: {}", e);
+                            let key = format!("{}:{}", exchange, symbol);
+                            if let Some(tx) = event_txs.get(&key) {
+                                if let Err(e) = tx.send(event).await {
+                                    tracing::warn!("failed to send event: {}", e);
+                                }
+                            } else {
+                                tracing::warn!("missing channel for {}", key);
                             }
                             if core::config::metrics_enabled() {
                                 metrics::gauge!("md_pipeline_p99_us")

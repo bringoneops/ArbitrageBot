@@ -1,5 +1,6 @@
 use anyhow::Result;
 use arb_core as core;
+use dashmap::DashMap;
 use reqwest::Client;
 use rustls::ClientConfig;
 use std::sync::Arc;
@@ -46,10 +47,12 @@ pub async fn spawn_adapters(
     cfg: &'static core::config::Config,
     client: Client,
     task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
-    event_tx: mpsc::Sender<core::events::StreamMessage<'static>>,
+    event_txs: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
     tls_config: Arc<ClientConfig>,
-) -> Result<()> {
+    event_buffer_size: usize,
+) -> Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>> {
     let chunk_size = cfg.chunk_size;
+    let mut receivers = Vec::new();
 
     for exch in BINANCE_EXCHANGES {
         let is_spot = exch.name.contains("Spot");
@@ -71,13 +74,20 @@ pub async fn spawn_adapters(
             symbols = fetch_symbols(exch.info_url).await?;
         }
 
+        for symbol in &symbols {
+            let (tx, rx) = mpsc::channel(event_buffer_size);
+            let key = format!("{}:{}", exch.name, symbol);
+            event_txs.insert(key, tx);
+            receivers.push(rx);
+        }
+
         let adapter = BinanceAdapter::new(
             exch,
             client.clone(),
             chunk_size,
             cfg.proxy_url.clone().unwrap_or_default(),
             task_tx.clone(),
-            event_tx.clone(),
+            event_txs.clone(),
             symbols,
             tls_config.clone(),
         );
@@ -92,5 +102,5 @@ pub async fn spawn_adapters(
         let _ = tx.send(handle);
     }
 
-    Ok(())
+    Ok(receivers)
 }
