@@ -5,17 +5,18 @@ use core::{
     apply_depth_update, chunk_streams_with_config, fast_forward, handle_stream_event, next_backoff,
     stream_config_for_exchange, ApplyResult, DepthSnapshot, OrderBook,
 };
+use dashmap::DashMap;
 use futures::{stream, SinkExt, StreamExt};
 use rand::Rng;
 use reqwest::{Client, StatusCode};
 use rustls::ClientConfig;
 use serde_json::Value;
 use simd_json::serde::from_slice;
-use std::{collections::HashMap, env, sync::Arc};
+use std::{env, sync::Arc};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    sync::{mpsc, Mutex},
+    sync::mpsc,
     task::JoinHandle,
     time::{interval, sleep, timeout, Duration, Instant, MissedTickBehavior},
 };
@@ -110,7 +111,7 @@ pub struct BinanceAdapter {
     task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
     event_tx: mpsc::Sender<StreamMessage<'static>>,
     symbols: Vec<String>,
-    orderbooks: Arc<Mutex<HashMap<String, OrderBook>>>,
+    orderbooks: Arc<DashMap<String, OrderBook>>,
     tls_config: Arc<ClientConfig>,
     http_bucket: Arc<TokenBucket>,
     ws_bucket: Arc<TokenBucket>,
@@ -135,7 +136,7 @@ impl BinanceAdapter {
             task_tx,
             event_tx,
             symbols,
-            orderbooks: Arc::new(Mutex::new(HashMap::new())),
+            orderbooks: Arc::new(DashMap::new()),
             tls_config,
             http_bucket: Arc::new(TokenBucket::new(10, 10, Duration::from_secs(1))),
             ws_bucket: Arc::new(TokenBucket::new(5, 5, Duration::from_secs(1))),
@@ -302,7 +303,7 @@ impl ExchangeAdapter for BinanceAdapter {
     async fn backfill(&mut self) -> Result<()> {
         let symbols = self.symbols.clone();
         let depth_base = self.cfg.info_url.trim_end_matches("exchangeInfo");
-        let mut books_map: HashMap<String, OrderBook> = HashMap::new();
+        let books_map: DashMap<String, OrderBook> = DashMap::new();
 
         let bucket = self.http_bucket.clone();
         let fetches = stream::iter(symbols.clone())
@@ -341,7 +342,7 @@ impl ExchangeAdapter for BinanceAdapter {
         }
 
         self.symbols = symbols;
-        self.orderbooks = Arc::new(Mutex::new(books_map));
+        self.orderbooks = Arc::new(books_map);
         Ok(())
     }
 }
@@ -406,7 +407,7 @@ async fn fetch_depth_snapshot(
 
 async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
-    books: Arc<Mutex<HashMap<String, OrderBook>>>,
+    books: Arc<DashMap<String, OrderBook>>,
     event_tx: mpsc::Sender<StreamMessage<'static>>,
     client: Client,
     depth_base: String,
@@ -490,20 +491,18 @@ where
                             handle_stream_event(&event, raw);
                             if let Event::DepthUpdate(ref update) = event.data {
                                 let symbol = update.symbol.clone();
-                                let mut map = books.lock().await;
-                                if let Some(book) = map.get_mut(&symbol) {
-                                    match apply_depth_update(book, update) {
+                                if let Some(mut book) = books.get_mut(&symbol) {
+                                    match apply_depth_update(&mut book, update) {
                                         ApplyResult::Applied | ApplyResult::Outdated => {}
                                         ApplyResult::Gap => {
                                             let buffer = vec![update.clone()];
-                                            drop(map);
+                                            drop(book);
                                             if let Some(mut new_book) =
                                                 fetch_depth_snapshot(&client, &depth_base, &symbol, &http_bucket)
                                                     .await
                                             {
                                                 fast_forward(&mut new_book, &buffer);
-                                                let mut map = books.lock().await;
-                                                map.insert(symbol, new_book);
+                                                books.insert(symbol, new_book);
                                             }
                                         }
                                     }
