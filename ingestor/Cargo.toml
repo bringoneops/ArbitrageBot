@@ -22,6 +22,7 @@ metrics-exporter-dogstatsd = { version = "0.9", optional = true }
 async-trait       = "0.1"
 toml              = "0.8"
 rand              = "0.8"
+dashmap           = "5"
 rustls            = "0.21"
 rustls-pemfile    = "1"
 rustls-native-certs = "0.6"

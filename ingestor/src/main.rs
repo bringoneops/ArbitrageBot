@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
+use dashmap::DashMap;
 use reqwest::{Client, Proxy};
+use std::sync::Arc;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
@@ -36,40 +38,44 @@ pub async fn run() -> Result<()> {
     let (task_tx, mut task_rx) = mpsc::unbounded_channel::<JoinHandle<()>>();
 
     let event_buffer_size = cfg.event_buffer_size;
-    let (event_tx, mut event_rx) = mpsc::channel::<StreamMessage<'static>>(event_buffer_size);
+    let event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>> =
+        Arc::new(DashMap::new());
 
-    // Spawn a task to normalize and forward events from all adapters.
-    let tx = task_tx.clone();
-    let handle = tokio::spawn(async move {
-        while let Some(msg) = event_rx.recv().await {
-            match MdEvent::try_from(msg.data) {
-                Ok(_ev) => {
-                    if core::config::metrics_enabled() {
-                        metrics::counter!("md_events_total").increment(1);
-                    }
-                    #[cfg(feature = "debug-logs")]
-                    debug!(?_ev, stream = %msg.stream, "normalized event");
-                }
-                Err(_) => {
-                    error!(stream = %msg.stream, "failed to normalize event");
-                }
-            }
-        }
-    });
-    let _ = tx.send(handle);
-
-    // Create and spawn exchange adapters.
-    spawn_adapters(
+    // Create and spawn exchange adapters, collecting receivers for each partition.
+    let receivers = spawn_adapters(
         cfg,
         client,
         task_tx.clone(),
-        event_tx.clone(),
+        event_txs.clone(),
         tls_config.clone(),
+        event_buffer_size,
     )
     .await?;
 
-    // Drop the original sender so the receiver can terminate once all adapters finish.
-    drop(event_tx);
+    // Spawn a consumer task per partition to normalize events.
+    for mut event_rx in receivers {
+        let tx = task_tx.clone();
+        let handle = tokio::spawn(async move {
+            while let Some(msg) = event_rx.recv().await {
+                match MdEvent::try_from(msg.data) {
+                    Ok(_ev) => {
+                        if core::config::metrics_enabled() {
+                            metrics::counter!("md_events_total").increment(1);
+                        }
+                        #[cfg(feature = "debug-logs")]
+                        debug!(?_ev, stream = %msg.stream, "normalized event");
+                    }
+                    Err(_) => {
+                        error!(stream = %msg.stream, "failed to normalize event");
+                    }
+                }
+            }
+        });
+        let _ = tx.send(handle);
+    }
+
+    // Drop the original senders so receivers can terminate once all adapters finish.
+    drop(event_txs);
     drop(task_tx);
 
     // Await all spawned tasks and log any errors.

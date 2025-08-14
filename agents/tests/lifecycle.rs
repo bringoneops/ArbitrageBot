@@ -6,6 +6,7 @@ use std::sync::{
 use agents::{run_adapters, spawn_adapters, ExchangeAdapter, BINANCE_EXCHANGES};
 use arb_core as core;
 use async_trait::async_trait;
+use dashmap::DashMap;
 use reqwest::Client;
 use rustls::{ClientConfig, RootCertStore};
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -51,11 +52,18 @@ async fn spawn_adapters_ok() {
     );
 
     let (task_tx, _task_rx) = mpsc::unbounded_channel::<JoinHandle<()>>();
-    let (tx, _rx) = mpsc::channel::<core::events::StreamMessage<'static>>(cfg.event_buffer_size);
+    let event_txs = Arc::new(DashMap::new());
 
-    assert!(spawn_adapters(cfg, client, task_tx, tx, tls_config)
-        .await
-        .is_ok());
+    assert!(spawn_adapters(
+        cfg,
+        client,
+        task_tx,
+        event_txs,
+        tls_config,
+        cfg.event_buffer_size,
+    )
+    .await
+    .is_ok());
 }
 
 #[tokio::test]
