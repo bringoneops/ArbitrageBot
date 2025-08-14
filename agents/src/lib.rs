@@ -4,8 +4,8 @@ use reqwest::Client;
 use rustls::ClientConfig;
 use std::sync::Arc;
 use tokio::{
-    sync::{mpsc, Mutex},
-    task::JoinSet,
+    sync::mpsc,
+    task::{JoinHandle, JoinSet},
 };
 use tracing::error;
 
@@ -45,7 +45,7 @@ where
 pub async fn spawn_adapters(
     cfg: &'static core::config::Config,
     client: Client,
-    tasks: Arc<Mutex<JoinSet<()>>>,
+    task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
     event_tx: mpsc::Sender<core::events::StreamMessage<'static>>,
     tls_config: Arc<ClientConfig>,
 ) -> Result<()> {
@@ -76,19 +76,20 @@ pub async fn spawn_adapters(
             client.clone(),
             chunk_size,
             cfg.proxy_url.clone().unwrap_or_default(),
-            tasks.clone(),
+            task_tx.clone(),
             event_tx.clone(),
             symbols,
             tls_config.clone(),
         );
 
-        let tasks_clone = tasks.clone();
-        tasks_clone.lock().await.spawn(async move {
+        let tx = task_tx.clone();
+        let handle = tokio::spawn(async move {
             let mut adapter = adapter;
             if let Err(e) = adapter.run().await {
                 error!("Failed to run adapter: {}", e);
             }
         });
+        let _ = tx.send(handle);
     }
 
     Ok(())
