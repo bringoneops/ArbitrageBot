@@ -16,6 +16,7 @@ pub use adapter::binance::{
     fetch_symbols as fetch_binance_symbols, BinanceAdapter, BINANCE_EXCHANGES,
 };
 pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
+pub use adapter::xt::{fetch_symbols as fetch_xt_symbols, XtAdapter, XT_EXCHANGES};
 pub use adapter::bitmart::{
     fetch_symbols as fetch_bitmart_symbols, BitmartAdapter, BITMART_EXCHANGES,
 };
@@ -110,6 +111,7 @@ pub async fn spawn_adapters(
     adapter::binance::register();
     adapter::gateio::register();
     adapter::mexc::register();
+    adapter::xt::register();
     adapter::bitmart::register();
     adapter::coinex::register();
     adapter::latoken::register();

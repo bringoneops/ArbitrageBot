@@ -25,6 +25,7 @@ pub trait ExchangeAdapter {
 pub mod binance;
 pub mod coinex;
 pub mod gateio;
+pub mod xt;
 pub mod bitmart;
 pub mod bitget;
 pub mod latoken;
