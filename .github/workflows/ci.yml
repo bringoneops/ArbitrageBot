@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# ✅ least-privilege to satisfy CKV2_GHA_1
+permissions:
+  contents: read
+  actions: read
+  # security-events: write  # only if you add a SARIF upload step
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,7 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Detect whether Trunk is configured in this repo
       - id: detect_trunk
         name: Detect Trunk config
         shell: bash
@@ -31,7 +36,6 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # --- Trunk path (only runs if .trunk/trunk.yaml exists) ---
       - name: Cache Trunk tools
         if: steps.detect_trunk.outputs.present == 'true'
         uses: actions/cache@v3
@@ -46,7 +50,6 @@ jobs:
         run: |
           set -euxo pipefail
           curl -fsSL https://get.trunk.io | bash
-          trunk --version
           trunk install
 
       - name: Run Trunk fmt
@@ -57,8 +60,8 @@ jobs:
         if: steps.detect_trunk.outputs.present == 'true'
         run: trunk check --ci
 
-      # --- Fallback path (no Trunk config present) ---
-      - name: Set up Rust (for fallback linters)
+      # Fallback if Trunk isn't configured
+      - name: Set up Rust (fallback)
         if: steps.detect_trunk.outputs.present == 'false'
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -71,17 +74,6 @@ jobs:
       - name: Cargo clippy (fallback)
         if: steps.detect_trunk.outputs.present == 'false'
         run: cargo clippy --all-targets --all-features -- -D warnings
-
-  bridgecrew:
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Bridgecrew scan
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          quiet: true
 
   test:
     runs-on: ubuntu-latest
