@@ -1,10 +1,19 @@
+# .trunk/trunk.yaml
 version: 0.1
 
 cli:
-  version: 1.5.2
+  # Use a current Trunk CLI (1.5.x is too old). Any recent 1.2x works.
+  # If you don't want to chase versions, keep this on a stable modern pin.
+  version: 1.21.0
 
 lint:
   enabled:
     - clippy
     - rustfmt
     - taplo
+
+# (Optional) ignore typical build output and generated files
+ignore:
+  - target/**/*
+  - "**/*.generated.*"
+  - "**/node_modules/**/*"
