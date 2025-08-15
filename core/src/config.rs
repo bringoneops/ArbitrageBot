@@ -42,21 +42,34 @@ pub struct Config {
 
 static CONFIG: OnceCell<Config> = OnceCell::new();
 
+/// ---- NEW: helpers to avoid nested conditionals ----
+fn creds_from_env() -> Option<Credentials> {
+    let api_key = env::var("API_KEY").ok()?;
+    let api_secret = env::var("API_SECRET").ok()?;
+    if api_key.is_empty() || api_secret.is_empty() {
+        return None;
+    }
+    Some(Credentials { api_key, api_secret })
+}
+
+fn creds_from_file(path: &str) -> Result<Option<Credentials>> {
+    let mut content = fs::read(path).context("reading credentials file")?;
+    let creds: Credentials = from_slice(&mut content).context("parsing credentials file")?;
+    if creds.api_key.is_empty() || creds.api_secret.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(creds))
+}
+/// ---------------------------------------------------
+
 fn load_credentials() -> Result<Credentials> {
-    if let (Ok(api_key), Ok(api_secret)) = (env::var("API_KEY"), env::var("API_SECRET")) {
-        if !api_key.is_empty() && !api_secret.is_empty() {
-            return Ok(Credentials {
-                api_key,
-                api_secret,
-            });
-        }
+    if let Some(c) = creds_from_env() {
+        return Ok(c);
     }
 
     if let Ok(path) = env::var("API_CREDENTIALS_FILE") {
-        let mut content = fs::read(&path).context("reading credentials file")?;
-        let creds: Credentials = from_slice(&mut content).context("parsing credentials file")?;
-        if !creds.api_key.is_empty() && !creds.api_secret.is_empty() {
-            return Ok(creds);
+        if let Some(c) = creds_from_file(&path)? {
+            return Ok(c);
         }
     }
 
@@ -64,6 +77,8 @@ fn load_credentials() -> Result<Credentials> {
         "API_KEY and API_SECRET must be set via env or credentials file"
     ))
 }
+
+// … everything below unchanged …
 
 fn parse_symbols_env(var: &str) -> Vec<String> {
     match env::var(var) {
@@ -158,25 +173,19 @@ impl Config {
     fn validate_symbols(&self) -> Result<()> {
         if self.enable_spot
             && self.spot_symbols.is_empty()
-            && !env::var("SPOT_SYMBOLS")
-                .unwrap_or_default()
-                .eq_ignore_ascii_case("ALL")
+            && !env::var("SPOT_SYMBOLS").unwrap_or_default().eq_ignore_ascii_case("ALL")
         {
             return Err(anyhow!("spot symbol list cannot be empty"));
         }
         if self.enable_futures
             && self.futures_symbols.is_empty()
-            && !env::var("FUTURES_SYMBOLS")
-                .unwrap_or_default()
-                .eq_ignore_ascii_case("ALL")
+            && !env::var("FUTURES_SYMBOLS").unwrap_or_default().eq_ignore_ascii_case("ALL")
         {
             return Err(anyhow!("futures symbol list cannot be empty"));
         }
         if self.enable_mexc
             && self.mexc_symbols.is_empty()
-            && !env::var("MEXC_SYMBOLS")
-                .unwrap_or_default()
-                .eq_ignore_ascii_case("ALL")
+            && !env::var("MEXC_SYMBOLS").unwrap_or_default().eq_ignore_ascii_case("ALL")
         {
             return Err(anyhow!("mexc symbol list cannot be empty"));
         }
