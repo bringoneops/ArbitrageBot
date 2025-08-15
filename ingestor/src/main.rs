@@ -52,11 +52,11 @@ fn process_stream_event(msg: StreamMessage<'static>, metrics_enabled: bool) {
 
 async fn spawn_consumers(
     receivers: Vec<mpsc::Receiver<StreamMessage<'static>>>,
-    task_set: TaskSet,
+    join_set: TaskSet,
     metrics_enabled: bool,
 ) {
     for mut event_rx in receivers {
-        let set = task_set.clone();
+        let set = join_set.clone();
         let mut set = set.lock().await;
         set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
@@ -75,7 +75,7 @@ pub async fn run() -> Result<()> {
     let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
     let client = build_client(&cfg, tls_config.clone())?;
 
-    let task_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
+    let join_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
 
     let event_buffer_size = cfg.event_buffer_size;
     let event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>> =
@@ -85,7 +85,7 @@ pub async fn run() -> Result<()> {
     let receivers = spawn_adapters(
         cfg,
         client,
-        task_set.clone(),
+        join_set.clone(),
         event_txs.clone(),
         tls_config.clone(),
         event_buffer_size,
@@ -94,15 +94,15 @@ pub async fn run() -> Result<()> {
 
     // Spawn a consumer task per partition to normalize events.
     let metrics_enabled = core::config::metrics_enabled();
-    spawn_consumers(receivers, task_set.clone(), metrics_enabled).await;
+    spawn_consumers(receivers, join_set.clone(), metrics_enabled).await;
 
     // Drop the original senders so receivers can terminate once all adapters finish.
     drop(event_txs);
 
     // Await all spawned tasks and log any errors.
     {
-        let mut set = task_set.lock().await;
-        while let Some(result) = set.join_next().await {
+        let mut join_set = join_set.lock().await;
+        while let Some(result) = join_set.join_next().await {
             if let Err(e) = result {
                 error!("task error: {}", e);
             }
