@@ -1,5 +1,18 @@
-use canonical::events::{Event, StreamMessage, MexcStreamMessage};
+use canonical::events::{Event, MexcStreamMessage, StreamMessage};
 use canonical::{BookKind, MdEvent, Side};
+
+macro_rules! parses_event {
+    ($name:ident, $json:expr, $pattern:pat, $checks:block) => {
+        #[test]
+        fn $name() {
+            let msg: StreamMessage<'_> = serde_json::from_str($json).expect("failed to parse");
+            match msg.data {
+                $pattern => $checks,
+                _ => panic!("unexpected event"),
+            }
+        }
+    };
+}
 
 #[test]
 fn parses_trade_event() {
@@ -24,18 +37,15 @@ fn handles_unknown_event() {
     assert!(matches!(msg.data, Event::Unknown));
 }
 
-#[test]
-fn parses_agg_trade_event() {
-    let json = r#"{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","E":1,"s":"BTCUSDT","a":2,"p":"0.1","q":"2","f":1,"l":2,"T":3,"m":true,"M":true}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::AggTrade(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.agg_trade_id, 2);
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_agg_trade_event,
+    r#"{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","E":1,"s":"BTCUSDT","a":2,"p":"0.1","q":"2","f":1,"l":2,"T":3,"m":true,"M":true}}"#,
+    Event::AggTrade(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.agg_trade_id, 2);
     }
-}
+);
 
 #[test]
 fn parses_depth_update_event() {
@@ -74,18 +84,15 @@ fn parses_kline_event() {
     }
 }
 
-#[test]
-fn parses_mini_ticker_event() {
-    let json = r#"{"stream":"btcusdt@miniTicker","data":{"e":"24hrMiniTicker","E":1,"s":"BTCUSDT","c":"1","o":"0.5","h":"1.2","l":"0.4","v":"100","q":"80"}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::MiniTicker(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.close_price, "1");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_mini_ticker_event,
+    r#"{"stream":"btcusdt@miniTicker","data":{"e":"24hrMiniTicker","E":1,"s":"BTCUSDT","c":"1","o":"0.5","h":"1.2","l":"0.4","v":"100","q":"80"}}"#,
+    Event::MiniTicker(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.close_price, "1");
     }
-}
+);
 
 #[test]
 fn parses_ticker_event() {
@@ -109,18 +116,15 @@ fn parses_ticker_event() {
     }
 }
 
-#[test]
-fn parses_book_ticker_event() {
-    let json = r#"{"stream":"btcusdt@bookTicker","data":{"e":"bookTicker","u":1,"s":"BTCUSDT","b":"0.1","B":"2","a":"0.2","A":"3"}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::BookTicker(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.best_bid_price, "0.1");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_book_ticker_event,
+    r#"{"stream":"btcusdt@bookTicker","data":{"e":"bookTicker","u":1,"s":"BTCUSDT","b":"0.1","B":"2","a":"0.2","A":"3"}}"#,
+    Event::BookTicker(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.best_bid_price, "0.1");
     }
-}
+);
 
 #[test]
 fn parses_mexc_events() {
@@ -140,97 +144,76 @@ fn parses_mexc_events() {
     assert!(matches!(md, MdEvent::Ticker(_)));
 }
 
-#[test]
-fn parses_mark_price_event() {
-    let json = r#"{"stream":"btcusdt@markPrice","data":{"e":"markPriceUpdate","E":1,"s":"BTCUSDT","p":"1.0","i":"1.1","r":"0.001","T":2,"P":"1.0"}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::MarkPrice(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.mark_price, "1.0");
-            assert_eq!(ev.index_price, "1.1");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_mark_price_event,
+    r#"{"stream":"btcusdt@markPrice","data":{"e":"markPriceUpdate","E":1,"s":"BTCUSDT","p":"1.0","i":"1.1","r":"0.001","T":2,"P":"1.0"}}"#,
+    Event::MarkPrice(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.mark_price, "1.0");
+        assert_eq!(ev.index_price, "1.1");
     }
-}
+);
 
-#[test]
-fn parses_index_price_event() {
-    let json = r#"{"stream":"btcusdt@indexPrice","data":{"e":"indexPriceUpdate","E":1,"s":"BTCUSDT","p":"1.1"}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::IndexPrice(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.index_price, "1.1");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_index_price_event,
+    r#"{"stream":"btcusdt@indexPrice","data":{"e":"indexPriceUpdate","E":1,"s":"BTCUSDT","p":"1.1"}}"#,
+    Event::IndexPrice(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.index_price, "1.1");
     }
-}
+);
 
-#[test]
-fn parses_mark_price_kline_event() {
-    let json = r#"{"stream":"btcusdt@markPriceKline_1m","data":{"e":"markPriceKline","E":1,"s":"BTCUSDT","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::MarkPriceKline(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.kline.open, "0.1");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_mark_price_kline_event,
+    r#"{"stream":"btcusdt@markPriceKline_1m","data":{"e":"markPriceKline","E":1,"s":"BTCUSDT","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#,
+    Event::MarkPriceKline(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.kline.open, "0.1");
     }
-}
+);
 
-#[test]
-fn parses_index_price_kline_event() {
-    let json = r#"{"stream":"btcusdt@indexPriceKline_1m","data":{"e":"indexPriceKline","E":1,"s":"BTCUSDT","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::IndexPriceKline(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.kline.close, "0.2");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_index_price_kline_event,
+    r#"{"stream":"btcusdt@indexPriceKline_1m","data":{"e":"indexPriceKline","E":1,"s":"BTCUSDT","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#,
+    Event::IndexPriceKline(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.kline.close, "0.2");
     }
-}
+);
 
-#[test]
-fn parses_continuous_kline_event() {
-    let json = r#"{"stream":"btcusdt@continuousKline_1m_perpetual","data":{"e":"continuous_kline","E":1,"ps":"BTCUSDT","ct":"PERPETUAL","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::ContinuousKline(ev) => {
-            assert_eq!(ev.pair, "BTCUSDT");
-            assert_eq!(ev.contract_type, "PERPETUAL");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_continuous_kline_event,
+    r#"{"stream":"btcusdt@continuousKline_1m_perpetual","data":{"e":"continuous_kline","E":1,"ps":"BTCUSDT","ct":"PERPETUAL","k":{"t":2,"T":3,"i":"1m","o":"0.1","c":"0.2","h":"0.3","l":"0.0","v":"100","n":10,"x":false,"q":"200","V":"50","Q":"25"}}}"#,
+    Event::ContinuousKline(ev),
+    {
+        assert_eq!(ev.pair, "BTCUSDT");
+        assert_eq!(ev.contract_type, "PERPETUAL");
     }
-}
+);
 
-#[test]
-fn parses_force_order_event() {
-    let json = r#"{"stream":"btcusdt@forceOrder","data":{"e":"forceOrder","E":1,"o":{"s":"BTCUSDT","S":"SELL","o":"LIMIT","f":"IOC","q":"0.1","p":"10000","ap":"10000","X":"FILLED","l":"0.1","z":"0.1","T":2,"L":"10000","t":1,"b":"0","a":"0","m":false,"R":false}}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::ForceOrder(ev) => {
-            assert_eq!(ev.order.symbol, "BTCUSDT");
-            assert_eq!(ev.order.side, "SELL");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_force_order_event,
+    r#"{"stream":"btcusdt@forceOrder","data":{"e":"forceOrder","E":1,"o":{"s":"BTCUSDT","S":"SELL","o":"LIMIT","f":"IOC","q":"0.1","p":"10000","ap":"10000","X":"FILLED","l":"0.1","z":"0.1","T":2,"L":"10000","t":1,"b":"0","a":"0","m":false,"R":false}}}"#,
+    Event::ForceOrder(ev),
+    {
+        assert_eq!(ev.order.symbol, "BTCUSDT");
+        assert_eq!(ev.order.side, "SELL");
     }
-}
+);
 
-#[test]
-fn parses_force_order_arr_event() {
-    let json = r#"{"stream":"forceOrder@arr","data":{"e":"forceOrder","E":1,"o":{"s":"ETHUSDT","S":"BUY","o":"LIMIT","f":"IOC","q":"1","p":"2000","ap":"2000","X":"FILLED","l":"1","z":"1","T":2,"L":"2000","t":2,"b":"0","a":"0","m":true,"R":false}}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::ForceOrder(ev) => {
-            assert_eq!(ev.order.symbol, "ETHUSDT");
-            assert!(ev.order.is_maker);
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_force_order_arr_event,
+    r#"{"stream":"forceOrder@arr","data":{"e":"forceOrder","E":1,"o":{"s":"ETHUSDT","S":"BUY","o":"LIMIT","f":"IOC","q":"1","p":"2000","ap":"2000","X":"FILLED","l":"1","z":"1","T":2,"L":"2000","t":2,"b":"0","a":"0","m":true,"R":false}}}"#,
+    Event::ForceOrder(ev),
+    {
+        assert_eq!(ev.order.symbol, "ETHUSDT");
+        assert!(ev.order.is_maker);
     }
-}
+);
 
 #[test]
 fn parses_greeks_event() {
@@ -249,28 +232,22 @@ fn parses_greeks_event() {
     }
 }
 
-#[test]
-fn parses_open_interest_event() {
-    let json = r#"{"stream":"btcusdt@openInterest","data":{"e":"openInterest","E":1,"s":"BTCUSDT","o":"123"}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::OpenInterest(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.open_interest, "123");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_open_interest_event,
+    r#"{"stream":"btcusdt@openInterest","data":{"e":"openInterest","E":1,"s":"BTCUSDT","o":"123"}}"#,
+    Event::OpenInterest(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.open_interest, "123");
     }
-}
+);
 
-#[test]
-fn parses_implied_volatility_event() {
-    let json = r#"{"stream":"btcusdt@impliedVolatility","data":{"e":"impliedVolatility","E":1,"s":"BTCUSDT","v":"0.6"}}"#;
-    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
-    match msg.data {
-        Event::ImpliedVolatility(ev) => {
-            assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.implied_volatility, "0.6");
-        }
-        _ => panic!("unexpected event"),
+parses_event!(
+    parses_implied_volatility_event,
+    r#"{"stream":"btcusdt@impliedVolatility","data":{"e":"impliedVolatility","E":1,"s":"BTCUSDT","v":"0.6"}}"#,
+    Event::ImpliedVolatility(ev),
+    {
+        assert_eq!(ev.symbol, "BTCUSDT");
+        assert_eq!(ev.implied_volatility, "0.6");
     }
-}
+);
