@@ -55,9 +55,48 @@ static OPTIONS_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     from_slice(&mut data).expect("invalid options stream configuration")
 });
 
-static GATEIO_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_gateio.json").to_vec();
-    from_slice(&mut data).expect("invalid gateio stream configuration")
+static GATEIO_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_gateio_spot.json").to_vec();
+    from_slice(&mut data).expect("invalid gateio spot stream configuration")
+});
+
+static GATEIO_FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_gateio_futures.json").to_vec();
+    from_slice(&mut data).expect("invalid gateio futures stream configuration")
+});
+
+
+static LATOKEN_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_latoken.json").to_vec();
+    from_slice(&mut data).expect("invalid latoken stream configuration")
+static BITGET_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_bitget.json").to_vec();
+    from_slice(&mut data).expect("invalid bitget stream configuration")
+});
+
+static COINEX_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_coinex_spot.json").to_vec();
+    from_slice(&mut data).expect("invalid coinex spot stream configuration")
+});
+
+static COINEX_PERPETUAL_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_coinex_perpetual.json").to_vec();
+    from_slice(&mut data).expect("invalid coinex perpetual stream configuration")
+});
+
+static BITMART_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_bitmart_spot.json").to_vec();
+    from_slice(&mut data).expect("invalid bitmart spot stream configuration")
+});
+
+static BITMART_CONTRACT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_bitmart_contract.json").to_vec();
+    from_slice(&mut data).expect("invalid bitmart contract stream configuration")
+});
+
+static XT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_xt.json").to_vec();
+    from_slice(&mut data).expect("invalid xt stream configuration")
 });
 
 static KUCOIN_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
@@ -81,9 +120,18 @@ pub fn stream_config_for_exchange(name: &str) -> &'static StreamConfig {
         "Binance.US Spot" | "Binance Global Spot" => &SPOT_STREAM_CONFIG,
         "Binance Futures" | "Binance Delivery" => &FUTURES_STREAM_CONFIG,
         "Binance Options" => &OPTIONS_STREAM_CONFIG,
+        "Gate.io Spot" => &GATEIO_SPOT_STREAM_CONFIG,
+        "Gate.io Futures" => &GATEIO_FUTURES_STREAM_CONFIG,
         "Gate.io Spot" => &GATEIO_STREAM_CONFIG,
         "KuCoin Spot" => &KUCOIN_SPOT_STREAM_CONFIG,
         "KuCoin Futures" => &KUCOIN_FUTURES_STREAM_CONFIG,
+        "XT Spot" | "XT Futures" => &XT_STREAM_CONFIG,
+        "BitMart Spot" => &BITMART_SPOT_STREAM_CONFIG,
+        "BitMart Contract" => &BITMART_CONTRACT_STREAM_CONFIG,
+        "CoinEx Spot" => &COINEX_SPOT_STREAM_CONFIG,
+        "CoinEx Perpetual" => &COINEX_PERPETUAL_STREAM_CONFIG,
+        "LATOKEN" => &LATOKEN_STREAM_CONFIG,
+        "Bitget" => &BITGET_STREAM_CONFIG,
         _ => default_stream_config(),
     }
 }
