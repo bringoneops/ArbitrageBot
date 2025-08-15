@@ -60,6 +60,16 @@ static GATEIO_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     from_slice(&mut data).expect("invalid gateio stream configuration")
 });
 
+static KUCOIN_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_kucoin_spot.json").to_vec();
+    from_slice(&mut data).expect("invalid kucoin spot stream configuration")
+});
+
+static KUCOIN_FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_kucoin_futures.json").to_vec();
+    from_slice(&mut data).expect("invalid kucoin futures stream configuration")
+});
+
 /// Returns the default stream configuration.
 pub fn default_stream_config() -> &'static StreamConfig {
     &STREAM_CONFIG
@@ -72,6 +82,8 @@ pub fn stream_config_for_exchange(name: &str) -> &'static StreamConfig {
         "Binance Futures" | "Binance Delivery" => &FUTURES_STREAM_CONFIG,
         "Binance Options" => &OPTIONS_STREAM_CONFIG,
         "Gate.io Spot" => &GATEIO_STREAM_CONFIG,
+        "KuCoin Spot" => &KUCOIN_SPOT_STREAM_CONFIG,
+        "KuCoin Futures" => &KUCOIN_FUTURES_STREAM_CONFIG,
         _ => default_stream_config(),
     }
 }
