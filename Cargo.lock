@@ -121,6 +121,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-test",
+ "typenum",
 ]
 
 [[package]]
