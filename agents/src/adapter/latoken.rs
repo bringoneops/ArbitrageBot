@@ -1,0 +1,172 @@
+use anyhow::Result;
+use arb_core as core;
+use async_trait::async_trait;
+use core::{chunk_streams_with_config, stream_config_for_exchange};
+use reqwest::Client;
+use serde_json::Value;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use std::sync::Once;
+use crate::{registry, ChannelRegistry, TaskSet};
+use super::ExchangeAdapter;
+use futures::future::BoxFuture;
+use dashmap::DashMap;
+use core::rate_limit::TokenBucket;
+use tokio::task::JoinHandle;
+use std::sync::atomic::AtomicBool;
+use tracing::error;
+
+/// Configuration for a single LATOKEN exchange endpoint.
+pub struct LatokenConfig {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub info_url: &'static str,
+    pub ws_base: &'static str,
+}
+
+/// All LATOKEN exchanges supported by this adapter.
+pub const LATOKEN_EXCHANGES: &[LatokenConfig] = &[LatokenConfig {
+    id: "latoken_spot",
+    name: "LATOKEN",
+    info_url: "https://api.latoken.com/v2/ticker",
+    ws_base: "wss://api.latoken.com/ws",
+}];
+
+/// Retrieve all trading symbols for LATOKEN using its ticker endpoint.
+pub async fn fetch_symbols(info_url: &str) -> Result<Vec<String>> {
+    let resp = Client::new().get(info_url).send().await?.error_for_status()?;
+    let data: Value = resp.json().await?;
+    let arr = data.as_array().unwrap_or(&Vec::new()).clone();
+    let mut result: Vec<String> = arr
+        .iter()
+        .filter_map(|s| s.get("symbol").and_then(|v| v.as_str()).map(|v| v.to_string()))
+        .collect();
+    result.sort();
+    result.dedup();
+    Ok(result)
+}
+
+static REGISTER: Once = Once::new();
+
+pub fn register() {
+    REGISTER.call_once(|| {
+        for exch in LATOKEN_EXCHANGES {
+            let cfg_ref: &'static LatokenConfig = exch;
+            registry::register_adapter(
+                cfg_ref.id,
+                Arc::new(
+                    move |global_cfg: &'static core::config::Config,
+                          exchange_cfg: &core::config::ExchangeConfig,
+                          client: Client,
+                          task_set: TaskSet,
+                          channels: ChannelRegistry,
+                          _tls_config: Arc<rustls::ClientConfig>|
+                          -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>> {
+                        let cfg = cfg_ref;
+                        let initial_symbols = exchange_cfg.symbols.clone();
+                        Box::pin(async move {
+                            let mut symbols = initial_symbols;
+                            if symbols.is_empty() {
+                                symbols = fetch_symbols(cfg.info_url).await?;
+                            }
+
+                            let mut receivers = Vec::new();
+                            for symbol in &symbols {
+                                let key = format!("{}:{}", cfg.name, symbol);
+                                let (_, rx) = channels.get_or_create(&key);
+                                if let Some(rx) = rx {
+                                    receivers.push(rx);
+                                }
+                            }
+
+                            let adapter = LatokenAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
+
+                            {
+                                let mut set = task_set.lock().await;
+                                set.spawn(async move {
+                                    let mut adapter = adapter;
+                                    if let Err(e) = adapter.run().await {
+                                        error!("Failed to run adapter: {}", e);
+                                    }
+                                });
+                            }
+
+                            Ok(receivers)
+                        })
+                    })
+            );
+        }
+    });
+}
+
+/// Adapter implementing the `ExchangeAdapter` trait for LATOKEN.
+pub struct LatokenAdapter {
+    cfg: &'static LatokenConfig,
+    _client: Client,
+    chunk_size: usize,
+    symbols: Vec<String>,
+    _books: Arc<DashMap<String, core::OrderBook>>,
+    http_bucket: Arc<TokenBucket>,
+    ws_bucket: Arc<TokenBucket>,
+    tasks: Vec<JoinHandle<Result<()>>>,
+    shutdown: Arc<AtomicBool>,
+}
+
+impl LatokenAdapter {
+    pub fn new(
+        cfg: &'static LatokenConfig,
+        client: Client,
+        chunk_size: usize,
+        symbols: Vec<String>,
+    ) -> Self {
+        let global_cfg = core::config::get();
+        Self {
+            cfg,
+            _client: client,
+            chunk_size,
+            symbols,
+            _books: Arc::new(DashMap::new()),
+            http_bucket: Arc::new(TokenBucket::new(
+                global_cfg.http_burst,
+                global_cfg.http_refill_per_sec,
+                std::time::Duration::from_secs(1),
+            )),
+            ws_bucket: Arc::new(TokenBucket::new(
+                global_cfg.ws_burst,
+                global_cfg.ws_refill_per_sec,
+                std::time::Duration::from_secs(1),
+            )),
+            tasks: Vec::new(),
+            shutdown: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+#[async_trait]
+impl ExchangeAdapter for LatokenAdapter {
+    async fn subscribe(&mut self) -> Result<()> {
+        let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
+        let cfg = stream_config_for_exchange(self.cfg.name);
+        let _chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
+        // Actual subscription logic to LATOKEN would be implemented here.
+        Ok(())
+    }
+
+    async fn run(&mut self) -> Result<()> {
+        self.subscribe().await?;
+        Ok(())
+    }
+
+    async fn heartbeat(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn auth(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn backfill(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
