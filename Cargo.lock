@@ -29,6 +29,7 @@ dependencies = [
  "futures",
  "metrics",
  "metrics-util",
+ "once_cell",
  "rand 0.8.5",
  "reqwest",
  "rustls 0.21.12",

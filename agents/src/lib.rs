@@ -11,6 +11,7 @@ use tokio::{
 use tracing::error;
 
 pub mod adapter;
+pub mod registry;
 pub use adapter::binance::{
     fetch_symbols as fetch_binance_symbols, BinanceAdapter, BINANCE_EXCHANGES,
 };
@@ -57,84 +58,26 @@ pub async fn spawn_adapters(
     tls_config: Arc<ClientConfig>,
     event_buffer_size: usize,
 ) -> Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>> {
-    let chunk_size = cfg.chunk_size;
+    adapter::binance::register();
+    adapter::mexc::register();
+
     let mut receivers = Vec::new();
 
-    for exch in BINANCE_EXCHANGES {
-        let is_spot = exch.name.contains("Spot");
-        let is_derivative = exch.name.contains("Futures")
-            || exch.name.contains("Delivery")
-            || exch.name.contains("Options");
-
-        if (is_spot && !cfg.enable_spot) || (is_derivative && !cfg.enable_futures) {
-            continue;
-        }
-
-        let mut symbols = if is_spot {
-            cfg.spot_symbols.clone()
+    for exch in &cfg.exchanges {
+        if let Some(factory) = registry::get_adapter(&exch.id) {
+            let mut res = factory(
+                cfg,
+                exch,
+                client.clone(),
+                task_set.clone(),
+                event_txs.clone(),
+                tls_config.clone(),
+                event_buffer_size,
+            )
+            .await?;
+            receivers.append(&mut res);
         } else {
-            cfg.futures_symbols.clone()
-        };
-
-        if symbols.is_empty() {
-            symbols = adapter::binance::fetch_symbols(exch.info_url).await?;
-        }
-
-        for symbol in &symbols {
-            let (tx, rx) = mpsc::channel(event_buffer_size);
-            let key = format!("{}:{}", exch.name, symbol);
-            event_txs.insert(key, tx);
-            receivers.push(rx);
-        }
-
-        let adapter = BinanceAdapter::new(
-            exch,
-            client.clone(),
-            chunk_size,
-            cfg.proxy_url.clone().unwrap_or_default(),
-            task_set.clone(),
-            event_txs.clone(),
-            symbols,
-            tls_config.clone(),
-        );
-
-        {
-            let mut set = task_set.lock().await;
-            set.spawn(async move {
-                let mut adapter = adapter;
-                if let Err(e) = adapter.run().await {
-                    error!("Failed to run adapter: {}", e);
-                }
-            });
-        }
-    }
-
-    if cfg.enable_mexc {
-        for exch in MEXC_EXCHANGES {
-            let mut symbols = cfg.mexc_symbols.clone();
-
-            if symbols.is_empty() {
-                symbols = fetch_symbols(exch.info_url).await?;
-            }
-
-            for symbol in &symbols {
-                let (tx, rx) = mpsc::channel(event_buffer_size);
-                let key = format!("{}:{}", exch.name, symbol);
-                event_txs.insert(key, tx);
-                receivers.push(rx);
-            }
-
-            let adapter = MexcAdapter::new(exch, client.clone(), chunk_size, symbols);
-
-            {
-                let mut set = task_set.lock().await;
-                set.spawn(async move {
-                    let mut adapter = adapter;
-                    if let Err(e) = adapter.run().await {
-                        error!("Failed to run adapter: {}", e);
-                    }
-                });
-            }
+            error!("No adapter factory registered for {}", exch.id);
         }
     }
 
