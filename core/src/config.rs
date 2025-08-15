@@ -65,81 +65,67 @@ fn load_credentials() -> Result<Credentials> {
     ))
 }
 
-impl Config {
-    pub fn from_env() -> Result<Self> {
-        let proxy_url = env::var("SOCKS5_PROXY").ok();
-        let spot_symbols = match env::var("SPOT_SYMBOLS") {
-            Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
-            Ok(v) => v
-                .split(',')
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-        let futures_symbols = match env::var("FUTURES_SYMBOLS") {
-            Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
-            Ok(v) => v
-                .split(',')
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-        let mexc_symbols = match env::var("MEXC_SYMBOLS") {
-            Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
-            Ok(v) => v
-                .split(',')
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-        let chunk_size = env::var("CHUNK_SIZE")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(100);
-        let event_buffer_size = env::var("EVENT_BUFFER_SIZE")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(1024);
-        let http_burst = env::var("HTTP_BURST")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(10);
-        let http_refill_per_sec = env::var("HTTP_REFILL_PER_SEC")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(10);
-        let ws_burst = env::var("WS_BURST")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(5);
-        let ws_refill_per_sec = env::var("WS_REFILL_PER_SEC")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or(5);
-        let enable_spot = env::var("ENABLE_SPOT")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true);
-        let enable_futures = env::var("ENABLE_FUTURES")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true);
-        let enable_mexc = env::var("ENABLE_MEXC")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        let enable_metrics = env::var("ENABLE_METRICS")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true);
-
-        let credentials = load_credentials()?;
-        let ca_bundle = env::var("CA_BUNDLE").ok();
-        let cert_pins = env::var("CERT_PINS")
-            .unwrap_or_default()
+fn parse_symbols_env(var: &str) -> Vec<String> {
+    match env::var(var) {
+        Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
+        Ok(v) => v
             .split(',')
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
-            .collect();
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn parse_usize_env(var: &str, default: usize) -> usize {
+    env::var(var)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(default)
+}
+
+fn parse_u32_env(var: &str, default: u32) -> u32 {
+    env::var(var)
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(default)
+}
+
+fn parse_bool_env(var: &str, default: bool) -> bool {
+    env::var(var)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(default)
+}
+
+fn parse_list_env(var: &str) -> Vec<String> {
+    env::var(var)
+        .unwrap_or_default()
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+impl Config {
+    pub fn from_env() -> Result<Self> {
+        let proxy_url = env::var("SOCKS5_PROXY").ok();
+        let spot_symbols = parse_symbols_env("SPOT_SYMBOLS");
+        let futures_symbols = parse_symbols_env("FUTURES_SYMBOLS");
+        let mexc_symbols = parse_symbols_env("MEXC_SYMBOLS");
+        let chunk_size = parse_usize_env("CHUNK_SIZE", 100);
+        let event_buffer_size = parse_usize_env("EVENT_BUFFER_SIZE", 1024);
+        let http_burst = parse_u32_env("HTTP_BURST", 10);
+        let http_refill_per_sec = parse_u32_env("HTTP_REFILL_PER_SEC", 10);
+        let ws_burst = parse_u32_env("WS_BURST", 5);
+        let ws_refill_per_sec = parse_u32_env("WS_REFILL_PER_SEC", 5);
+        let enable_spot = parse_bool_env("ENABLE_SPOT", true);
+        let enable_futures = parse_bool_env("ENABLE_FUTURES", true);
+        let enable_mexc = parse_bool_env("ENABLE_MEXC", false);
+        let enable_metrics = parse_bool_env("ENABLE_METRICS", true);
+
+        let credentials = load_credentials()?;
+        let ca_bundle = env::var("CA_BUNDLE").ok();
+        let cert_pins = parse_list_env("CERT_PINS");
 
         Ok(Config {
             proxy_url,
