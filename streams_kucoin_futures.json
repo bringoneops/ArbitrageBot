@@ -1,0 +1,16 @@
+{
+  "global": [
+    "/contractMarket/ticker:all"
+  ],
+  "per_symbol": [
+    "/contractMarket/ticker",
+    "/contractMarket/level2",
+    "/contractMarket/level2Depth5",
+    "/contractMarket/level2Depth50",
+    "/contractMarket/execution",
+    "/contractMarket/tradeOrders",
+    "/contractMarket/indexPrice",
+    "/contractMarket/markPrice",
+    "/contractMarket/fundingRate"
+  ]
+}

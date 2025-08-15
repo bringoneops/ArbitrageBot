@@ -56,6 +56,7 @@ fn parses_depth_update_event() {
         MdEvent::DepthL2Update(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
             assert_eq!(ev.ts, 1);
+            assert_eq!(ev.ts, 1_000_000);
             assert_eq!(ev.bids[0].price, 1.0);
             assert_eq!(ev.bids[0].quantity, 2.0);
             assert_eq!(ev.bids[0].kind, BookKind::Bid);
