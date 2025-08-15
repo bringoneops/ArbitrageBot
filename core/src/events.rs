@@ -1,7 +1,7 @@
+use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::str::FromStr;
-use rust_decimal::Decimal;
 
 #[derive(Debug, Deserialize)]
 pub struct StreamMessage<'a> {
@@ -442,9 +442,18 @@ pub struct MexcStreamMessage<'a> {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum MexcEvent<'a> {
-    Trades { #[serde(rename = "publicdeals")] data: MexcTrades<'a> },
-    Depth { #[serde(rename = "publicincreasedepths")] data: MexcDepth<'a> },
-    BookTicker { #[serde(rename = "publicbookticker")] data: MexcBookTicker<'a> },
+    Trades {
+        #[serde(rename = "publicdeals")]
+        data: MexcTrades<'a>,
+    },
+    Depth {
+        #[serde(rename = "publicincreasedepths")]
+        data: MexcDepth<'a>,
+    },
+    BookTicker {
+        #[serde(rename = "publicbookticker")]
+        data: MexcBookTicker<'a>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -493,8 +502,8 @@ pub struct MexcBookTicker<'a> {
     pub ask_qty: Cow<'a, str>,
 }
 
-fn parse_decimal(s: &Cow<'_, str>) -> Decimal {
-    Decimal::from_str(s.as_ref()).unwrap_or_default()
+fn parse_decimal(s: &str) -> Decimal {
+    Decimal::from_str(s).unwrap_or_default()
 }
 
 macro_rules! decimal_accessors {
@@ -529,4 +538,3 @@ decimal_accessors!(GreeksEvent { delta => delta_decimal, gamma => gamma_decimal,
 decimal_option_accessors!(GreeksEvent { rho => rho_decimal });
 decimal_accessors!(OpenInterestEvent { open_interest => open_interest_decimal });
 decimal_accessors!(ImpliedVolatilityEvent { implied_volatility => implied_volatility_decimal });
-
