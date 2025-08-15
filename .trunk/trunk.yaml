@@ -1,5 +1,8 @@
 version: 0.1
 
+cli:
+  version: 1.5.2
+
 lint:
   enabled:
     - clippy
