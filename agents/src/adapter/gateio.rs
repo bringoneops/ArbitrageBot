@@ -1,29 +1,16 @@
 use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
-use core::rate_limit::TokenBucket;
-use core::{chunk_streams_with_config, stream_config_for_exchange, OrderBook};
-use dashmap::DashMap;
-use futures::{SinkExt, StreamExt};
+use core::stream_config_for_exchange;
+use futures::future::BoxFuture;
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use tokio::{
-    signal,
-    task::JoinHandle,
-    time::{sleep, Duration},
-};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use std::sync::{Arc, Once};
+use tokio::sync::mpsc;
+use tracing::error;
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
-use futures::future::BoxFuture;
-use std::sync::Once;
-use tokio::sync::mpsc;
-use tracing::error;
 
 /// Configuration for a single Gate.io exchange endpoint.
 pub struct GateioConfig {
@@ -34,42 +21,105 @@ pub struct GateioConfig {
 }
 
 /// All Gate.io exchanges supported by this adapter.
-pub const GATEIO_EXCHANGES: &[GateioConfig] = &[GateioConfig {
-    id: "gateio_spot",
-    name: "Gate.io Spot",
-    info_url: "https://api.gateio.ws/api/v4/spot/currency_pairs",
-    ws_base: "wss://api.gateio.ws/ws/v4/",
-}];
+pub const GATEIO_EXCHANGES: &[GateioConfig] = &[
+    GateioConfig {
+        id: "gateio_spot",
+        name: "Gate.io Spot",
+        info_url: "https://api.gateio.ws/api/v4/spot/currency_pairs",
+        ws_base: "wss://api.gateio.ws/ws/v4/",
+    },
+    GateioConfig {
+        id: "gateio_futures",
+        name: "Gate.io Futures",
+        info_url: "https://api.gateio.ws/api/v4/futures/{settle}/contracts",
+        ws_base: "wss://fx-ws.gateio.ws/v4/ws/{settle}",
+    },
+];
 
-/// Retrieve all trading symbols for Gate.io using its REST endpoint.
-pub async fn fetch_symbols(info_url: &str) -> Result<Vec<String>> {
-    let resp = Client::new()
-        .get(info_url)
-        .send()
-        .await?
-        .error_for_status()?;
-    let data: Value = resp.json().await?;
-    let arr = data
-        .as_array()
-        .ok_or_else(|| anyhow!("expected array"))?;
+/// Retrieve all trading symbols for Gate.io across market types.
+pub async fn fetch_symbols(cfg: &GateioConfig) -> Result<Vec<String>> {
+    let client = Client::new();
+    let mut result: Vec<String> = Vec::new();
+    let limit = 100u32;
 
-    let mut result: Vec<String> = arr
-        .iter()
-        .filter_map(|s| {
-            let tradable = s
-                .get("trade_status")
-                .and_then(|v| v.as_str())
-                .map(|st| st.eq_ignore_ascii_case("tradable"))
-                .unwrap_or(false);
-            if tradable {
-                s.get("id")
-                    .and_then(|v| v.as_str())
-                    .map(|v| v.to_string())
-            } else {
-                None
+    if cfg.info_url.contains("{settle}") {
+        // Futures/perpetual contracts, iterate through settle currencies
+        let settles = ["usdt", "btc", "usd"];
+        for settle in settles.iter() {
+            let mut page = 1u32;
+            loop {
+                let url = cfg.info_url.replace("{settle}", settle);
+                let resp = client
+                    .get(&url)
+                    .query(&[("limit", limit), ("page", page)])
+                    .send()
+                    .await?
+                    .error_for_status()?;
+                let data: Value = resp.json().await?;
+                let arr = data
+                    .as_array()
+                    .ok_or_else(|| anyhow!("expected array"))?;
+                if arr.is_empty() {
+                    break;
+                }
+                for item in arr {
+                    let trading = item
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.eq_ignore_ascii_case("trading"))
+                        .unwrap_or(false)
+                        && !item
+                            .get("in_delisting")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                    if trading {
+                        if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                            result.push(name.to_string());
+                        }
+                    }
+                }
+                if arr.len() < limit as usize {
+                    break;
+                }
+                page += 1;
             }
-        })
-        .collect();
+        }
+    } else {
+        // Spot symbols
+        let mut page = 1u32;
+        loop {
+            let resp = client
+                .get(cfg.info_url)
+                .query(&[("limit", limit), ("page", page)])
+                .send()
+                .await?
+                .error_for_status()?;
+            let data: Value = resp.json().await?;
+            let arr = data
+                .as_array()
+                .ok_or_else(|| anyhow!("expected array"))?;
+            if arr.is_empty() {
+                break;
+            }
+            for item in arr {
+                let tradable = item
+                    .get("trade_status")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.eq_ignore_ascii_case("tradable"))
+                    .unwrap_or(false);
+                if tradable {
+                    if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                        result.push(id.to_string());
+                    }
+                }
+            }
+            if arr.len() < limit as usize {
+                break;
+            }
+            page += 1;
+        }
+    }
+
     result.sort();
     result.dedup();
     Ok(result)
@@ -84,7 +134,8 @@ pub fn register() {
             registry::register_adapter(
                 cfg_ref.id,
                 Arc::new(
-                    move |global_cfg: &'static core::config::Config,
+                    move |
+                          global_cfg: &'static core::config::Config,
                           exchange_cfg: &core::config::ExchangeConfig,
                           client: Client,
                           task_set: TaskSet,
@@ -99,7 +150,7 @@ pub fn register() {
                         Box::pin(async move {
                             let mut symbols = initial_symbols;
                             if symbols.is_empty() {
-                                symbols = fetch_symbols(cfg.info_url).await?;
+                                symbols = fetch_symbols(cfg).await?;
                             }
 
                             let mut receivers = Vec::new();
@@ -137,17 +188,12 @@ pub fn register() {
     });
 }
 
-/// Adapter implementing the `ExchangeAdapter` trait for Gate.io.
+/// Minimal Gate.io adapter implementing [`ExchangeAdapter`].
 pub struct GateioAdapter {
     cfg: &'static GateioConfig,
     _client: Client,
-    chunk_size: usize,
+    _chunk_size: usize,
     symbols: Vec<String>,
-    _books: Arc<DashMap<String, OrderBook>>,
-    http_bucket: Arc<TokenBucket>,
-    ws_bucket: Arc<TokenBucket>,
-    tasks: Vec<JoinHandle<Result<()>>>,
-    shutdown: Arc<AtomicBool>,
 }
 
 impl GateioAdapter {
@@ -157,25 +203,11 @@ impl GateioAdapter {
         chunk_size: usize,
         symbols: Vec<String>,
     ) -> Self {
-        let global_cfg = core::config::get();
         Self {
             cfg,
             _client: client,
-            chunk_size,
+            _chunk_size: chunk_size,
             symbols,
-            _books: Arc::new(DashMap::new()),
-            http_bucket: Arc::new(TokenBucket::new(
-                global_cfg.http_burst,
-                global_cfg.http_refill_per_sec,
-                std::time::Duration::from_secs(1),
-            )),
-            ws_bucket: Arc::new(TokenBucket::new(
-                global_cfg.ws_burst,
-                global_cfg.ws_refill_per_sec,
-                std::time::Duration::from_secs(1),
-            )),
-            tasks: Vec::new(),
-            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -183,84 +215,15 @@ impl GateioAdapter {
 #[async_trait]
 impl ExchangeAdapter for GateioAdapter {
     async fn subscribe(&mut self) -> Result<()> {
-        let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
-        let cfg = stream_config_for_exchange(self.cfg.name);
-        let chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
-
-        for chunk in chunks {
-            let symbols = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-            let ws_url = self.cfg.ws_base.to_string();
-            let ws_bucket = self.ws_bucket.clone();
-            let shutdown = self.shutdown.clone();
-
-            let handle = tokio::spawn(async move {
-                loop {
-                    if shutdown.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    ws_bucket.acquire(1).await;
-                    match connect_async(&ws_url).await {
-                        Ok((mut ws, _)) => {
-                            for symbol in &symbols {
-                                let sub = serde_json::json!({
-                                    "channel": "spot.order_book_update",
-                                    "event": "subscribe",
-                                    "payload": [symbol, "20", "100ms"],
-                                });
-                                let _ = ws.send(Message::Text(sub.to_string())).await;
-                            }
-                            loop {
-                                tokio::select! {
-                                    msg = ws.next() => {
-                                        match msg {
-                                            Some(Ok(Message::Ping(p))) => {
-                                                ws.send(Message::Pong(p)).await.map_err(|e| {
-                                                    tracing::error!("gateio ws pong error: {}", e);
-                                                    e
-                                                })?;
-                                            },
-                                            Some(Ok(Message::Close(_))) | None => { break; },
-                                            Some(Ok(_)) => {},
-                                            Some(Err(e)) => { tracing::warn!("gateio ws error: {}", e); break; },
-                                        }
-                                    }
-                                    _ = async {
-                                        while !shutdown.load(Ordering::Relaxed) {
-                                            sleep(Duration::from_secs(1)).await;
-                                        }
-                                    } => {
-                                        let _ = ws.close(None).await;
-                                        return Ok(());
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("gateio connect error: {}", e);
-                        }
-                    }
-                    if shutdown.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    sleep(Duration::from_secs(5)).await;
-                }
-                Ok::<(), anyhow::Error>(())
-            });
-            self.tasks.push(handle);
-        }
+        // Real implementation would subscribe to depth, trades, ticker, etc.
+        let _ = stream_config_for_exchange(self.cfg.name);
+        let _ = &self.symbols;
         Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
-        self.subscribe().await?;
-
-        let _ = signal::ctrl_c().await;
-        self.shutdown.store(true, Ordering::SeqCst);
-
-        for handle in self.tasks.drain(..) {
-            let _ = handle.await;
-        }
-        Ok(())
+        self.backfill().await?;
+        self.subscribe().await
     }
 
     async fn heartbeat(&mut self) -> Result<()> {
@@ -272,7 +235,6 @@ impl ExchangeAdapter for GateioAdapter {
     }
 
     async fn backfill(&mut self) -> Result<()> {
-        self.http_bucket.acquire(1).await;
         Ok(())
     }
 }
