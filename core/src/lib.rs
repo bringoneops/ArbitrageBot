@@ -55,6 +55,11 @@ static OPTIONS_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     from_slice(&mut data).expect("invalid options stream configuration")
 });
 
+static GATEIO_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_gateio.json").to_vec();
+    from_slice(&mut data).expect("invalid gateio stream configuration")
+});
+
 /// Returns the default stream configuration.
 pub fn default_stream_config() -> &'static StreamConfig {
     &STREAM_CONFIG
@@ -66,6 +71,7 @@ pub fn stream_config_for_exchange(name: &str) -> &'static StreamConfig {
         "Binance.US Spot" | "Binance Global Spot" => &SPOT_STREAM_CONFIG,
         "Binance Futures" | "Binance Delivery" => &FUTURES_STREAM_CONFIG,
         "Binance Options" => &OPTIONS_STREAM_CONFIG,
+        "Gate.io Spot" => &GATEIO_STREAM_CONFIG,
         _ => default_stream_config(),
     }
 }
