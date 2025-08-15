@@ -28,6 +28,7 @@ dependencies = [
  "dashmap",
  "futures",
  "metrics",
+ "metrics-util",
  "rand 0.8.5",
  "reqwest",
  "rustls 0.21.12",

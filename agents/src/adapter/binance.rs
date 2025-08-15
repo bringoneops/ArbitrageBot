@@ -320,7 +320,7 @@ impl ExchangeAdapter for BinanceAdapter {
 
 // --- Internal helpers -----------------------------------------------------
 
-async fn connect_via_socks5(
+pub async fn connect_via_socks5(
     url: Url,
     proxy_addr: &str,
     tls_config: Arc<ClientConfig>,
@@ -558,7 +558,7 @@ async fn update_order_book(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn process_text_message(
+pub async fn process_text_message(
     text: String,
     books: &Arc<DashMap<String, OrderBook>>,
     event_txs: &Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
