@@ -3,11 +3,11 @@ use dashmap::DashMap;
 use reqwest::{Client, Proxy};
 use rustls::ClientConfig;
 use std::{env, sync::Arc};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{sync::{mpsc, Mutex}, task::JoinSet};
 use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
 
-use agents::spawn_adapters;
+use agents::{spawn_adapters, TaskSet};
 use arb_core as core;
 use canonical::MdEvent;
 use core::config;
@@ -50,27 +50,19 @@ fn process_stream_event(msg: StreamMessage<'static>, metrics_enabled: bool) {
     }
 }
 
-fn spawn_consumers(
+async fn spawn_consumers(
     receivers: Vec<mpsc::Receiver<StreamMessage<'static>>>,
-    task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
+    task_set: TaskSet,
     metrics_enabled: bool,
 ) {
     for mut event_rx in receivers {
-        let tx = task_tx.clone();
-        let handle = tokio::spawn(async move {
+        let set = task_set.clone();
+        let mut set = set.lock().await;
+        set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
                 process_stream_event(msg, metrics_enabled);
             }
         });
-        let _ = tx.send(handle);
-    }
-}
-
-async fn await_tasks(mut task_rx: mpsc::UnboundedReceiver<JoinHandle<()>>) {
-    while let Some(handle) = task_rx.recv().await {
-        if let Err(e) = handle.await {
-            error!("task error: {}", e);
-        }
     }
 }
 
@@ -83,7 +75,7 @@ pub async fn run() -> Result<()> {
     let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
     let client = build_client(&cfg, tls_config.clone())?;
 
-    let (task_tx, task_rx) = mpsc::unbounded_channel::<JoinHandle<()>>();
+    let task_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
 
     let event_buffer_size = cfg.event_buffer_size;
     let event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>> =
@@ -93,7 +85,7 @@ pub async fn run() -> Result<()> {
     let receivers = spawn_adapters(
         cfg,
         client,
-        task_tx.clone(),
+        task_set.clone(),
         event_txs.clone(),
         tls_config.clone(),
         event_buffer_size,
@@ -102,14 +94,20 @@ pub async fn run() -> Result<()> {
 
     // Spawn a consumer task per partition to normalize events.
     let metrics_enabled = core::config::metrics_enabled();
-    spawn_consumers(receivers, task_tx.clone(), metrics_enabled);
+    spawn_consumers(receivers, task_set.clone(), metrics_enabled).await;
 
     // Drop the original senders so receivers can terminate once all adapters finish.
     drop(event_txs);
-    drop(task_tx);
 
     // Await all spawned tasks and log any errors.
-    await_tasks(task_rx).await;
+    {
+        let mut set = task_set.lock().await;
+        while let Some(result) = set.join_next().await {
+            if let Err(e) = result {
+                error!("task error: {}", e);
+            }
+        }
+    }
 
     Ok(())
 }

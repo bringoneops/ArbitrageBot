@@ -18,7 +18,6 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
     sync::mpsc,
-    task::JoinHandle,
     time::{interval, sleep, timeout, Duration, Instant, MissedTickBehavior},
 };
 use tokio_socks::tcp::Socks5Stream;
@@ -33,6 +32,7 @@ use core::events::{DepthUpdateEvent, Event, StreamMessage};
 use core::rate_limit::TokenBucket;
 
 use super::ExchangeAdapter;
+use crate::TaskSet;
 
 /// Configuration for a single Binance exchange endpoint.
 pub struct BinanceConfig {
@@ -110,7 +110,7 @@ pub struct BinanceAdapter {
     client: Client,
     chunk_size: usize,
     proxy_url: String,
-    task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
+    task_set: TaskSet,
     event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
     symbols: Vec<String>,
     orderbooks: Arc<DashMap<String, OrderBook>>,
@@ -126,7 +126,7 @@ impl BinanceAdapter {
         client: Client,
         chunk_size: usize,
         proxy_url: String,
-        task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
+        task_set: TaskSet,
         event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
         symbols: Vec<String>,
         tls_config: Arc<ClientConfig>,
@@ -137,7 +137,7 @@ impl BinanceAdapter {
             client,
             chunk_size,
             proxy_url,
-            task_tx,
+            task_set,
             event_txs,
             symbols,
             orderbooks: Arc::new(DashMap::new()),
@@ -155,7 +155,7 @@ impl BinanceAdapter {
         }
     }
 
-    fn spawn_chunk_reader(&self, chunk: Vec<String>, depth_base: &str) -> Result<()> {
+    async fn spawn_chunk_reader(&self, chunk: Vec<String>, depth_base: &str) -> Result<()> {
         let chunk_len = chunk.len();
         let param = chunk.join("/");
         let url = Url::parse(&format!("{}{}", self.cfg.ws_base, param))
@@ -163,7 +163,7 @@ impl BinanceAdapter {
 
         let proxy = self.proxy_url.clone();
         let name = self.cfg.name.to_string();
-        let task_tx = self.task_tx.clone();
+        let task_set = self.task_set.clone();
         let books = self.orderbooks.clone();
         let event_txs = self.event_txs.clone();
         let client = self.client.clone();
@@ -172,61 +172,62 @@ impl BinanceAdapter {
         let ws_bucket = self.ws_bucket.clone();
         let depth_base = depth_base.to_string();
 
-        let handle = tokio::spawn(async move {
-            if proxy.is_empty() {
-                let url_for_connect = url.clone();
-                reconnect_loop(
-                    move || {
-                        let tls = tls_config.clone();
-                        let url = url_for_connect.clone();
-                        async move {
-                            connect_async_tls_with_config(
-                                url,
-                                None,
-                                false,
-                                Some(Connector::Rustls(tls)),
-                            )
-                            .await
-                            .context("WebSocket handshake")
-                            .map(|(ws_stream, _)| ws_stream)
-                        }
-                    },
-                    name.clone(),
-                    url,
-                    chunk_len,
-                    ws_bucket,
-                    books,
-                    event_txs,
-                    client,
-                    depth_base,
-                    http_bucket,
-                )
-                .await;
-            } else {
-                let url_for_connect = url.clone();
-                let proxy_addr = proxy.clone();
-                reconnect_loop(
-                    move || {
-                        let url = url_for_connect.clone();
-                        let proxy_addr = proxy_addr.clone();
-                        let tls = tls_config.clone();
-                        async move { connect_via_socks5(url, &proxy_addr, tls).await }
-                    },
-                    name.clone(),
-                    url,
-                    chunk_len,
-                    ws_bucket,
-                    books,
-                    event_txs,
-                    client,
-                    depth_base,
-                    http_bucket,
-                )
-                .await;
-            }
-        });
-
-        let _ = task_tx.send(handle);
+        {
+            let mut set = task_set.lock().await;
+            set.spawn(async move {
+                if proxy.is_empty() {
+                    let url_for_connect = url.clone();
+                    reconnect_loop(
+                        move || {
+                            let tls = tls_config.clone();
+                            let url = url_for_connect.clone();
+                            async move {
+                                connect_async_tls_with_config(
+                                    url,
+                                    None,
+                                    false,
+                                    Some(Connector::Rustls(tls)),
+                                )
+                                .await
+                                .context("WebSocket handshake")
+                                .map(|(ws_stream, _)| ws_stream)
+                            }
+                        },
+                        name.clone(),
+                        url,
+                        chunk_len,
+                        ws_bucket,
+                        books,
+                        event_txs,
+                        client,
+                        depth_base,
+                        http_bucket,
+                    )
+                    .await;
+                } else {
+                    let url_for_connect = url.clone();
+                    let proxy_addr = proxy.clone();
+                    reconnect_loop(
+                        move || {
+                            let url = url_for_connect.clone();
+                            let proxy_addr = proxy_addr.clone();
+                            let tls = tls_config.clone();
+                            async move { connect_via_socks5(url, &proxy_addr, tls).await }
+                        },
+                        name.clone(),
+                        url,
+                        chunk_len,
+                        ws_bucket,
+                        books,
+                        event_txs,
+                        client,
+                        depth_base,
+                        http_bucket,
+                    )
+                    .await;
+                }
+            });
+        }
         Ok(())
     }
 }
@@ -251,7 +252,7 @@ impl ExchangeAdapter for BinanceAdapter {
             .to_string();
 
         for chunk in chunks {
-            self.spawn_chunk_reader(chunk, &depth_base)?;
+            self.spawn_chunk_reader(chunk, &depth_base).await?;
         }
 
         Ok(())

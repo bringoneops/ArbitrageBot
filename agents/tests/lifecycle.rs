@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use reqwest::Client;
 use rustls::{ClientConfig, RootCertStore};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{task::JoinSet, sync::Mutex};
+use agents::TaskSet;
 
 struct TestAdapter {
     counter: Arc<AtomicUsize>,
@@ -51,19 +52,21 @@ async fn spawn_adapters_ok() {
             .with_no_client_auth(),
     );
 
-    let (task_tx, _task_rx) = mpsc::unbounded_channel::<JoinHandle<()>>();
+    let task_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
     let event_txs = Arc::new(DashMap::new());
 
-    assert!(spawn_adapters(
-        cfg,
-        client,
-        task_tx,
-        event_txs,
-        tls_config,
-        cfg.event_buffer_size,
-    )
-    .await
-    .is_ok());
+    assert!(
+        spawn_adapters(
+            cfg,
+            client,
+            task_set,
+            event_txs,
+            tls_config,
+            cfg.event_buffer_size,
+        )
+        .await
+        .is_ok()
+    );
 }
 
 #[tokio::test]

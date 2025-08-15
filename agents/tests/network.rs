@@ -8,9 +8,9 @@ use reqwest::Client;
 use rustls::{ClientConfig, RootCertStore};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
-use tokio::sync::mpsc;
+use tokio::{net::TcpListener, sync::{mpsc, Mutex}, task::JoinSet};
 use tokio_tungstenite::{accept_async, connect_async, tungstenite::protocol::Message};
+use agents::TaskSet;
 
 #[tokio::test]
 async fn run_ws_emits_event() {
@@ -71,7 +71,7 @@ async fn subscribe_handles_reconnect_failures() {
     core::config::load().unwrap();
     std::env::set_var("MAX_FAILURES", "1");
     let client = Client::new();
-    let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+    let task_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
     let event_txs = Arc::new(DashMap::new());
     let (tx, _rx) = mpsc::channel(1);
     event_txs.insert("Test:BTCUSDT".into(), tx);
@@ -86,16 +86,19 @@ async fn subscribe_handles_reconnect_failures() {
         client,
         1,
         String::new(),
-        task_tx.clone(),
+        task_set.clone(),
         event_txs,
         vec!["BTCUSDT".to_string()],
         tls,
     );
     adapter.subscribe().await.unwrap();
-    let handle = task_rx.recv().await.unwrap();
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle)
-        .await
-        .expect("task did not complete");
+    {
+        let mut set = task_set.lock().await;
+        let res = tokio::time::timeout(Duration::from_secs(2), set.join_next())
+            .await
+            .expect("task did not complete");
+        let _ = res.unwrap();
+    }
 }
 
 #[tokio::test]
