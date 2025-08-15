@@ -1,10 +1,14 @@
 use canonical::{
     events::{
-        Event, Kline as EventKline, KlineEvent, MexcStreamMessage,
-        MiniTickerEvent, TickerEvent, TradeEvent,
+        Event, FundingRateEvent, ForceOrder, ForceOrderEvent, IndexPriceEvent,
+        Kline as EventKline, KlineEvent, MarkPriceEvent, MexcStreamMessage,
+        MiniTickerEvent, OpenInterestEvent, TickerEvent, TradeEvent,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
-    Kline as CanonKline, MdEvent, MiniTicker as CanonMiniTicker, Side, Trade,
+    FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice,
+    Kline as CanonKline, Liquidation as CanonLiquidation, MarkPrice as CanonMarkPrice,
+    MdEvent, MiniTicker as CanonMiniTicker, OpenInterest as CanonOpenInterest,
+    Side, Trade,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use serde_json::json;
@@ -240,6 +244,125 @@ fn avg_price_event_to_canonical() {
             assert_eq!(p, de);
         }
         _ => panic!("expected avg price"),
+    }
+}
+
+#[test]
+fn mark_price_event_to_canonical() {
+    let ev = MarkPriceEvent {
+        event_time: 1,
+        symbol: "BTCUSDT".to_string(),
+        mark_price: Cow::Borrowed("100"),
+        index_price: Cow::Borrowed("101"),
+        funding_rate: Cow::Borrowed("0.01"),
+        next_funding_time: 0,
+        estimated_settle_price: None,
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::MarkPrice(p) => {
+            assert_eq!(p.price, 100.0);
+            assert_eq!(p.symbol, "BTCUSDT");
+            let s = serde_json::to_string(&p).unwrap();
+            let de: CanonMarkPrice = serde_json::from_str(&s).unwrap();
+            assert_eq!(p, de);
+        }
+        _ => panic!("expected mark price"),
+    }
+}
+
+#[test]
+fn index_price_event_to_canonical() {
+    let ev = IndexPriceEvent {
+        event_time: 1,
+        symbol: "BTCUSDT".to_string(),
+        index_price: Cow::Borrowed("101"),
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::IndexPrice(p) => {
+            assert_eq!(p.price, 101.0);
+            let s = serde_json::to_string(&p).unwrap();
+            let de: CanonIndexPrice = serde_json::from_str(&s).unwrap();
+            assert_eq!(p, de);
+        }
+        _ => panic!("expected index price"),
+    }
+}
+
+#[test]
+fn funding_rate_event_to_canonical() {
+    let ev = FundingRateEvent {
+        event_time: 1,
+        symbol: "BTCUSDT".to_string(),
+        funding_rate: Cow::Borrowed("0.01"),
+        funding_time: 0,
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::FundingRate(f) => {
+            assert_eq!(f.rate, 0.01);
+            let s = serde_json::to_string(&f).unwrap();
+            let de: CanonFundingRate = serde_json::from_str(&s).unwrap();
+            assert_eq!(f, de);
+        }
+        _ => panic!("expected funding rate"),
+    }
+}
+
+#[test]
+fn open_interest_event_to_canonical() {
+    let ev = OpenInterestEvent {
+        event_time: 1,
+        symbol: "BTCUSDT".to_string(),
+        open_interest: Cow::Borrowed("1234"),
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::OpenInterest(o) => {
+            assert_eq!(o.open_interest, 1234.0);
+            let s = serde_json::to_string(&o).unwrap();
+            let de: CanonOpenInterest = serde_json::from_str(&s).unwrap();
+            assert_eq!(o, de);
+        }
+        _ => panic!("expected open interest"),
+    }
+}
+
+#[test]
+fn force_order_event_to_canonical() {
+    let ev = ForceOrderEvent {
+        event_time: 1,
+        order: ForceOrder {
+            symbol: "BTCUSDT".to_string(),
+            side: "SELL".to_string(),
+            order_type: "LIMIT".to_string(),
+            time_in_force: "GTC".to_string(),
+            original_quantity: Cow::Borrowed("1"),
+            price: Cow::Borrowed("100"),
+            average_price: Cow::Borrowed("100"),
+            status: "FILLED".to_string(),
+            last_filled_quantity: Cow::Borrowed("1"),
+            filled_accumulated_quantity: Cow::Borrowed("1"),
+            trade_time: 1,
+            last_filled_price: Cow::Borrowed("100"),
+            trade_id: 1,
+            bids_notional: Cow::Borrowed("100"),
+            ask_notional: Cow::Borrowed("100"),
+            is_maker: true,
+            reduce_only: false,
+        },
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::Liquidation(l) => {
+            assert_eq!(l.price, 100.0);
+            assert_eq!(l.quantity, 1.0);
+            let s = serde_json::to_string(&l).unwrap();
+            let de: CanonLiquidation = serde_json::from_str(&s).unwrap();
+            assert_eq!(l, de);
+        }
+        _ => panic!("expected liquidation"),
     }
 }
 
