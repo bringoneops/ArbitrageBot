@@ -16,6 +16,7 @@ pub use adapter::binance::{
     fetch_symbols as fetch_binance_symbols, BinanceAdapter, BINANCE_EXCHANGES,
 };
 pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
+pub use adapter::latoken::{fetch_symbols as fetch_latoken_symbols, LatokenAdapter, LATOKEN_EXCHANGES};
 pub use adapter::ExchangeAdapter;
 
 /// Shared task set type for spawning and tracking asynchronous tasks.
@@ -106,6 +107,8 @@ pub async fn spawn_adapters(
     adapter::binance::register();
     adapter::gateio::register();
     adapter::mexc::register();
+    adapter::latoken::register();
+    adapter::bitget::register();
 
     let mut receivers = Vec::new();
 
