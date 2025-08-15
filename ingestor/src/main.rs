@@ -28,11 +28,9 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
     let mut client_builder = Client::builder()
         .user_agent(user_agent)
         .use_preconfigured_tls(tls_config);
-    if let Some(proxy) = &cfg.proxy_url {
-        if !proxy.is_empty() {
-            client_builder = client_builder
-                .proxy(Proxy::all(format!("socks5h://{}", proxy)).context("invalid proxy URL")?);
-        }
+    if let Some(proxy) = cfg.proxy_url.as_ref().filter(|p| !p.is_empty()) {
+        client_builder = client_builder
+            .proxy(Proxy::all(format!("socks5h://{}", proxy)).context("invalid proxy URL")?);
     }
     client_builder.build().context("building HTTP client")
 }
