@@ -3,6 +3,22 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::str::FromStr;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    Trade,
+    Book,
+    Ticker,
+    MiniTicker,
+    Kline,
+    Depth,
+    AvgPrice,
+    MarkPrice,
+    IndexPrice,
+    FundingRate,
+    OpenInterest,
+    Liquidation,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StreamMessage<'a> {
     pub stream: String,
@@ -516,6 +532,118 @@ pub struct MexcBookTicker<'a> {
     pub ask_price: Cow<'a, str>,
     #[serde(rename = "askquantity")]
     pub ask_qty: Cow<'a, str>,
+}
+
+impl<'a> TradeEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Trade
+    }
+}
+
+impl<'a> AggTradeEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Trade
+    }
+}
+
+impl<'a> BookTickerEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Book
+    }
+}
+
+impl<'a> MiniTickerEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::MiniTicker
+    }
+}
+
+impl<'a> TickerEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Ticker
+    }
+}
+
+impl<'a> KlineEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Kline
+    }
+}
+
+impl<'a> MarkPriceKlineEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Kline
+    }
+}
+
+impl<'a> IndexPriceKlineEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Kline
+    }
+}
+
+impl<'a> ContinuousKlineEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Kline
+    }
+}
+
+impl<'a> DepthUpdateEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Depth
+    }
+}
+
+impl<'a> MarkPriceEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::MarkPrice
+    }
+}
+
+impl<'a> IndexPriceEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::IndexPrice
+    }
+}
+
+impl<'a> FundingRateEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::FundingRate
+    }
+}
+
+impl<'a> OpenInterestEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::OpenInterest
+    }
+}
+
+impl<'a> ForceOrderEvent<'a> {
+    pub fn channel(&self) -> Channel {
+        Channel::Liquidation
+    }
+}
+
+impl<'a> Event<'a> {
+    pub fn channel(&self) -> Option<Channel> {
+        match self {
+            Event::Trade(_) | Event::AggTrade(_) => Some(Channel::Trade),
+            Event::BookTicker(_) => Some(Channel::Book),
+            Event::Ticker(_) => Some(Channel::Ticker),
+            Event::MiniTicker(_) => Some(Channel::MiniTicker),
+            Event::Kline(_)
+            | Event::MarkPriceKline(_)
+            | Event::IndexPriceKline(_)
+            | Event::ContinuousKline(_) => Some(Channel::Kline),
+            Event::DepthUpdate(_) => Some(Channel::Depth),
+            Event::MarkPrice(_) => Some(Channel::MarkPrice),
+            Event::IndexPrice(_) => Some(Channel::IndexPrice),
+            Event::FundingRate(_) => Some(Channel::FundingRate),
+            Event::OpenInterest(_) => Some(Channel::OpenInterest),
+            Event::ForceOrder(_) => Some(Channel::Liquidation),
+            _ => None,
+        }
+    }
 }
 
 fn parse_decimal(s: &str) -> Decimal {

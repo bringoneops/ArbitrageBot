@@ -4,6 +4,8 @@ pub mod metrics;
 pub mod rate_limit;
 pub mod tls;
 
+pub use events::Channel;
+
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use simd_json::serde::from_slice;

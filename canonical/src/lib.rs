@@ -8,6 +8,7 @@ pub use arb_core::events::{
     StreamMessage, TickerEvent,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
+use arb_core::events::Channel;
 use events::{
     DepthUpdateEvent,
     TradeEvent,
@@ -186,7 +187,7 @@ impl<'a> From<TradeEvent<'a>> for Trade {
             trade_id: Some(ev.trade_id),
             buyer_order_id: Some(ev.buyer_order_id),
             seller_order_id: Some(ev.seller_order_id),
-            timestamp: ev.trade_time,
+            timestamp: ev.trade_time * 1_000_000,
             side: Some(side),
         }
     }
@@ -235,7 +236,7 @@ impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
-            ts: ev.event_time,
+            ts: ev.event_time * 1_000_000,
             bids,
             asks,
             first_update_id: Some(ev.first_update_id),
@@ -573,6 +574,97 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                 }))
             }
         }
+    }
+}
+
+impl MdEvent {
+    pub fn channel(&self) -> Channel {
+        match self {
+            MdEvent::Trade(e) => e.channel(),
+            MdEvent::DepthL2Update(e) => e.channel(),
+            MdEvent::BookTicker(e) => e.channel(),
+            MdEvent::MiniTicker(e) => e.channel(),
+            MdEvent::Kline(e) => e.channel(),
+            MdEvent::DepthSnapshot(e) => e.channel(),
+            MdEvent::AvgPrice(e) => e.channel(),
+            MdEvent::MarkPrice(e) => e.channel(),
+            MdEvent::IndexPrice(e) => e.channel(),
+            MdEvent::FundingRate(e) => e.channel(),
+            MdEvent::OpenInterest(e) => e.channel(),
+            MdEvent::Liquidation(e) => e.channel(),
+        }
+    }
+}
+
+impl Trade {
+    pub fn channel(&self) -> Channel {
+        Channel::Trade
+    }
+}
+
+impl DepthL2Update {
+    pub fn channel(&self) -> Channel {
+        Channel::Depth
+    }
+}
+
+impl BookTicker {
+    pub fn channel(&self) -> Channel {
+        Channel::Book
+    }
+}
+
+impl MiniTicker {
+    pub fn channel(&self) -> Channel {
+        Channel::MiniTicker
+    }
+}
+
+impl Kline {
+    pub fn channel(&self) -> Channel {
+        Channel::Kline
+    }
+}
+
+impl DepthSnapshot {
+    pub fn channel(&self) -> Channel {
+        Channel::Depth
+    }
+}
+
+impl AvgPrice {
+    pub fn channel(&self) -> Channel {
+        Channel::AvgPrice
+    }
+}
+
+impl MarkPrice {
+    pub fn channel(&self) -> Channel {
+        Channel::MarkPrice
+    }
+}
+
+impl IndexPrice {
+    pub fn channel(&self) -> Channel {
+        Channel::IndexPrice
+    }
+}
+
+impl FundingRate {
+    pub fn channel(&self) -> Channel {
+        Channel::FundingRate
+    }
+}
+
+impl OpenInterest {
+    pub fn channel(&self) -> Channel {
+        Channel::OpenInterest
+    }
+}
+
+impl Liquidation {
+    pub fn channel(&self) -> Channel {
+        Channel::Liquidation
     }
 }
 
