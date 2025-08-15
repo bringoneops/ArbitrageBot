@@ -31,8 +31,9 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
       - name: Run tests
         run: cargo test --all --locked
-      - name: Install Tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+      - name: Ensure Tarpaulin installed
+        run: |
+          command -v cargo-tarpaulin >/dev/null 2>&1 || cargo install cargo-tarpaulin --locked
       - name: Generate coverage report
         run: cargo tarpaulin --out Xml
       - name: Upload coverage report
