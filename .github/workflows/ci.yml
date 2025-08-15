@@ -20,28 +20,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Detect whether Trunk is configured in this repo
+      - id: detect_trunk
+        name: Detect Trunk config
+        shell: bash
+        run: |
+          if [ -f .trunk/trunk.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Trunk path (only runs if .trunk/trunk.yaml exists) ---
       - name: Cache Trunk tools
+        if: steps.detect_trunk.outputs.present == 'true'
         uses: actions/cache@v3
         with:
           path: ~/.cache/trunk
           key: ${{ runner.os }}-trunk-${{ hashFiles('.trunk/trunk.yaml') }}
           restore-keys: ${{ runner.os }}-trunk-
 
-      - name: Install & init Trunk
+      - name: Install Trunk
+        if: steps.detect_trunk.outputs.present == 'true'
+        shell: bash
         run: |
           set -euxo pipefail
           curl -fsSL https://get.trunk.io | bash
-          if [ ! -d .trunk ]; then
-            echo "No .trunk/ config found; initializing for CI..."
-            trunk init --ci
-          fi
+          trunk --version
           trunk install
 
       - name: Run Trunk fmt
+        if: steps.detect_trunk.outputs.present == 'true'
         run: trunk fmt --ci
 
       - name: Run Trunk check
+        if: steps.detect_trunk.outputs.present == 'true'
         run: trunk check --ci
+
+      # --- Fallback path (no Trunk config present) ---
+      - name: Set up Rust (for fallback linters)
+        if: steps.detect_trunk.outputs.present == 'false'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cargo fmt (fallback)
+        if: steps.detect_trunk.outputs.present == 'false'
+        run: cargo fmt --all -- --check
+
+      - name: Cargo clippy (fallback)
+        if: steps.detect_trunk.outputs.present == 'false'
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     runs-on: ubuntu-latest
