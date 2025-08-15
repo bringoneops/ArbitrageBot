@@ -99,6 +99,16 @@ static XT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     from_slice(&mut data).expect("invalid xt stream configuration")
 });
 
+static KUCOIN_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_kucoin_spot.json").to_vec();
+    from_slice(&mut data).expect("invalid kucoin spot stream configuration")
+});
+
+static KUCOIN_FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_kucoin_futures.json").to_vec();
+    from_slice(&mut data).expect("invalid kucoin futures stream configuration")
+});
+
 /// Returns the default stream configuration.
 pub fn default_stream_config() -> &'static StreamConfig {
     &STREAM_CONFIG
@@ -113,6 +123,8 @@ pub fn stream_config_for_exchange(name: &str) -> &'static StreamConfig {
         "Gate.io Spot" => &GATEIO_SPOT_STREAM_CONFIG,
         "Gate.io Futures" => &GATEIO_FUTURES_STREAM_CONFIG,
         "Gate.io Spot" => &GATEIO_STREAM_CONFIG,
+        "KuCoin Spot" => &KUCOIN_SPOT_STREAM_CONFIG,
+        "KuCoin Futures" => &KUCOIN_FUTURES_STREAM_CONFIG,
         "XT Spot" | "XT Futures" => &XT_STREAM_CONFIG,
         "BitMart Spot" => &BITMART_SPOT_STREAM_CONFIG,
         "BitMart Contract" => &BITMART_CONTRACT_STREAM_CONFIG,
