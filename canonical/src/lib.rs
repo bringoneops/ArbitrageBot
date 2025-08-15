@@ -1,18 +1,27 @@
 use rust_decimal::prelude::ToPrimitive;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 pub use arb_core::events;
-pub use arb_core::events::{Event, StreamMessage, MexcEvent, MexcStreamMessage, BookTickerEvent};
+pub use arb_core::events::{
+    BookTickerEvent, Event, KlineEvent, MexcEvent, MexcStreamMessage, MiniTickerEvent,
+    StreamMessage, TickerEvent,
+};
+use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{DepthUpdateEvent, TradeEvent};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum MdEvent {
     Trade(Trade),
-    Book(Book),
-    Ticker(Ticker),
+    DepthL2Update(DepthL2Update),
+    BookTicker(BookTicker),
+    MiniTicker(MiniTicker),
+    Kline(Kline),
+    DepthSnapshot(DepthSnapshot),
+    AvgPrice(AvgPrice),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Trade {
     pub symbol: String,
     pub price: f64,
@@ -24,53 +33,94 @@ pub struct Trade {
     pub side: Option<Side>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Book {
-    pub symbol: String,
-    pub bids: Vec<Level>,
-    pub asks: Vec<Level>,
-    pub event_time: u64,
-    pub first_update_id: Option<u64>,
-    pub final_update_id: Option<u64>,
-    pub previous_final_update_id: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Level {
     pub price: f64,
     pub quantity: f64,
     pub kind: BookKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum Side {
     Buy,
     Sell,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum BookKind {
     Bid,
     Ask,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ticker {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DepthL2Update {
+    pub exchange: String,
     pub symbol: String,
+    pub ts: u64,
+    pub bids: Vec<Level>,
+    pub asks: Vec<Level>,
+    pub first_update_id: Option<u64>,
+    pub final_update_id: Option<u64>,
+    pub previous_final_update_id: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct BookTicker {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
     pub bid_price: f64,
     pub bid_quantity: f64,
     pub ask_price: f64,
     pub ask_quantity: f64,
-    pub event_time: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MiniTicker {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub volume: f64,
+    pub quote_volume: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Kline {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub open: f64,
+    pub close: f64,
+    pub high: f64,
+    pub low: f64,
+    pub volume: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DepthSnapshot {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub last_update_id: u64,
+    pub bids: Vec<Level>,
+    pub asks: Vec<Level>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct AvgPrice {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub price: f64,
 }
 
 impl<'a> From<TradeEvent<'a>> for Trade {
     fn from(ev: TradeEvent<'a>) -> Self {
-        let side = if ev.buyer_is_maker {
-            Side::Sell
-        } else {
-            Side::Buy
-        };
+        let side = if ev.buyer_is_maker { Side::Sell } else { Side::Buy };
         let price = ev.price_decimal().to_f64().unwrap_or_default();
         let quantity = ev.quantity_decimal().to_f64().unwrap_or_default();
         Self {
@@ -102,7 +152,7 @@ impl<'a> TryFrom<Event<'a>> for Trade {
     }
 }
 
-impl<'a> From<DepthUpdateEvent<'a>> for Book {
+impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
     fn from(ev: DepthUpdateEvent<'a>) -> Self {
         let bids = ev
             .bids
@@ -127,10 +177,11 @@ impl<'a> From<DepthUpdateEvent<'a>> for Book {
             })
             .collect();
         Self {
+            exchange: "binance".to_string(),
             symbol: ev.symbol,
+            ts: ev.event_time,
             bids,
             asks,
-            event_time: ev.event_time.saturating_mul(1_000_000),
             first_update_id: Some(ev.first_update_id),
             final_update_id: Some(ev.final_update_id),
             previous_final_update_id: Some(ev.previous_final_update_id),
@@ -140,17 +191,142 @@ impl<'a> From<DepthUpdateEvent<'a>> for Book {
 
 impl<'a> From<DepthUpdateEvent<'a>> for MdEvent {
     fn from(ev: DepthUpdateEvent<'a>) -> Self {
-        MdEvent::Book(ev.into())
+        MdEvent::DepthL2Update(ev.into())
     }
 }
 
-impl<'a> TryFrom<Event<'a>> for Book {
-    type Error = ();
-    fn try_from(ev: Event<'a>) -> Result<Self, Self::Error> {
-        match ev {
-            Event::DepthUpdate(e) => Ok(e.into()),
-            _ => Err(()),
+impl<'a> From<BookTickerEvent<'a>> for BookTicker {
+    fn from(ev: BookTickerEvent<'a>) -> Self {
+        let bid_price = ev.best_bid_price_decimal().to_f64().unwrap_or_default();
+        let bid_quantity = ev.best_bid_qty_decimal().to_f64().unwrap_or_default();
+        let ask_price = ev.best_ask_price_decimal().to_f64().unwrap_or_default();
+        let ask_quantity = ev.best_ask_qty_decimal().to_f64().unwrap_or_default();
+        Self {
+            exchange: "binance".to_string(),
+            symbol: ev.symbol,
+            ts: 0,
+            bid_price,
+            bid_quantity,
+            ask_price,
+            ask_quantity,
         }
+    }
+}
+
+impl<'a> From<BookTickerEvent<'a>> for MdEvent {
+    fn from(ev: BookTickerEvent<'a>) -> Self {
+        MdEvent::BookTicker(ev.into())
+    }
+}
+
+impl<'a> From<MiniTickerEvent<'a>> for MiniTicker {
+    fn from(ev: MiniTickerEvent<'a>) -> Self {
+        let open = ev.open_price_decimal().to_f64().unwrap_or_default();
+        let high = ev.high_price_decimal().to_f64().unwrap_or_default();
+        let low = ev.low_price_decimal().to_f64().unwrap_or_default();
+        let close = ev.close_price_decimal().to_f64().unwrap_or_default();
+        let volume = ev.volume_decimal().to_f64().unwrap_or_default();
+        let quote_volume = ev.quote_volume_decimal().to_f64().unwrap_or_default();
+        let symbol = ev.symbol;
+        Self {
+            exchange: "binance".to_string(),
+            symbol,
+            ts: ev.event_time,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            quote_volume,
+        }
+    }
+}
+
+impl<'a> From<MiniTickerEvent<'a>> for MdEvent {
+    fn from(ev: MiniTickerEvent<'a>) -> Self {
+        MdEvent::MiniTicker(ev.into())
+    }
+}
+
+impl<'a> From<KlineEvent<'a>> for Kline {
+    fn from(ev: KlineEvent<'a>) -> Self {
+        let k = ev.kline;
+        Self {
+            exchange: "binance".to_string(),
+            symbol: ev.symbol,
+            ts: ev.event_time,
+            open: k.open_decimal().to_f64().unwrap_or_default(),
+            close: k.close_decimal().to_f64().unwrap_or_default(),
+            high: k.high_decimal().to_f64().unwrap_or_default(),
+            low: k.low_decimal().to_f64().unwrap_or_default(),
+            volume: k.volume_decimal().to_f64().unwrap_or_default(),
+        }
+    }
+}
+
+impl<'a> From<KlineEvent<'a>> for MdEvent {
+    fn from(ev: KlineEvent<'a>) -> Self {
+        MdEvent::Kline(ev.into())
+    }
+}
+
+impl From<CoreDepthSnapshot> for DepthSnapshot {
+    fn from(s: CoreDepthSnapshot) -> Self {
+        let bids = s
+            .bids
+            .into_iter()
+            .filter_map(|[p, q]| {
+                Some(Level {
+                    price: p.parse().ok()?,
+                    quantity: q.parse().ok()?,
+                    kind: BookKind::Bid,
+                })
+            })
+            .collect();
+        let asks = s
+            .asks
+            .into_iter()
+            .filter_map(|[p, q]| {
+                Some(Level {
+                    price: p.parse().ok()?,
+                    quantity: q.parse().ok()?,
+                    kind: BookKind::Ask,
+                })
+            })
+            .collect();
+        Self {
+            exchange: "binance".to_string(),
+            symbol: String::new(),
+            ts: 0,
+            last_update_id: s.last_update_id,
+            bids,
+            asks,
+        }
+    }
+}
+
+impl From<CoreDepthSnapshot> for MdEvent {
+    fn from(s: CoreDepthSnapshot) -> Self {
+        MdEvent::DepthSnapshot(s.into())
+    }
+}
+
+impl<'a> From<TickerEvent<'a>> for AvgPrice {
+    fn from(ev: TickerEvent<'a>) -> Self {
+        let price = ev.weighted_avg_price_decimal().to_f64().unwrap_or_default();
+        let symbol = ev.symbol;
+        Self {
+            exchange: "binance".to_string(),
+            symbol,
+            ts: ev.event_time,
+            price,
+        }
+    }
+}
+
+impl<'a> From<TickerEvent<'a>> for MdEvent {
+    fn from(ev: TickerEvent<'a>) -> Self {
+        MdEvent::AvgPrice(ev.into())
     }
 }
 
@@ -161,31 +337,11 @@ impl<'a> TryFrom<Event<'a>> for MdEvent {
             Event::Trade(e) => Ok(MdEvent::from(e)),
             Event::DepthUpdate(e) => Ok(MdEvent::from(e)),
             Event::BookTicker(e) => Ok(MdEvent::from(e)),
+            Event::MiniTicker(e) => Ok(MdEvent::from(e)),
+            Event::Kline(e) => Ok(MdEvent::from(e)),
+            Event::Ticker(e) => Ok(MdEvent::from(e)),
             _ => Err(()),
         }
-    }
-}
-
-impl<'a> From<BookTickerEvent<'a>> for Ticker {
-    fn from(ev: BookTickerEvent<'a>) -> Self {
-        let bid_price = ev.best_bid_price_decimal().to_f64().unwrap_or_default();
-        let bid_quantity = ev.best_bid_qty_decimal().to_f64().unwrap_or_default();
-        let ask_price = ev.best_ask_price_decimal().to_f64().unwrap_or_default();
-        let ask_quantity = ev.best_ask_qty_decimal().to_f64().unwrap_or_default();
-        Self {
-            symbol: ev.symbol,
-            bid_price,
-            bid_quantity,
-            ask_price,
-            ask_quantity,
-            event_time: 0,
-        }
-    }
-}
-
-impl<'a> From<BookTickerEvent<'a>> for MdEvent {
-    fn from(ev: BookTickerEvent<'a>) -> Self {
-        MdEvent::Ticker(ev.into())
     }
 }
 
@@ -236,11 +392,12 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                         })
                     })
                     .collect();
-                Ok(MdEvent::Book(Book {
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "mexc".to_string(),
                     symbol: msg.symbol,
+                    ts: msg.event_time,
                     bids,
                     asks,
-                    event_time: msg.event_time.saturating_mul(1_000_000),
                     first_update_id: None,
                     final_update_id: None,
                     previous_final_update_id: None,
@@ -251,15 +408,17 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                 let bid_quantity: f64 = data.bid_qty.parse().ok().ok_or(())?;
                 let ask_price: f64 = data.ask_price.parse().ok().ok_or(())?;
                 let ask_quantity: f64 = data.ask_qty.parse().ok().ok_or(())?;
-                Ok(MdEvent::Ticker(Ticker {
+                Ok(MdEvent::BookTicker(BookTicker {
+                    exchange: "mexc".to_string(),
                     symbol: msg.symbol,
+                    ts: msg.event_time,
                     bid_price,
                     bid_quantity,
                     ask_price,
                     ask_quantity,
-                    event_time: msg.event_time.saturating_mul(1_000_000),
                 }))
             }
         }
     }
 }
+

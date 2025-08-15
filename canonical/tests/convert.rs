@@ -1,9 +1,14 @@
 use canonical::{
-    events::{Event, MexcStreamMessage, TradeEvent},
-    BookKind, MdEvent, Side, Trade,
+    events::{
+        Event, Kline as EventKline, KlineEvent, MexcStreamMessage,
+        MiniTickerEvent, TickerEvent, TradeEvent,
+    },
+    AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
+    Kline as CanonKline, MdEvent, MiniTicker as CanonMiniTicker, Side, Trade,
 };
-use std::borrow::Cow;
+use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use serde_json::json;
+use std::borrow::Cow;
 
 #[test]
 fn trade_event_to_canonical() {
@@ -87,18 +92,20 @@ fn mexc_depth_event_to_canonical() {
     })).unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
-        MdEvent::Book(b) => {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "mexc");
             assert_eq!(b.symbol, "BTCUSDT");
             assert_eq!(b.bids[0].price, 92876.0);
-            assert_eq!(b.bids[0].kind, BookKind::Bid);
-            assert_eq!(b.asks[0].kind, BookKind::Ask);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
         }
-        _ => panic!("expected book"),
+        _ => panic!("expected depth"),
     }
 }
 
 #[test]
-fn mexc_ticker_event_to_canonical() {
+fn mexc_book_ticker_event_to_canonical() {
     let msg: MexcStreamMessage<'_> = serde_json::from_value(json!({
         "channel": "spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT",
         "publicbookticker": {
@@ -112,11 +119,127 @@ fn mexc_ticker_event_to_canonical() {
     })).unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
-        MdEvent::Ticker(t) => {
+        MdEvent::BookTicker(t) => {
+            assert_eq!(t.exchange, "mexc");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.bid_price, 93387.28);
-            assert_eq!(t.ask_price, 93387.29);
+            let s = serde_json::to_string(&t).unwrap();
+            let de: BookTicker = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
         }
-        _ => panic!("expected ticker"),
+        _ => panic!("expected book ticker"),
     }
 }
+
+#[test]
+fn mini_ticker_event_to_canonical() {
+    let ev = MiniTickerEvent {
+        event_time: 1,
+        symbol: "BTCUSDT".to_string(),
+        close_price: Cow::Borrowed("10"),
+        open_price: Cow::Borrowed("9"),
+        high_price: Cow::Borrowed("11"),
+        low_price: Cow::Borrowed("8"),
+        volume: Cow::Borrowed("100"),
+        quote_volume: Cow::Borrowed("1000"),
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::MiniTicker(t) => {
+            assert_eq!(t.symbol, "BTCUSDT");
+            assert_eq!(t.close, 10.0);
+            let s = serde_json::to_string(&t).unwrap();
+            let de: CanonMiniTicker = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected mini ticker"),
+    }
+}
+
+#[test]
+fn kline_event_to_canonical() {
+    let kline = EventKline {
+        start_time: 0,
+        close_time: 1,
+        interval: "1m".to_string(),
+        open: Cow::Borrowed("9"),
+        close: Cow::Borrowed("10"),
+        high: Cow::Borrowed("11"),
+        low: Cow::Borrowed("8"),
+        volume: Cow::Borrowed("100"),
+        trades: 1,
+        is_closed: true,
+        quote_volume: Cow::Borrowed("1000"),
+        taker_buy_base_volume: Cow::Borrowed("50"),
+        taker_buy_quote_volume: Cow::Borrowed("500"),
+    };
+    let ev = KlineEvent {
+        event_time: 1,
+        symbol: "BTCUSDT".to_string(),
+        kline,
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::Kline(k) => {
+            assert_eq!(k.symbol, "BTCUSDT");
+            assert_eq!(k.close, 10.0);
+            let s = serde_json::to_string(&k).unwrap();
+            let de: CanonKline = serde_json::from_str(&s).unwrap();
+            assert_eq!(k, de);
+        }
+        _ => panic!("expected kline"),
+    }
+}
+
+#[test]
+fn depth_snapshot_to_canonical() {
+    let snap = CoreDepthSnapshot {
+        last_update_id: 1,
+        bids: vec![["1".to_string(), "2".to_string()]],
+        asks: vec![["3".to_string(), "4".to_string()]],
+    };
+    let ds: CanonDepthSnapshot = snap.into();
+    assert_eq!(ds.last_update_id, 1);
+    let s = serde_json::to_string(&ds).unwrap();
+    let de: CanonDepthSnapshot = serde_json::from_str(&s).unwrap();
+    assert_eq!(ds, de);
+}
+
+#[test]
+fn avg_price_event_to_canonical() {
+    let ev = TickerEvent {
+        event_time: 1,
+        symbol: "BTCUSDT".to_string(),
+        price_change: Cow::Borrowed("0"),
+        price_change_percent: Cow::Borrowed("0"),
+        weighted_avg_price: Cow::Borrowed("10"),
+        prev_close_price: Cow::Borrowed("0"),
+        last_price: Cow::Borrowed("0"),
+        last_qty: Cow::Borrowed("0"),
+        best_bid_price: Cow::Borrowed("0"),
+        best_bid_qty: Cow::Borrowed("0"),
+        best_ask_price: Cow::Borrowed("0"),
+        best_ask_qty: Cow::Borrowed("0"),
+        open_price: Cow::Borrowed("0"),
+        high_price: Cow::Borrowed("0"),
+        low_price: Cow::Borrowed("0"),
+        volume: Cow::Borrowed("0"),
+        quote_volume: Cow::Borrowed("0"),
+        open_time: 0,
+        close_time: 0,
+        first_trade_id: 0,
+        last_trade_id: 0,
+        count: 0,
+    };
+    let md = MdEvent::from(ev);
+    match md {
+        MdEvent::AvgPrice(p) => {
+            assert_eq!(p.price, 10.0);
+            let s = serde_json::to_string(&p).unwrap();
+            let de: AvgPrice = serde_json::from_str(&s).unwrap();
+            assert_eq!(p, de);
+        }
+        _ => panic!("expected avg price"),
+    }
+}
+

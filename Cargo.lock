@@ -330,6 +330,7 @@ version = "0.1.0"
 dependencies = [
  "arb_core",
  "rust_decimal",
+ "serde",
  "serde_json",
 ]
 
