@@ -1,0 +1,7 @@
+version: 0.1
+
+lint:
+  enabled:
+    - clippy
+    - rustfmt
+    - taplo
