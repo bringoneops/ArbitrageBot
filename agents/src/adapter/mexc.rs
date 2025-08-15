@@ -4,10 +4,18 @@ use async_trait::async_trait;
 use core::rate_limit::TokenBucket;
 use core::{chunk_streams_with_config, stream_config_for_exchange, OrderBook};
 use dashmap::DashMap;
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use tokio::{
+    signal,
+    task::JoinHandle,
+    time::{sleep, Duration},
+};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use super::ExchangeAdapter;
@@ -74,6 +82,8 @@ pub struct MexcAdapter {
     _books: Arc<DashMap<String, OrderBook>>,
     http_bucket: Arc<TokenBucket>,
     ws_bucket: Arc<TokenBucket>,
+    tasks: Vec<JoinHandle<()>>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl MexcAdapter {
@@ -100,6 +110,8 @@ impl MexcAdapter {
                 global_cfg.ws_refill_per_sec,
                 std::time::Duration::from_secs(1),
             )),
+            tasks: Vec::new(),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -112,24 +124,76 @@ impl ExchangeAdapter for MexcAdapter {
         let chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
 
         for chunk in chunks {
-            self.ws_bucket.acquire(1).await;
-            let (mut ws, _) = connect_async(self.cfg.ws_base).await?;
-            let params: Vec<String> = chunk
-                .iter()
-                .map(|s| format!("spot@public.depth.v3.api@{}@5", s))
-                .collect();
-            let sub = serde_json::json!({
-                "method": "SUBSCRIPTION",
-                "params": params,
-                "id": rand::random::<u32>(),
+            let symbols = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let ws_url = self.cfg.ws_base.to_string();
+            let ws_bucket = self.ws_bucket.clone();
+            let shutdown = self.shutdown.clone();
+
+            let handle = tokio::spawn(async move {
+                loop {
+                    if shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    ws_bucket.acquire(1).await;
+                    match connect_async(&ws_url).await {
+                        Ok((mut ws, _)) => {
+                            let params: Vec<String> = symbols
+                                .iter()
+                                .map(|s| format!("spot@public.depth.v3.api@{}@5", s))
+                                .collect();
+                            let sub = serde_json::json!({
+                                "method": "SUBSCRIPTION",
+                                "params": params,
+                                "id": rand::random::<u32>(),
+                            });
+                            if ws.send(Message::Text(sub.to_string())).await.is_ok() {
+                                loop {
+                                    tokio::select! {
+                                        msg = ws.next() => {
+                                            match msg {
+                                                Some(Ok(Message::Ping(p))) => { ws.send(Message::Pong(p)).await.ok(); },
+                                                Some(Ok(Message::Close(_))) | None => { break; },
+                                                Some(Ok(_)) => {},
+                                                Some(Err(e)) => { tracing::warn!("mexc ws error: {}", e); break; },
+                                            }
+                                        }
+                                        _ = async {
+                                            while !shutdown.load(Ordering::Relaxed) {
+                                                sleep(Duration::from_secs(1)).await;
+                                            }
+                                        } => {
+                                            let _ = ws.close(None).await;
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("mexc connect error: {}", e);
+                        }
+                    }
+                    if shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    sleep(Duration::from_secs(5)).await;
+                }
             });
-            ws.send(Message::Text(sub.to_string())).await.ok();
+            self.tasks.push(handle);
         }
         Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
-        self.subscribe().await
+        self.subscribe().await?;
+
+        let _ = signal::ctrl_c().await;
+        self.shutdown.store(true, Ordering::SeqCst);
+
+        for handle in self.tasks.drain(..) {
+            let _ = handle.await;
+        }
+        Ok(())
     }
 
     async fn heartbeat(&mut self) -> Result<()> {
