@@ -1,0 +1,8 @@
+{
+  "global": [],
+  "per_symbol": [
+    "depth.subscribe",
+    "deals.subscribe",
+    "state.subscribe"
+  ]
+}

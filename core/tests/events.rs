@@ -53,9 +53,10 @@ fn parses_depth_update_event() {
     let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
     let md = MdEvent::try_from(msg.data).expect("failed to convert");
     match md {
-        MdEvent::Book(ev) => {
+        MdEvent::DepthL2Update(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
-            assert_eq!(ev.event_time, 1_000_000);
+            assert_eq!(ev.ts, 1);
+            assert_eq!(ev.ts, 1_000_000);
             assert_eq!(ev.bids[0].price, 1.0);
             assert_eq!(ev.bids[0].quantity, 2.0);
             assert_eq!(ev.bids[0].kind, BookKind::Bid);
@@ -136,12 +137,12 @@ fn parses_mexc_events() {
     let depth_json = r#"{"channel":"spot@public.aggre.depth.v3.api.pb@100ms@BTCUSDT","publicincreasedepths":{"asksList":[{"price":"2.0","quantity":"3.0"}],"bidsList":[{"price":"1.0","quantity":"4.0"}],"eventtype":"spot@public.aggre.depth.v3.api.pb@100ms"},"symbol":"BTCUSDT","sendtime":2}"#;
     let depth_msg: MexcStreamMessage<'_> = serde_json::from_str(depth_json).unwrap();
     let md = MdEvent::try_from(depth_msg).unwrap();
-    assert!(matches!(md, MdEvent::Book(_)));
+    assert!(matches!(md, MdEvent::DepthL2Update(_)));
 
     let ticker_json = r#"{"channel":"spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT","publicbookticker":{"bidprice":"1.0","bidquantity":"2.0","askprice":"3.0","askquantity":"4.0"},"symbol":"BTCUSDT","sendtime":2}"#;
     let ticker_msg: MexcStreamMessage<'_> = serde_json::from_str(ticker_json).unwrap();
     let md = MdEvent::try_from(ticker_msg).unwrap();
-    assert!(matches!(md, MdEvent::Ticker(_)));
+    assert!(matches!(md, MdEvent::BookTicker(_)));
 }
 
 parses_event!(

@@ -17,6 +17,10 @@ pub use adapter::binance::{
 };
 pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
 pub use adapter::xt::{fetch_symbols as fetch_xt_symbols, XtAdapter, XT_EXCHANGES};
+pub use adapter::bitmart::{
+    fetch_symbols as fetch_bitmart_symbols, BitmartAdapter, BITMART_EXCHANGES,
+};
+pub use adapter::latoken::{fetch_symbols as fetch_latoken_symbols, LatokenAdapter, LATOKEN_EXCHANGES};
 pub use adapter::ExchangeAdapter;
 
 /// Shared task set type for spawning and tracking asynchronous tasks.
@@ -105,8 +109,13 @@ pub async fn spawn_adapters(
     tls_config: Arc<ClientConfig>,
 ) -> Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>> {
     adapter::binance::register();
+    adapter::gateio::register();
     adapter::mexc::register();
     adapter::xt::register();
+    adapter::bitmart::register();
+    adapter::coinex::register();
+    adapter::latoken::register();
+    adapter::bitget::register();
 
     let mut receivers = Vec::new();
 
