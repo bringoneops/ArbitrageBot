@@ -107,6 +107,7 @@ pub async fn spawn_adapters(
     adapter::binance::register();
     adapter::gateio::register();
     adapter::mexc::register();
+    adapter::coinex::register();
     adapter::latoken::register();
     adapter::bitget::register();
 
