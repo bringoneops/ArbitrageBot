@@ -8,8 +8,6 @@ use futures::SinkExt;
 use reqwest::Client;
 use serde_json::Value;
 use std::sync::Arc;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use super::ExchangeAdapter;
@@ -72,7 +70,6 @@ pub struct MexcAdapter {
     cfg: &'static MexcConfig,
     _client: Client,
     chunk_size: usize,
-    _task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
     symbols: Vec<String>,
     _books: Arc<DashMap<String, OrderBook>>,
     http_bucket: Arc<TokenBucket>,
@@ -84,7 +81,6 @@ impl MexcAdapter {
         cfg: &'static MexcConfig,
         client: Client,
         chunk_size: usize,
-        task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
         symbols: Vec<String>,
     ) -> Self {
         let global_cfg = core::config::get();
@@ -92,7 +88,6 @@ impl MexcAdapter {
             cfg,
             _client: client,
             chunk_size,
-            _task_tx: task_tx,
             symbols,
             _books: Arc::new(DashMap::new()),
             http_bucket: Arc::new(TokenBucket::new(

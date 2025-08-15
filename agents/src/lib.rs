@@ -5,8 +5,8 @@ use reqwest::Client;
 use rustls::ClientConfig;
 use std::sync::Arc;
 use tokio::{
-    sync::mpsc,
-    task::{JoinHandle, JoinSet},
+    sync::{mpsc, Mutex},
+    task::JoinSet,
 };
 use tracing::error;
 
@@ -16,6 +16,9 @@ pub use adapter::binance::{
 };
 pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
 pub use adapter::ExchangeAdapter;
+
+/// Shared task set type for spawning and tracking asynchronous tasks.
+pub type TaskSet = Arc<Mutex<JoinSet<()>>>;
 
 /// Run a collection of exchange adapters to completion.
 ///
@@ -49,7 +52,7 @@ where
 pub async fn spawn_adapters(
     cfg: &'static core::config::Config,
     client: Client,
-    task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
+    task_set: TaskSet,
     event_txs: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
     tls_config: Arc<ClientConfig>,
     event_buffer_size: usize,
@@ -89,20 +92,21 @@ pub async fn spawn_adapters(
             client.clone(),
             chunk_size,
             cfg.proxy_url.clone().unwrap_or_default(),
-            task_tx.clone(),
+            task_set.clone(),
             event_txs.clone(),
             symbols,
             tls_config.clone(),
         );
 
-        let tx = task_tx.clone();
-        let handle = tokio::spawn(async move {
-            let mut adapter = adapter;
-            if let Err(e) = adapter.run().await {
-                error!("Failed to run adapter: {}", e);
-            }
-        });
-        let _ = tx.send(handle);
+        {
+            let mut set = task_set.lock().await;
+            set.spawn(async move {
+                let mut adapter = adapter;
+                if let Err(e) = adapter.run().await {
+                    error!("Failed to run adapter: {}", e);
+                }
+            });
+        }
     }
 
     if cfg.enable_mexc {
@@ -120,17 +124,17 @@ pub async fn spawn_adapters(
                 receivers.push(rx);
             }
 
-            let adapter =
-                MexcAdapter::new(exch, client.clone(), chunk_size, task_tx.clone(), symbols);
+            let adapter = MexcAdapter::new(exch, client.clone(), chunk_size, symbols);
 
-            let tx = task_tx.clone();
-            let handle = tokio::spawn(async move {
-                let mut adapter = adapter;
-                if let Err(e) = adapter.run().await {
-                    error!("Failed to run adapter: {}", e);
-                }
-            });
-            let _ = tx.send(handle);
+            {
+                let mut set = task_set.lock().await;
+                set.spawn(async move {
+                    let mut adapter = adapter;
+                    if let Err(e) = adapter.run().await {
+                        error!("Failed to run adapter: {}", e);
+                    }
+                });
+            }
         }
     }
 
