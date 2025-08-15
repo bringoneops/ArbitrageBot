@@ -118,6 +118,7 @@ pub struct BinanceAdapter {
 }
 
 impl BinanceAdapter {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &'static BinanceConfig,
         client: Client,

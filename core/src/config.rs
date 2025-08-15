@@ -148,10 +148,14 @@ impl Config {
         })
     }
 
-    pub fn validate(&self) -> Result<()> {
+    fn validate_api_credentials(&self) -> Result<()> {
         if self.credentials.api_key.is_empty() || self.credentials.api_secret.is_empty() {
             return Err(anyhow!("API credentials are required"));
         }
+        Ok(())
+    }
+
+    fn validate_symbols(&self) -> Result<()> {
         if self.enable_spot
             && self.spot_symbols.is_empty()
             && !env::var("SPOT_SYMBOLS")
@@ -176,12 +180,20 @@ impl Config {
         {
             return Err(anyhow!("mexc symbol list cannot be empty"));
         }
+        Ok(())
+    }
+
+    fn validate_sizes(&self) -> Result<()> {
         if self.chunk_size == 0 || self.chunk_size > 1024 {
             return Err(anyhow!("chunk_size must be between 1 and 1024"));
         }
         if self.event_buffer_size == 0 || self.event_buffer_size > 65536 {
             return Err(anyhow!("event_buffer_size must be between 1 and 65536"));
         }
+        Ok(())
+    }
+
+    fn validate_rate_limits(&self) -> Result<()> {
         if self.http_burst == 0
             || self.http_refill_per_sec == 0
             || self.ws_burst == 0
@@ -189,6 +201,14 @@ impl Config {
         {
             return Err(anyhow!("rate limit values must be greater than zero"));
         }
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        self.validate_api_credentials()?;
+        self.validate_symbols()?;
+        self.validate_sizes()?;
+        self.validate_rate_limits()?;
         Ok(())
     }
 }

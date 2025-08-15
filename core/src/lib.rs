@@ -12,8 +12,6 @@ use std::{
     env, fs,
     time::Duration,
 };
-#[cfg(feature = "debug-logs")]
-use tracing::debug;
 use tracing::warn;
 
 use crate::events::{Event, StreamMessage};
@@ -106,7 +104,7 @@ pub fn chunk_streams_with_config(
 
     let mut streams: Vec<String> = stream_set.into_iter().collect();
     streams.sort();
-    let capacity = (streams.len() + chunk_size - 1) / chunk_size;
+    let capacity = streams.len().div_ceil(chunk_size);
     let mut result = Vec::with_capacity(capacity);
     for chunk in streams.chunks(chunk_size) {
         result.push(chunk.to_vec());

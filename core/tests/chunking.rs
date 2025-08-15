@@ -48,7 +48,7 @@ fn returns_expected_number_of_chunks() {
     let symbols: Vec<String> = (0..2).map(|i| format!("SYM{}", i)).collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
     let expected_total = global_count + symbol_refs.len() * per_symbol;
-    let expected_chunks = (expected_total + chunk_size - 1) / chunk_size;
+    let expected_chunks = expected_total.div_ceil(chunk_size);
     let chunks = chunk_streams(&symbol_refs, chunk_size);
     assert_eq!(chunks.len(), expected_chunks);
 }
