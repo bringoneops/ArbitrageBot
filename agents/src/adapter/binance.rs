@@ -32,10 +32,14 @@ use core::events::{DepthUpdateEvent, Event, StreamMessage};
 use core::rate_limit::TokenBucket;
 
 use super::ExchangeAdapter;
-use crate::TaskSet;
+use crate::{registry, TaskSet};
+use futures::future::BoxFuture;
+use tracing::error;
+use std::sync::Once;
 
 /// Configuration for a single Binance exchange endpoint.
 pub struct BinanceConfig {
+    pub id: &'static str,
     pub name: &'static str,
     pub info_url: &'static str,
     pub ws_base: &'static str,
@@ -44,26 +48,31 @@ pub struct BinanceConfig {
 /// All Binance exchanges supported by this adapter.
 pub const BINANCE_EXCHANGES: &[BinanceConfig] = &[
     BinanceConfig {
+        id: "binance_us_spot",
         name: "Binance.US Spot",
         info_url: "https://api.binance.us/api/v3/exchangeInfo",
         ws_base: "wss://stream.binance.us:9443/stream?streams=",
     },
     BinanceConfig {
+        id: "binance_global_spot",
         name: "Binance Global Spot",
         info_url: "https://api.binance.com/api/v3/exchangeInfo",
         ws_base: "wss://stream.binance.com:9443/stream?streams=",
     },
     BinanceConfig {
+        id: "binance_futures",
         name: "Binance Futures",
         info_url: "https://fapi.binance.com/fapi/v1/exchangeInfo",
         ws_base: "wss://fstream.binance.com/stream?streams=",
     },
     BinanceConfig {
+        id: "binance_delivery",
         name: "Binance Delivery",
         info_url: "https://dapi.binance.com/dapi/v1/exchangeInfo",
         ws_base: "wss://dstream.binance.com/stream?streams=",
     },
     BinanceConfig {
+        id: "binance_options",
         name: "Binance Options",
         info_url: "https://vapi.binance.com/vapi/v1/exchangeInfo",
         ws_base: "wss://vstream.binance.com/stream?streams=",
@@ -102,6 +111,68 @@ pub async fn fetch_symbols(info_url: &str) -> Result<Vec<String>> {
     result.sort();
     result.dedup();
     Ok(result)
+}
+
+static REGISTER: Once = Once::new();
+
+pub fn register() {
+    REGISTER.call_once(|| {
+        for exch in BINANCE_EXCHANGES {
+            let cfg_ref: &'static BinanceConfig = exch;
+            registry::register_adapter(
+                cfg_ref.id,
+                Arc::new(move |
+                        global_cfg: &'static core::config::Config,
+                        exchange_cfg: &core::config::ExchangeConfig,
+                        client: Client,
+                        task_set: TaskSet,
+                        event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+                        tls_config: Arc<ClientConfig>,
+                        event_buffer_size: usize|
+                        -> BoxFuture<'static, Result<Vec<mpsc::Receiver<StreamMessage<'static>>>>> {
+                    let cfg = cfg_ref;
+                    let initial_symbols = exchange_cfg.symbols.clone();
+                    Box::pin(async move {
+                        let mut symbols = initial_symbols;
+                        if symbols.is_empty() {
+                            symbols = fetch_symbols(cfg.info_url).await?;
+                        }
+
+                        let mut receivers = Vec::new();
+                        for symbol in &symbols {
+                            let (tx, rx) = mpsc::channel(event_buffer_size);
+                            let key = format!("{}:{}", cfg.name, symbol);
+                            event_txs.insert(key, tx);
+                            receivers.push(rx);
+                        }
+
+                        let adapter = BinanceAdapter::new(
+                            cfg,
+                            client.clone(),
+                            global_cfg.chunk_size,
+                            global_cfg.proxy_url.clone().unwrap_or_default(),
+                            task_set.clone(),
+                            event_txs.clone(),
+                            symbols,
+                            tls_config.clone(),
+                        );
+
+                        {
+                            let mut set = task_set.lock().await;
+                            set.spawn(async move {
+                                let mut adapter = adapter;
+                                if let Err(e) = adapter.run().await {
+                                    error!("Failed to run adapter: {}", e);
+                                }
+                            });
+                        }
+
+                        Ok(receivers)
+                    })
+                }),
+            );
+        }
+    });
 }
 
 /// Adapter implementing the `ExchangeAdapter` trait for Binance.

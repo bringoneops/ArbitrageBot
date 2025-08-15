@@ -57,6 +57,7 @@ async fn run_ws_emits_event() {
 }
 
 static TEST_CFG: BinanceConfig = BinanceConfig {
+    id: "test",
     name: "Test",
     info_url: "http://localhost/",
     ws_base: "wss://127.0.0.1:1/",

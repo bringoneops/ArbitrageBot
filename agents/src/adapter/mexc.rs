@@ -19,9 +19,15 @@ use tokio::{
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use super::ExchangeAdapter;
+use crate::{registry, TaskSet};
+use futures::future::BoxFuture;
+use tokio::sync::mpsc;
+use tracing::error;
+use std::sync::Once;
 
 /// Configuration for a single MEXC exchange endpoint.
 pub struct MexcConfig {
+    pub id: &'static str,
     pub name: &'static str,
     pub info_url: &'static str,
     pub ws_base: &'static str,
@@ -29,6 +35,7 @@ pub struct MexcConfig {
 
 /// All MEXC exchanges supported by this adapter.
 pub const MEXC_EXCHANGES: &[MexcConfig] = &[MexcConfig {
+    id: "mexc_spot",
     name: "MEXC Spot",
     info_url: "https://api.mexc.com/api/v3/exchangeInfo",
     ws_base: "wss://wbs.mexc.com/ws",
@@ -71,6 +78,59 @@ pub async fn fetch_symbols(info_url: &str) -> Result<Vec<String>> {
     result.sort();
     result.dedup();
     Ok(result)
+}
+
+static REGISTER: Once = Once::new();
+
+pub fn register() {
+    REGISTER.call_once(|| {
+        for exch in MEXC_EXCHANGES {
+            let cfg_ref: &'static MexcConfig = exch;
+            registry::register_adapter(
+                cfg_ref.id,
+                Arc::new(move |
+                        global_cfg: &'static core::config::Config,
+                        exchange_cfg: &core::config::ExchangeConfig,
+                        client: Client,
+                        task_set: TaskSet,
+                        event_txs: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
+                        _tls_config: Arc<rustls::ClientConfig>,
+                        event_buffer_size: usize|
+                        -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>> {
+                    let cfg = cfg_ref;
+                    let initial_symbols = exchange_cfg.symbols.clone();
+                    Box::pin(async move {
+                        let mut symbols = initial_symbols;
+                        if symbols.is_empty() {
+                            symbols = fetch_symbols(cfg.info_url).await?;
+                        }
+
+                        let mut receivers = Vec::new();
+                        for symbol in &symbols {
+                            let (tx, rx) = mpsc::channel(event_buffer_size);
+                            let key = format!("{}:{}", cfg.name, symbol);
+                            event_txs.insert(key, tx);
+                            receivers.push(rx);
+                        }
+
+                        let adapter = MexcAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
+
+                        {
+                            let mut set = task_set.lock().await;
+                            set.spawn(async move {
+                                let mut adapter = adapter;
+                                if let Err(e) = adapter.run().await {
+                                    error!("Failed to run adapter: {}", e);
+                                }
+                            });
+                        }
+
+                        Ok(receivers)
+                    })
+                }),
+            );
+        }
+    });
 }
 
 /// Adapter implementing the `ExchangeAdapter` trait for MEXC.

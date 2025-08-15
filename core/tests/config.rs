@@ -24,6 +24,7 @@ fn empty_spot_symbols_fails() {
         },
         ca_bundle: None,
         cert_pins: Vec::new(),
+        exchanges: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }
@@ -51,6 +52,7 @@ fn empty_futures_symbols_fails() {
         },
         ca_bundle: None,
         cert_pins: Vec::new(),
+        exchanges: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }
@@ -78,6 +80,7 @@ fn invalid_chunk_size_fails() {
         },
         ca_bundle: None,
         cert_pins: Vec::new(),
+        exchanges: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }
@@ -105,6 +108,7 @@ fn invalid_event_buffer_size_fails() {
         },
         ca_bundle: None,
         cert_pins: Vec::new(),
+        exchanges: Vec::new(),
     };
     assert!(cfg.validate().is_err());
 }

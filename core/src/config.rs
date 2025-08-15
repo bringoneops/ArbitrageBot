@@ -20,6 +20,13 @@ impl std::fmt::Debug for Credentials {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ExchangeConfig {
+    pub id: String,
+    #[serde(default)]
+    pub symbols: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub proxy_url: Option<String>,
     pub spot_symbols: Vec<String>,
@@ -38,6 +45,7 @@ pub struct Config {
     pub credentials: Credentials,
     pub ca_bundle: Option<String>,
     pub cert_pins: Vec<String>,
+    pub exchanges: Vec<ExchangeConfig>,
 }
 
 static CONFIG: OnceCell<Config> = OnceCell::new();
@@ -147,6 +155,16 @@ impl Config {
         let enable_mexc = parse_bool_env("ENABLE_MEXC", false);
         let enable_metrics = parse_bool_env("ENABLE_METRICS", true);
 
+        let exchange_ids = parse_list_env("EXCHANGES");
+        let exchanges = exchange_ids
+            .into_iter()
+            .map(|id| {
+                let var = format!("{}_SYMBOLS", id.to_uppercase());
+                let symbols = parse_symbols_env(&var);
+                ExchangeConfig { id, symbols }
+            })
+            .collect();
+
         let credentials = load_credentials()?;
         let ca_bundle = env::var("CA_BUNDLE").ok();
         let cert_pins = parse_list_env("CERT_PINS");
@@ -169,6 +187,7 @@ impl Config {
             credentials,
             ca_bundle,
             cert_pins,
+            exchanges,
         })
     }
 
