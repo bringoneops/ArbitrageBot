@@ -26,9 +26,10 @@ use tokio_tungstenite::{
     client_async_tls_with_config, connect_async_tls_with_config, tungstenite::protocol::Message,
     Connector, MaybeTlsStream, WebSocketStream,
 };
+use tracing::Span;
 use url::Url;
 
-use core::events::{Event, StreamMessage};
+use core::events::{DepthUpdateEvent, Event, StreamMessage};
 use core::rate_limit::TokenBucket;
 
 use super::ExchangeAdapter;
@@ -461,6 +462,64 @@ where
     Ok(())
 }
 
+fn log_and_metric_event(
+    event: &StreamMessage<'static>,
+    bytes: &[u8],
+    exchange: &str,
+) -> (String, Instant, Span) {
+    let event_time = event.data.event_time();
+    let symbol = event
+        .data
+        .symbol()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| event.stream.split('@').next().unwrap_or("").to_string());
+    let span = tracing::info_span!("ws_event", exchange = %exchange, symbol = %symbol);
+    let pipeline_start = Instant::now();
+    span.in_scope(|| {
+        if core::config::metrics_enabled() {
+            metrics::counter!("md_ws_events_total").increment(1);
+            if let Some(ev_time) = event_time {
+                let now_ns = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos();
+                let lag_ns = now_ns.saturating_sub(ev_time as u128 * 1_000_000);
+                metrics::gauge!("md_ws_lag_ns").set(lag_ns as f64);
+            }
+        }
+        #[cfg(feature = "debug-logs")]
+        tracing::debug!(?event);
+        let raw = unsafe { std::str::from_utf8_unchecked(bytes) };
+        handle_stream_event(event, raw);
+    });
+    (symbol, pipeline_start, span)
+}
+
+async fn update_order_book(
+    books: &Arc<DashMap<String, OrderBook>>,
+    client: &Client,
+    http_bucket: &Arc<TokenBucket>,
+    depth_base: &str,
+    update: &DepthUpdateEvent<'_>,
+) {
+    let symbol = update.symbol.clone();
+    if let Some(mut book) = books.get_mut(&symbol) {
+        match apply_depth_update(&mut book, update) {
+            ApplyResult::Applied | ApplyResult::Outdated => {}
+            ApplyResult::Gap => {
+                let buffer = vec![update.clone()];
+                drop(book);
+                if let Some(mut new_book) =
+                    fetch_depth_snapshot(client, depth_base, &symbol, http_bucket).await
+                {
+                    fast_forward(&mut new_book, &buffer);
+                    books.insert(symbol, new_book);
+                }
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn process_text_message(
     text: String,
@@ -472,65 +531,34 @@ async fn process_text_message(
     http_bucket: &Arc<TokenBucket>,
 ) -> Result<()> {
     let mut bytes = text.into_bytes();
-    match from_slice::<StreamMessage<'static>>(&mut bytes) {
-        Ok(event) => {
-            let event_time = event.data.event_time();
-            let symbol = event
-                .data
-                .symbol()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| event.stream.split('@').next().unwrap_or("").to_string());
-            let span = tracing::info_span!("ws_event", exchange = %exchange, symbol = %symbol);
-            let _enter = span.enter();
-            let pipeline_start = Instant::now();
-            if core::config::metrics_enabled() {
-                metrics::counter!("md_ws_events_total").increment(1);
-                if let Some(ev_time) = event_time {
-                    let now_ns = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos();
-                    let lag_ns = now_ns.saturating_sub(ev_time as u128 * 1_000_000);
-                    metrics::gauge!("md_ws_lag_ns").set(lag_ns as f64);
-                }
-            }
-            #[cfg(feature = "debug-logs")]
-            tracing::debug!(?event);
-            let raw = unsafe { std::str::from_utf8_unchecked(&bytes) };
-            handle_stream_event(&event, raw);
-            if let Event::DepthUpdate(ref update) = event.data {
-                let symbol = update.symbol.clone();
-                if let Some(mut book) = books.get_mut(&symbol) {
-                    match apply_depth_update(&mut book, update) {
-                        ApplyResult::Applied | ApplyResult::Outdated => {}
-                        ApplyResult::Gap => {
-                            let buffer = vec![update.clone()];
-                            drop(book);
-                            if let Some(mut new_book) =
-                                fetch_depth_snapshot(client, depth_base, &symbol, http_bucket).await
-                            {
-                                fast_forward(&mut new_book, &buffer);
-                                books.insert(symbol, new_book);
-                            }
-                        }
-                    }
-                }
-            }
-            let key = format!("{}:{}", exchange, symbol);
-            if let Some(tx) = event_txs.get(&key) {
-                if let Err(e) = tx.send(event).await {
-                    tracing::warn!("failed to send event: {}", e);
-                }
-            } else {
-                tracing::warn!("missing channel for {}", key);
-            }
-            if core::config::metrics_enabled() {
-                metrics::gauge!("md_pipeline_p99_us")
-                    .set(pipeline_start.elapsed().as_micros() as f64);
-            }
+    let event = match from_slice::<StreamMessage<'static>>(&mut bytes) {
+        Ok(event) => event,
+        Err(e) => {
+            tracing::error!("failed to parse message: {}", e);
+            return Ok(());
         }
-        Err(e) => tracing::error!("failed to parse message: {}", e),
+    };
+
+    let (symbol, pipeline_start, span) = log_and_metric_event(&event, &bytes, exchange);
+    let _enter = span.enter();
+
+    if let Event::DepthUpdate(ref update) = event.data {
+        update_order_book(books, client, http_bucket, depth_base, update).await;
     }
+
+    let key = format!("{}:{}", exchange, symbol);
+    if let Some(tx) = event_txs.get(&key) {
+        if let Err(e) = tx.send(event).await {
+            tracing::warn!("failed to send event: {}", e);
+        }
+    } else {
+        tracing::warn!("missing channel for {}", key);
+    }
+
+    if core::config::metrics_enabled() {
+        metrics::gauge!("md_pipeline_p99_us").set(pipeline_start.elapsed().as_micros() as f64);
+    }
+
     Ok(())
 }
 
