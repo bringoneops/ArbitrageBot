@@ -23,5 +23,6 @@ pub trait ExchangeAdapter {
 }
 
 pub mod binance;
-pub mod mexc;
+pub mod coinex;
 pub mod gateio;
+pub mod mexc;
