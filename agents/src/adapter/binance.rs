@@ -153,7 +153,12 @@ impl BinanceAdapter {
         }
     }
 
-    fn spawn_chunk_reader(&self, url: Url, chunk_len: usize, depth_base: String) {
+    fn spawn_chunk_reader(&self, chunk: Vec<String>, depth_base: &str) -> Result<()> {
+        let chunk_len = chunk.len();
+        let param = chunk.join("/");
+        let url = Url::parse(&format!("{}{}", self.cfg.ws_base, param))
+            .context("parsing WebSocket URL")?;
+
         let proxy = self.proxy_url.clone();
         let name = self.cfg.name.to_string();
         let task_tx = self.task_tx.clone();
@@ -163,6 +168,7 @@ impl BinanceAdapter {
         let tls_config = self.tls_config.clone();
         let http_bucket = self.http_bucket.clone();
         let ws_bucket = self.ws_bucket.clone();
+        let depth_base = depth_base.to_string();
 
         let handle = tokio::spawn(async move {
             let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
@@ -252,6 +258,7 @@ impl BinanceAdapter {
         });
 
         let _ = task_tx.send(handle);
+        Ok(())
     }
 }
 
@@ -275,11 +282,7 @@ impl ExchangeAdapter for BinanceAdapter {
             .to_string();
 
         for chunk in chunks {
-            let chunk_len = chunk.len();
-            let param = chunk.join("/");
-            let url = Url::parse(&format!("{}{}", self.cfg.ws_base, param))
-                .context("parsing WebSocket URL")?;
-            self.spawn_chunk_reader(url, chunk_len, depth_base.clone());
+            self.spawn_chunk_reader(chunk, &depth_base)?;
         }
 
         Ok(())
