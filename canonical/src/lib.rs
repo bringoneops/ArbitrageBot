@@ -36,6 +36,7 @@ pub enum MdEvent {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Trade {
+    pub exchange: String,
     pub symbol: String,
     pub price: f64,
     pub quantity: f64,
@@ -178,13 +179,14 @@ impl<'a> From<TradeEvent<'a>> for Trade {
         let price = ev.price_decimal().to_f64().unwrap_or_default();
         let quantity = ev.quantity_decimal().to_f64().unwrap_or_default();
         Self {
+            exchange: "binance".to_string(),
             symbol: ev.symbol,
             price,
             quantity,
             trade_id: Some(ev.trade_id),
             buyer_order_id: Some(ev.buyer_order_id),
             seller_order_id: Some(ev.seller_order_id),
-            timestamp: ev.trade_time.saturating_mul(1_000_000),
+            timestamp: ev.trade_time,
             side: Some(side),
         }
     }
@@ -233,7 +235,7 @@ impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
-            ts: ev.event_time.saturating_mul(1_000_000),
+            ts: ev.event_time,
             bids,
             asks,
             first_update_id: Some(ev.first_update_id),
@@ -510,13 +512,14 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     _ => None,
                 };
                 Ok(MdEvent::Trade(Trade {
+                    exchange: "mexc".to_string(),
                     symbol: msg.symbol,
                     price,
                     quantity,
                     trade_id: None,
                     buyer_order_id: None,
                     seller_order_id: None,
-                    timestamp: deal.trade_time.saturating_mul(1_000_000),
+                    timestamp: deal.trade_time,
                     side,
                 }))
             }

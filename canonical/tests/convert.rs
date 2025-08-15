@@ -31,8 +31,12 @@ fn trade_event_to_canonical() {
     let md: MdEvent = MdEvent::from(trade_event);
     match md {
         MdEvent::Trade(ref t) => {
+            assert_eq!(t.exchange, "binance");
             assert_eq!(t.symbol, "BTCUSD");
             assert_eq!(t.price, 100.0);
+            let s = serde_json::to_string(t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(*t, de);
         }
         _ => panic!("expected trade"),
     }
@@ -51,6 +55,7 @@ fn trade_event_to_canonical() {
     let event = Event::Trade(trade_event2);
     let trade = Trade::try_from(event).unwrap();
     assert_eq!(trade.quantity, 1.5);
+    assert_eq!(trade.exchange, "binance");
 }
 
 #[test]
@@ -72,9 +77,13 @@ fn mexc_trade_event_to_canonical() {
     let md = MdEvent::try_from(msg).unwrap();
     match md {
         MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "mexc");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.price, 93220.0);
             assert_eq!(t.side, Some(Side::Sell));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
         }
         _ => panic!("expected trade"),
     }
