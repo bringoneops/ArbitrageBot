@@ -2,18 +2,17 @@
 version: 0.1
 
 cli:
-  # Use a current Trunk CLI (1.5.x is too old). Any recent 1.2x works.
-  # If you don't want to chase versions, keep this on a stable modern pin.
+  # use a modern CLI; 1.5.x is too old
   version: 1.21.0
+
+plugins:
+  sources:
+    - id: trunk
+      ref: v1.6.1
+      uri: https://github.com/trunk-io/plugins
 
 lint:
   enabled:
     - clippy
     - rustfmt
     - taplo
-
-# (Optional) ignore typical build output and generated files
-ignore:
-  - target/**/*
-  - "**/*.generated.*"
-  - "**/node_modules/**/*"
