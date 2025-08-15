@@ -1,0 +1,21 @@
+{
+  "global": [],
+  "per_symbol": [
+    "ticker",
+    "trade",
+    "depth",
+    "kline_1m",
+    "kline_3m",
+    "kline_5m",
+    "kline_15m",
+    "kline_30m",
+    "kline_1h",
+    "kline_2h",
+    "kline_4h",
+    "kline_6h",
+    "kline_12h",
+    "kline_1d",
+    "kline_1w",
+    "kline_1M"
+  ]
+}

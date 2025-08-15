@@ -24,6 +24,7 @@ pub trait ExchangeAdapter {
 
 pub mod binance;
 pub mod gateio;
+pub mod lbank;
 pub mod bingx;
 pub mod kucoin;
 pub mod coinex;
