@@ -104,6 +104,7 @@ pub async fn spawn_adapters(
     tls_config: Arc<ClientConfig>,
 ) -> Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>> {
     adapter::binance::register();
+    adapter::gateio::register();
     adapter::mexc::register();
 
     let mut receivers = Vec::new();
