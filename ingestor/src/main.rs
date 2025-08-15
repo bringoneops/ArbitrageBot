@@ -35,26 +35,31 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
     client_builder.build().context("building HTTP client")
 }
 
+fn process_stream_event(msg: StreamMessage<'static>, metrics_enabled: bool) {
+    match MdEvent::try_from(msg.data) {
+        Ok(_ev) => {
+            if metrics_enabled {
+                metrics::counter!("md_events_total").increment(1);
+            }
+            #[cfg(feature = "debug-logs")]
+            debug!(?_ev, stream = %msg.stream, "normalized event");
+        }
+        Err(_) => {
+            error!(stream = %msg.stream, "failed to normalize event");
+        }
+    }
+}
+
 fn spawn_consumers(
     receivers: Vec<mpsc::Receiver<StreamMessage<'static>>>,
     task_tx: mpsc::UnboundedSender<JoinHandle<()>>,
+    metrics_enabled: bool,
 ) {
     for mut event_rx in receivers {
         let tx = task_tx.clone();
         let handle = tokio::spawn(async move {
             while let Some(msg) = event_rx.recv().await {
-                match MdEvent::try_from(msg.data) {
-                    Ok(_ev) => {
-                        if core::config::metrics_enabled() {
-                            metrics::counter!("md_events_total").increment(1);
-                        }
-                        #[cfg(feature = "debug-logs")]
-                        debug!(?_ev, stream = %msg.stream, "normalized event");
-                    }
-                    Err(_) => {
-                        error!(stream = %msg.stream, "failed to normalize event");
-                    }
-                }
+                process_stream_event(msg, metrics_enabled);
             }
         });
         let _ = tx.send(handle);
@@ -96,7 +101,8 @@ pub async fn run() -> Result<()> {
     .await?;
 
     // Spawn a consumer task per partition to normalize events.
-    spawn_consumers(receivers, task_tx.clone());
+    let metrics_enabled = core::config::metrics_enabled();
+    spawn_consumers(receivers, task_tx.clone(), metrics_enabled);
 
     // Drop the original senders so receivers can terminate once all adapters finish.
     drop(event_txs);
