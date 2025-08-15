@@ -6,6 +6,7 @@ use core::{
     stream_config_for_exchange, ApplyResult, DepthSnapshot, OrderBook,
 };
 use dashmap::DashMap;
+use futures::stream::SplitSink;
 use futures::{stream, SinkExt, StreamExt};
 use rand::Rng;
 use reqwest::{Client, StatusCode};
@@ -426,6 +427,113 @@ async fn fetch_depth_snapshot(
     resp.json::<DepthSnapshot>().await.ok().map(|s| s.into())
 }
 
+async fn handle_ping_pong<S>(
+    write: &mut SplitSink<WebSocketStream<S>, Message>,
+    last_pong: &mut Instant,
+    msg: Option<Message>,
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    match msg {
+        Some(Message::Ping(payload)) => {
+            write.send(Message::Pong(payload)).await?;
+        }
+        Some(Message::Pong(_)) => {
+            *last_pong = Instant::now();
+        }
+        Some(_) => {}
+        None => {
+            if let Err(e) = write.send(Message::Ping(Vec::new())).await {
+                let _ = write.close().await;
+                return Err(e.into());
+            }
+            if last_pong.elapsed() > Duration::from_secs(60) {
+                tracing::warn!("no pong received in 60s, closing socket");
+                if core::config::metrics_enabled() {
+                    metrics::counter!("ws_heartbeat_failures").increment(1);
+                }
+                let _ = write.close().await;
+                return Err(anyhow!("heartbeat timeout"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn process_text_message(
+    text: String,
+    books: &Arc<DashMap<String, OrderBook>>,
+    event_txs: &Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+    client: &Client,
+    depth_base: &str,
+    exchange: &str,
+    http_bucket: &Arc<TokenBucket>,
+) -> Result<()> {
+    let mut bytes = text.into_bytes();
+    match from_slice::<StreamMessage<'static>>(&mut bytes) {
+        Ok(event) => {
+            let event_time = event.data.event_time();
+            let symbol = event
+                .data
+                .symbol()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| event.stream.split('@').next().unwrap_or("").to_string());
+            let span = tracing::info_span!("ws_event", exchange = %exchange, symbol = %symbol);
+            let _enter = span.enter();
+            let pipeline_start = Instant::now();
+            if core::config::metrics_enabled() {
+                metrics::counter!("md_ws_events_total").increment(1);
+                if let Some(ev_time) = event_time {
+                    let now_ns = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos();
+                    let lag_ns = now_ns.saturating_sub(ev_time as u128 * 1_000_000);
+                    metrics::gauge!("md_ws_lag_ns").set(lag_ns as f64);
+                }
+            }
+            #[cfg(feature = "debug-logs")]
+            tracing::debug!(?event);
+            let raw = unsafe { std::str::from_utf8_unchecked(&bytes) };
+            handle_stream_event(&event, raw);
+            if let Event::DepthUpdate(ref update) = event.data {
+                let symbol = update.symbol.clone();
+                if let Some(mut book) = books.get_mut(&symbol) {
+                    match apply_depth_update(&mut book, update) {
+                        ApplyResult::Applied | ApplyResult::Outdated => {}
+                        ApplyResult::Gap => {
+                            let buffer = vec![update.clone()];
+                            drop(book);
+                            if let Some(mut new_book) =
+                                fetch_depth_snapshot(client, depth_base, &symbol, http_bucket).await
+                            {
+                                fast_forward(&mut new_book, &buffer);
+                                books.insert(symbol, new_book);
+                            }
+                        }
+                    }
+                }
+            }
+            let key = format!("{}:{}", exchange, symbol);
+            if let Some(tx) = event_txs.get(&key) {
+                if let Err(e) = tx.send(event).await {
+                    tracing::warn!("failed to send event: {}", e);
+                }
+            } else {
+                tracing::warn!("missing channel for {}", key);
+            }
+            if core::config::metrics_enabled() {
+                metrics::gauge!("md_pipeline_p99_us")
+                    .set(pipeline_start.elapsed().as_micros() as f64);
+            }
+        }
+        Err(e) => tracing::error!("failed to parse message: {}", e),
+    }
+    Ok(())
+}
+
 pub async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
     books: Arc<DashMap<String, OrderBook>>,
@@ -446,18 +554,7 @@ where
     loop {
         tokio::select! {
             _ = ping_interval.tick() => {
-                if let Err(e) = write.send(Message::Ping(Vec::new())).await {
-                    let _ = write.close().await;
-                    return Err(e.into());
-                }
-                if last_pong.elapsed() > Duration::from_secs(60) {
-                    tracing::warn!("no pong received in 60s, closing socket");
-                    if core::config::metrics_enabled() {
-                        metrics::counter!("ws_heartbeat_failures").increment(1);
-                    }
-                    let _ = write.close().await;
-                    return Err(anyhow!("heartbeat timeout"));
-                }
+                handle_ping_pong(&mut write, &mut last_pong, None).await?;
             }
             msg = timeout(Duration::from_secs(60), read.next()) => {
                 let msg = match msg {
@@ -475,83 +572,19 @@ where
 
                 match msg {
                     Ok(Message::Text(text)) => {
-                        let mut bytes = text.into_bytes();
-                        match from_slice::<StreamMessage<'static>>(&mut bytes) {
-                        Ok(event) => {
-                            let event_time = event.data.event_time();
-                            let symbol = event
-                                .data
-                                .symbol()
-                                .map(|s| s.to_string())
-                                .unwrap_or_else(|| {
-                                    event
-                                        .stream
-                                        .split('@')
-                                        .next()
-                                        .unwrap_or("")
-                                        .to_string()
-                                });
-                            let span = tracing::info_span!("ws_event", exchange = %exchange, symbol = %symbol);
-                            let _enter = span.enter();
-                            let pipeline_start = Instant::now();
-                            if core::config::metrics_enabled() {
-                                metrics::counter!("md_ws_events_total").increment(1);
-                                if let Some(ev_time) = event_time {
-                                    let now_ns = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_nanos();
-                                    let lag_ns = now_ns.saturating_sub(ev_time as u128 * 1_000_000);
-                                    metrics::gauge!("md_ws_lag_ns").set(lag_ns as f64);
-                                }
-                            }
-                            #[cfg(feature = "debug-logs")]
-                            tracing::debug!(?event);
-                            // original text no longer available; reconstruct from bytes for logging
-                            let raw = unsafe { std::str::from_utf8_unchecked(&bytes) };
-                            handle_stream_event(&event, raw);
-                            if let Event::DepthUpdate(ref update) = event.data {
-                                let symbol = update.symbol.clone();
-                                if let Some(mut book) = books.get_mut(&symbol) {
-                                    match apply_depth_update(&mut book, update) {
-                                        ApplyResult::Applied | ApplyResult::Outdated => {}
-                                        ApplyResult::Gap => {
-                                            let buffer = vec![update.clone()];
-                                            drop(book);
-                                            if let Some(mut new_book) =
-                                                fetch_depth_snapshot(&client, &depth_base, &symbol, &http_bucket)
-                                                    .await
-                                            {
-                                                fast_forward(&mut new_book, &buffer);
-                                                books.insert(symbol, new_book);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            let key = format!("{}:{}", exchange, symbol);
-                            if let Some(tx) = event_txs.get(&key) {
-                                if let Err(e) = tx.send(event).await {
-                                    tracing::warn!("failed to send event: {}", e);
-                                }
-                            } else {
-                                tracing::warn!("missing channel for {}", key);
-                            }
-                            if core::config::metrics_enabled() {
-                                metrics::gauge!("md_pipeline_p99_us")
-                                    .set(pipeline_start.elapsed().as_micros() as f64);
-                            }
-                        }
-                        Err(e) => tracing::error!("failed to parse message: {}", e),
+                        process_text_message(
+                            text,
+                            &books,
+                            &event_txs,
+                            &client,
+                            &depth_base,
+                            &exchange,
+                            &http_bucket,
+                        ).await?;
                     }
-                },
-                    Ok(Message::Ping(payload)) => {
-                        write.send(Message::Pong(payload)).await?;
+                    Ok(other) => {
+                        handle_ping_pong(&mut write, &mut last_pong, Some(other)).await?;
                     }
-                    Ok(Message::Pong(_)) => {
-                        last_pong = Instant::now();
-                    }
-                    Ok(_) => {}
                     Err(e) => {
                         let _ = write.close().await;
                         return Err(e.into());
