@@ -82,7 +82,7 @@ pub struct MexcAdapter {
     _books: Arc<DashMap<String, OrderBook>>,
     http_bucket: Arc<TokenBucket>,
     ws_bucket: Arc<TokenBucket>,
-    tasks: Vec<JoinHandle<()>>,
+    tasks: Vec<JoinHandle<Result<()>>>,
     shutdown: Arc<AtomicBool>,
 }
 
@@ -151,7 +151,12 @@ impl ExchangeAdapter for MexcAdapter {
                                     tokio::select! {
                                         msg = ws.next() => {
                                             match msg {
-                                                Some(Ok(Message::Ping(p))) => { ws.send(Message::Pong(p)).await.ok(); },
+                                                Some(Ok(Message::Ping(p))) => {
+                                                    ws.send(Message::Pong(p)).await.map_err(|e| {
+                                                        tracing::error!("mexc ws pong error: {}", e);
+                                                        e
+                                                    })?;
+                                                },
                                                 Some(Ok(Message::Close(_))) | None => { break; },
                                                 Some(Ok(_)) => {},
                                                 Some(Err(e)) => { tracing::warn!("mexc ws error: {}", e); break; },
@@ -163,7 +168,7 @@ impl ExchangeAdapter for MexcAdapter {
                                             }
                                         } => {
                                             let _ = ws.close(None).await;
-                                            return;
+                                            return Ok(());
                                         }
                                     }
                                 }
@@ -178,6 +183,7 @@ impl ExchangeAdapter for MexcAdapter {
                     }
                     sleep(Duration::from_secs(5)).await;
                 }
+                Ok::<(), anyhow::Error>(())
             });
             self.tasks.push(handle);
         }
