@@ -13,7 +13,7 @@ use reqwest::{Client, StatusCode};
 use rustls::ClientConfig;
 use serde_json::Value;
 use simd_json::serde::from_slice;
-use std::{env, sync::Arc};
+use std::{env, future::Future, sync::Arc};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
@@ -173,89 +173,56 @@ impl BinanceAdapter {
         let depth_base = depth_base.to_string();
 
         let handle = tokio::spawn(async move {
-            let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
-                .ok()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(64);
-            let max_backoff = Duration::from_secs(max_backoff_secs);
-            let min_stable = Duration::from_secs(30);
-            let mut backoff = Duration::from_secs(1);
-            let mut failures: u32 = 0;
-            let max_failures = env::var("MAX_FAILURES")
-                .ok()
-                .and_then(|s| s.parse::<u32>().ok())
-                .unwrap_or(10);
-            loop {
-                ws_bucket.acquire(1).await;
-                tracing::info!(
-                    "\u{2192} opening WS ({}): {} ({} streams)",
-                    name,
+            if proxy.is_empty() {
+                let url_for_connect = url.clone();
+                reconnect_loop(
+                    move || {
+                        let tls = tls_config.clone();
+                        let url = url_for_connect.clone();
+                        async move {
+                            connect_async_tls_with_config(
+                                url,
+                                None,
+                                false,
+                                Some(Connector::Rustls(tls)),
+                            )
+                            .await
+                            .context("WebSocket handshake")
+                            .map(|(ws_stream, _)| ws_stream)
+                        }
+                    },
+                    name.clone(),
                     url,
-                    chunk_len
-                );
-                let start = Instant::now();
-                let mut connected = false;
-                let result = match connect_ws(url.clone(), &proxy, tls_config.clone()).await {
-                    Ok(WsConn::Direct(ws_stream)) => {
-                        connected = true;
-                        backoff = Duration::from_secs(1);
-                        run_ws(
-                            ws_stream,
-                            books.clone(),
-                            event_txs.clone(),
-                            client.clone(),
-                            depth_base.clone(),
-                            name.clone(),
-                            http_bucket.clone(),
-                        )
-                        .await
-                    }
-                    Ok(WsConn::Proxy(ws_stream)) => {
-                        connected = true;
-                        backoff = Duration::from_secs(1);
-                        run_ws(
-                            ws_stream,
-                            books.clone(),
-                            event_txs.clone(),
-                            client.clone(),
-                            depth_base.clone(),
-                            name.clone(),
-                            http_bucket.clone(),
-                        )
-                        .await
-                    }
-                    Err(e) => Err(e),
-                };
-
-                let ok = result.is_ok();
-                if !ok {
-                    if let Err(e) = &result {
-                        tracing::error!("WS error: {}", e);
-                    }
-                    failures += 1;
-                    if failures >= max_failures {
-                        tracing::error!("max WS failures reached, giving up");
-                        break;
-                    }
-                } else {
-                    tracing::warn!("WS stream closed");
-                    failures = 0;
-                }
-
-                let elapsed = start.elapsed();
-                if connected {
-                    backoff = next_backoff(backoff, elapsed, ok, max_backoff, min_stable);
-                } else {
-                    backoff = std::cmp::min(backoff * 2, max_backoff);
-                }
-
-                let jitter: f32 = rand::thread_rng().gen_range(0.8..1.2);
-                let sleep_dur = backoff.mul_f32(jitter);
-                tracing::warn!("Reconnecting in {:?}...", sleep_dur);
-                if core::config::metrics_enabled() {
-                    metrics::counter!("md_ws_reconnects_total").increment(1);
-                }
-                sleep(sleep_dur).await;
+                    chunk_len,
+                    ws_bucket,
+                    books,
+                    event_txs,
+                    client,
+                    depth_base,
+                    http_bucket,
+                )
+                .await;
+            } else {
+                let url_for_connect = url.clone();
+                let proxy_addr = proxy.clone();
+                reconnect_loop(
+                    move || {
+                        let url = url_for_connect.clone();
+                        let proxy_addr = proxy_addr.clone();
+                        let tls = tls_config.clone();
+                        async move { connect_via_socks5(url, &proxy_addr, tls).await }
+                    },
+                    name.clone(),
+                    url,
+                    chunk_len,
+                    ws_bucket,
+                    books,
+                    event_txs,
+                    client,
+                    depth_base,
+                    http_bucket,
+                )
+                .await;
             }
         });
 
@@ -353,25 +320,6 @@ impl ExchangeAdapter for BinanceAdapter {
 
 // --- Internal helpers -----------------------------------------------------
 
-enum WsConn {
-    Direct(WebSocketStream<MaybeTlsStream<TcpStream>>),
-    Proxy(WebSocketStream<MaybeTlsStream<Socks5Stream<TcpStream>>>),
-}
-
-async fn connect_ws(url: Url, proxy: &str, tls_config: Arc<ClientConfig>) -> Result<WsConn> {
-    if proxy.is_empty() {
-        let (ws_stream, _) =
-            connect_async_tls_with_config(url, None, false, Some(Connector::Rustls(tls_config)))
-                .await
-                .context("WebSocket handshake")?;
-        Ok(WsConn::Direct(ws_stream))
-    } else {
-        connect_via_socks5(url, proxy, tls_config)
-            .await
-            .map(WsConn::Proxy)
-    }
-}
-
 async fn connect_via_socks5(
     url: Url,
     proxy_addr: &str,
@@ -391,6 +339,95 @@ async fn connect_via_socks5(
             .context("WebSocket handshake via proxy")?;
 
     Ok(ws_stream)
+}
+
+async fn reconnect_loop<F, Fut, S>(
+    mut connect: F,
+    name: String,
+    url: Url,
+    chunk_len: usize,
+    ws_bucket: Arc<TokenBucket>,
+    books: Arc<DashMap<String, OrderBook>>,
+    event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+    client: Client,
+    depth_base: String,
+    http_bucket: Arc<TokenBucket>,
+) where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: Future<Output = Result<WebSocketStream<S>>> + Send,
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let max_backoff_secs = env::var("MAX_BACKOFF_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(64);
+    let max_backoff = Duration::from_secs(max_backoff_secs);
+    let min_stable = Duration::from_secs(30);
+    let mut backoff = Duration::from_secs(1);
+    let mut failures: u32 = 0;
+    let max_failures = env::var("MAX_FAILURES")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(10);
+
+    loop {
+        ws_bucket.acquire(1).await;
+        tracing::info!(
+            "\u{2192} opening WS ({}): {} ({} streams)",
+            name,
+            url,
+            chunk_len
+        );
+        let start = Instant::now();
+        let mut connected = false;
+        let result = match connect().await {
+            Ok(ws_stream) => {
+                connected = true;
+                backoff = Duration::from_secs(1);
+                run_ws(
+                    ws_stream,
+                    books.clone(),
+                    event_txs.clone(),
+                    client.clone(),
+                    depth_base.clone(),
+                    name.clone(),
+                    http_bucket.clone(),
+                )
+                .await
+            }
+            Err(e) => Err(e),
+        };
+
+        let ok = result.is_ok();
+        if !ok {
+            if let Err(e) = &result {
+                tracing::error!("WS error: {}", e);
+            }
+            failures += 1;
+            if failures >= max_failures {
+                tracing::error!("max WS failures reached, giving up");
+                break;
+            }
+        } else {
+            tracing::warn!("WS stream closed");
+            failures = 0;
+        }
+
+        let elapsed = start.elapsed();
+        if connected {
+            backoff = next_backoff(backoff, elapsed, ok, max_backoff, min_stable);
+        } else {
+            backoff = std::cmp::min(backoff * 2, max_backoff);
+        }
+
+        let jitter: f32 = rand::thread_rng().gen_range(0.8..1.2);
+        let sleep_dur = backoff.mul_f32(jitter);
+        tracing::warn!("Reconnecting in {:?}...", sleep_dur);
+        if core::config::metrics_enabled() {
+            metrics::counter!("md_ws_reconnects_total").increment(1);
+        }
+        sleep(sleep_dur).await;
+    }
 }
 
 async fn rate_limited_get(
