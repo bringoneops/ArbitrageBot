@@ -1,0 +1,8 @@
+{
+  "global": [],
+  "per_symbol": [
+    "order_book_update",
+    "trades",
+    "tickers"
+  ]
+}

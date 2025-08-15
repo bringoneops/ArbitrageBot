@@ -30,6 +30,8 @@ pub enum Event<'a> {
     IndexPrice(IndexPriceEvent<'a>),
     #[serde(rename = "markPriceUpdate")]
     MarkPrice(MarkPriceEvent<'a>),
+    #[serde(rename = "fundingRate")]
+    FundingRate(FundingRateEvent<'a>),
     #[serde(rename = "markPriceKline")]
     MarkPriceKline(MarkPriceKlineEvent<'a>),
     #[serde(rename = "indexPriceKline")]
@@ -60,6 +62,7 @@ impl<'a> Event<'a> {
             Event::Ticker(e) => Some(e.event_time),
             Event::IndexPrice(e) => Some(e.event_time),
             Event::MarkPrice(e) => Some(e.event_time),
+            Event::FundingRate(e) => Some(e.event_time),
             Event::MarkPriceKline(e) => Some(e.event_time),
             Event::IndexPriceKline(e) => Some(e.event_time),
             Event::ContinuousKline(e) => Some(e.event_time),
@@ -83,6 +86,7 @@ impl<'a> Event<'a> {
             Event::BookTicker(e) => Some(&e.symbol),
             Event::IndexPrice(e) => Some(&e.symbol),
             Event::MarkPrice(e) => Some(&e.symbol),
+            Event::FundingRate(e) => Some(&e.symbol),
             Event::MarkPriceKline(e) => Some(&e.symbol),
             Event::IndexPriceKline(e) => Some(&e.symbol),
             Event::ContinuousKline(e) => Some(&e.pair),
@@ -314,6 +318,18 @@ pub struct MarkPriceEvent<'a> {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FundingRateEvent<'a> {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "r")]
+    pub funding_rate: Cow<'a, str>,
+    #[serde(rename = "T")]
+    pub funding_time: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MarkPriceKlineEvent<'a> {
     #[serde(rename = "E")]
     pub event_time: u64,
@@ -532,6 +548,7 @@ decimal_accessors!(TickerEvent { price_change => price_change_decimal, price_cha
 decimal_accessors!(BookTickerEvent { best_bid_price => best_bid_price_decimal, best_bid_qty => best_bid_qty_decimal, best_ask_price => best_ask_price_decimal, best_ask_qty => best_ask_qty_decimal });
 decimal_accessors!(IndexPriceEvent { index_price => index_price_decimal });
 decimal_accessors!(MarkPriceEvent { mark_price => mark_price_decimal, index_price => index_price_decimal, funding_rate => funding_rate_decimal });
+decimal_accessors!(FundingRateEvent { funding_rate => funding_rate_decimal });
 decimal_option_accessors!(MarkPriceEvent { estimated_settle_price => estimated_settle_price_decimal });
 decimal_accessors!(ForceOrder { original_quantity => original_quantity_decimal, price => price_decimal, average_price => average_price_decimal, last_filled_quantity => last_filled_quantity_decimal, filled_accumulated_quantity => filled_accumulated_quantity_decimal, last_filled_price => last_filled_price_decimal, bids_notional => bids_notional_decimal, ask_notional => ask_notional_decimal });
 decimal_accessors!(GreeksEvent { delta => delta_decimal, gamma => gamma_decimal, vega => vega_decimal, theta => theta_decimal });

@@ -49,3 +49,19 @@ fn options_config_includes_options_streams() {
     assert!(cfg.per_symbol.iter().all(|s| !s.contains("depth10@100ms")));
     assert!(cfg.per_symbol.iter().all(|s| !s.contains("depth20@100ms")));
 }
+
+#[test]
+fn gateio_spot_streams() {
+    let cfg = stream_config_for_exchange("Gate.io Spot");
+    assert!(cfg.per_symbol.iter().any(|s| s == "order_book_update"));
+    assert!(cfg.per_symbol.iter().any(|s| s == "trades"));
+    assert!(cfg.per_symbol.iter().any(|s| s == "tickers"));
+}
+
+#[test]
+fn gateio_futures_streams() {
+    let cfg = stream_config_for_exchange("Gate.io Futures");
+    assert!(cfg.per_symbol.iter().any(|s| s == "order_book_update"));
+    assert!(cfg.per_symbol.iter().any(|s| s == "trades"));
+    assert!(cfg.per_symbol.iter().any(|s| s == "tickers"));
+}
