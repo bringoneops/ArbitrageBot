@@ -16,6 +16,7 @@ pub use adapter::binance::{
     fetch_symbols as fetch_binance_symbols, BinanceAdapter, BINANCE_EXCHANGES,
 };
 pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
+pub use adapter::xt::{fetch_symbols as fetch_xt_symbols, XtAdapter, XT_EXCHANGES};
 pub use adapter::ExchangeAdapter;
 
 /// Shared task set type for spawning and tracking asynchronous tasks.
@@ -105,6 +106,7 @@ pub async fn spawn_adapters(
 ) -> Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>> {
     adapter::binance::register();
     adapter::mexc::register();
+    adapter::xt::register();
 
     let mut receivers = Vec::new();
 
