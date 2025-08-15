@@ -42,43 +42,50 @@ pub struct Config {
 
 static CONFIG: OnceCell<Config> = OnceCell::new();
 
-/// ---- NEW: helpers to avoid nested conditionals ----
+/* ---------- Business-rule predicates (DECOMPOSE CONDITIONAL) ---------- */
+
+fn has_valid_credentials(c: &Credentials) -> bool {
+    !c.api_key.is_empty() && !c.api_secret.is_empty()
+}
+
+fn is_missing_required_symbols(enabled: bool, list_is_empty: bool, all_flag: bool) -> bool {
+    enabled && !all_flag && list_is_empty
+}
+
+fn rate_limits_present(http_burst: u32, http_refill: u32, ws_burst: u32, ws_refill: u32) -> bool {
+    [http_burst, http_refill, ws_burst, ws_refill].iter().all(|&v| v > 0)
+}
+
+/* -------------------- helpers to avoid nested conditionals -------------------- */
+
 fn creds_from_env() -> Option<Credentials> {
     let api_key = env::var("API_KEY").ok()?;
     let api_secret = env::var("API_SECRET").ok()?;
-    if api_key.is_empty() || api_secret.is_empty() {
-        return None;
-    }
-    Some(Credentials { api_key, api_secret })
+    let c = Credentials { api_key, api_secret };
+    has_valid_credentials(&c).then_some(c)
 }
 
 fn creds_from_file(path: &str) -> Result<Option<Credentials>> {
     let mut content = fs::read(path).context("reading credentials file")?;
     let creds: Credentials = from_slice(&mut content).context("parsing credentials file")?;
-    if creds.api_key.is_empty() || creds.api_secret.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(creds))
+    Ok(has_valid_credentials(&creds).then_some(creds))
 }
-/// ---------------------------------------------------
 
 fn load_credentials() -> Result<Credentials> {
     if let Some(c) = creds_from_env() {
         return Ok(c);
     }
-
     if let Ok(path) = env::var("API_CREDENTIALS_FILE") {
         if let Some(c) = creds_from_file(&path)? {
             return Ok(c);
         }
     }
-
     Err(anyhow!(
         "API_KEY and API_SECRET must be set via env or credentials file"
     ))
 }
 
-// … everything below unchanged …
+/* -------------------------------- parsers -------------------------------- */
 
 fn parse_symbols_env(var: &str) -> Vec<String> {
     match env::var(var) {
@@ -120,6 +127,8 @@ fn parse_list_env(var: &str) -> Vec<String> {
         .map(|s| s.to_string())
         .collect()
 }
+
+/* --------------------------------- Config -------------------------------- */
 
 impl Config {
     pub fn from_env() -> Result<Self> {
@@ -164,50 +173,76 @@ impl Config {
     }
 
     fn validate_api_credentials(&self) -> Result<()> {
-        if self.credentials.api_key.is_empty() || self.credentials.api_secret.is_empty() {
+        if !has_valid_credentials(&self.credentials) {
             return Err(anyhow!("API credentials are required"));
         }
         Ok(())
     }
 
+    fn ensure_in_range(&self, name: &str, value: usize, min: usize, max: usize) -> Result<()> {
+        if !(min..=max).contains(&value) {
+            return Err(anyhow!("{name} must be between {min} and {max}"));
+        }
+        Ok(())
+    }
+
     fn validate_symbols(&self) -> Result<()> {
-        if self.enable_spot
-            && self.spot_symbols.is_empty()
-            && !env::var("SPOT_SYMBOLS").unwrap_or_default().eq_ignore_ascii_case("ALL")
-        {
-            return Err(anyhow!("spot symbol list cannot be empty"));
+        // Compute “ALL” flags once to avoid repeated env reads and boolean noise.
+        let spot_all = env::var("SPOT_SYMBOLS")
+            .unwrap_or_default()
+            .eq_ignore_ascii_case("ALL");
+        let futures_all = env::var("FUTURES_SYMBOLS")
+            .unwrap_or_default()
+            .eq_ignore_ascii_case("ALL");
+        let mexc_all = env::var("MEXC_SYMBOLS")
+            .unwrap_or_default()
+            .eq_ignore_ascii_case("ALL");
+
+        let missing_spot = is_missing_required_symbols(
+            self.enable_spot,
+            self.spot_symbols.is_empty(),
+            spot_all,
+        );
+        let missing_futures = is_missing_required_symbols(
+            self.enable_futures,
+            self.futures_symbols.is_empty(),
+            futures_all,
+        );
+        let missing_mexc =
+            is_missing_required_symbols(self.enable_mexc, self.mexc_symbols.is_empty(), mexc_all);
+
+        if missing_spot {
+            return Err(anyhow!(
+                "spot symbol list cannot be empty (set SPOT_SYMBOLS=ALL to use all symbols)"
+            ));
         }
-        if self.enable_futures
-            && self.futures_symbols.is_empty()
-            && !env::var("FUTURES_SYMBOLS").unwrap_or_default().eq_ignore_ascii_case("ALL")
-        {
-            return Err(anyhow!("futures symbol list cannot be empty"));
+        if missing_futures {
+            return Err(anyhow!(
+                "futures symbol list cannot be empty (set FUTURES_SYMBOLS=ALL to use all symbols)"
+            ));
         }
-        if self.enable_mexc
-            && self.mexc_symbols.is_empty()
-            && !env::var("MEXC_SYMBOLS").unwrap_or_default().eq_ignore_ascii_case("ALL")
-        {
-            return Err(anyhow!("mexc symbol list cannot be empty"));
+        if missing_mexc {
+            return Err(anyhow!(
+                "mexc symbol list cannot be empty (set MEXC_SYMBOLS=ALL to use all symbols)"
+            ));
         }
         Ok(())
     }
 
     fn validate_sizes(&self) -> Result<()> {
-        if self.chunk_size == 0 || self.chunk_size > 1024 {
-            return Err(anyhow!("chunk_size must be between 1 and 1024"));
-        }
-        if self.event_buffer_size == 0 || self.event_buffer_size > 65536 {
-            return Err(anyhow!("event_buffer_size must be between 1 and 65536"));
-        }
+        self.ensure_in_range("chunk_size", self.chunk_size, 1, 1024)?;
+        self.ensure_in_range("event_buffer_size", self.event_buffer_size, 1, 65_536)?;
         Ok(())
     }
 
     fn validate_rate_limits(&self) -> Result<()> {
-        if self.http_burst == 0
-            || self.http_refill_per_sec == 0
-            || self.ws_burst == 0
-            || self.ws_refill_per_sec == 0
-        {
+        let ok = rate_limits_present(
+            self.http_burst,
+            self.http_refill_per_sec,
+            self.ws_burst,
+            self.ws_refill_per_sec,
+        );
+        if !ok {
             return Err(anyhow!("rate limit values must be greater than zero"));
         }
         Ok(())
@@ -221,6 +256,8 @@ impl Config {
         Ok(())
     }
 }
+
+/* ----------------------------- public API ----------------------------- */
 
 pub fn load() -> Result<&'static Config> {
     let cfg = Config::from_env()?;
