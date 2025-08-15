@@ -19,11 +19,11 @@ use tokio::{
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use super::ExchangeAdapter;
-use crate::{registry, TaskSet};
+use crate::{registry, ChannelRegistry, TaskSet};
 use futures::future::BoxFuture;
+use std::sync::Once;
 use tokio::sync::mpsc;
 use tracing::error;
-use std::sync::Once;
 
 /// Configuration for a single MEXC exchange endpoint.
 pub struct MexcConfig {
@@ -88,46 +88,55 @@ pub fn register() {
             let cfg_ref: &'static MexcConfig = exch;
             registry::register_adapter(
                 cfg_ref.id,
-                Arc::new(move |
-                        global_cfg: &'static core::config::Config,
-                        exchange_cfg: &core::config::ExchangeConfig,
-                        client: Client,
-                        task_set: TaskSet,
-                        event_txs: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
-                        _tls_config: Arc<rustls::ClientConfig>,
-                        event_buffer_size: usize|
-                        -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>> {
-                    let cfg = cfg_ref;
-                    let initial_symbols = exchange_cfg.symbols.clone();
-                    Box::pin(async move {
-                        let mut symbols = initial_symbols;
-                        if symbols.is_empty() {
-                            symbols = fetch_symbols(cfg.info_url).await?;
-                        }
+                Arc::new(
+                    move |global_cfg: &'static core::config::Config,
+                          exchange_cfg: &core::config::ExchangeConfig,
+                          client: Client,
+                          task_set: TaskSet,
+                          channels: ChannelRegistry,
+                          _tls_config: Arc<rustls::ClientConfig>|
+                          -> BoxFuture<
+                        'static,
+                        Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>,
+                    > {
+                        let cfg = cfg_ref;
+                        let initial_symbols = exchange_cfg.symbols.clone();
+                        Box::pin(async move {
+                            let mut symbols = initial_symbols;
+                            if symbols.is_empty() {
+                                symbols = fetch_symbols(cfg.info_url).await?;
+                            }
 
-                        let mut receivers = Vec::new();
-                        for symbol in &symbols {
-                            let (tx, rx) = mpsc::channel(event_buffer_size);
-                            let key = format!("{}:{}", cfg.name, symbol);
-                            event_txs.insert(key, tx);
-                            receivers.push(rx);
-                        }
-
-                        let adapter = MexcAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
-
-                        {
-                            let mut set = task_set.lock().await;
-                            set.spawn(async move {
-                                let mut adapter = adapter;
-                                if let Err(e) = adapter.run().await {
-                                    error!("Failed to run adapter: {}", e);
+                            let mut receivers = Vec::new();
+                            for symbol in &symbols {
+                                let key = format!("{}:{}", cfg.name, symbol);
+                                let (_, rx) = channels.get_or_create(&key);
+                                if let Some(rx) = rx {
+                                    receivers.push(rx);
                                 }
-                            });
-                        }
+                            }
 
-                        Ok(receivers)
-                    })
-                }),
+                            let adapter = MexcAdapter::new(
+                                cfg,
+                                client.clone(),
+                                global_cfg.chunk_size,
+                                symbols,
+                            );
+
+                            {
+                                let mut set = task_set.lock().await;
+                                set.spawn(async move {
+                                    let mut adapter = adapter;
+                                    if let Err(e) = adapter.run().await {
+                                        error!("Failed to run adapter: {}", e);
+                                    }
+                                });
+                            }
+
+                            Ok(receivers)
+                        })
+                    },
+                ),
             );
         }
     });

@@ -21,6 +21,52 @@ pub use adapter::ExchangeAdapter;
 /// Shared task set type for spawning and tracking asynchronous tasks.
 pub type TaskSet = Arc<Mutex<JoinSet<()>>>;
 
+/// Registry for event channels, creating them lazily on first use.
+#[derive(Clone)]
+pub struct ChannelRegistry {
+    senders: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
+    buffer: usize,
+}
+
+impl ChannelRegistry {
+    /// Create a new registry using the provided channel buffer size.
+    pub fn new(buffer: usize) -> Self {
+        Self {
+            senders: Arc::new(DashMap::new()),
+            buffer,
+        }
+    }
+
+    /// Get an existing channel sender or create a new channel pair.
+    ///
+    /// Returns the sender and `Some(receiver)` if a new channel was created.
+    pub fn get_or_create(
+        &self,
+        key: &str,
+    ) -> (
+        mpsc::Sender<core::events::StreamMessage<'static>>,
+        Option<mpsc::Receiver<core::events::StreamMessage<'static>>>,
+    ) {
+        if let Some(tx) = self.senders.get(key) {
+            (tx.clone(), None)
+        } else {
+            let (tx, rx) = mpsc::channel(self.buffer);
+            self.senders.insert(key.to_string(), tx.clone());
+            (tx, Some(rx))
+        }
+    }
+
+    /// Retrieve the sender for an existing channel without creating one.
+    pub fn get(&self, key: &str) -> Option<mpsc::Sender<core::events::StreamMessage<'static>>> {
+        self.senders.get(key).map(|tx| tx.clone())
+    }
+
+    /// Current number of registered channels.
+    pub fn len(&self) -> usize {
+        self.senders.len()
+    }
+}
+
 /// Run a collection of exchange adapters to completion.
 ///
 /// Each adapter is spawned on the Tokio runtime and awaited. Errors from
@@ -54,9 +100,8 @@ pub async fn spawn_adapters(
     cfg: &'static core::config::Config,
     client: Client,
     task_set: TaskSet,
-    event_txs: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
+    channels: ChannelRegistry,
     tls_config: Arc<ClientConfig>,
-    event_buffer_size: usize,
 ) -> Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>> {
     adapter::binance::register();
     adapter::mexc::register();
@@ -70,9 +115,8 @@ pub async fn spawn_adapters(
                 exch,
                 client.clone(),
                 task_set.clone(),
-                event_txs.clone(),
+                channels.clone(),
                 tls_config.clone(),
-                event_buffer_size,
             )
             .await?;
             receivers.append(&mut res);

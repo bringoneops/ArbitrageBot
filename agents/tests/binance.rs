@@ -3,13 +3,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agents::adapter::binance::{connect_via_socks5, process_text_message};
+use agents::ChannelRegistry;
 use arb_core as core;
 use arb_core::rate_limit::TokenBucket;
 use dashmap::DashMap;
 use metrics_util::debugging::DebuggingRecorder;
 use reqwest::Client;
 use rustls::{ClientConfig, RootCertStore};
-use tokio::sync::mpsc;
 use url::Url;
 
 #[tokio::test]
@@ -48,9 +48,9 @@ async fn process_text_message_updates_book_and_metrics() {
         },
     );
 
-    let (tx, mut rx) = mpsc::channel(1);
-    let event_txs = Arc::new(DashMap::new());
-    event_txs.insert("Test:BTCUSDT".into(), tx);
+    let channels = ChannelRegistry::new(1);
+    let (_, rx) = channels.get_or_create("Test:BTCUSDT");
+    let mut rx = rx.expect("receiver");
 
     let http_bucket = Arc::new(TokenBucket::new(1, 1, Duration::from_secs(1)));
 
@@ -59,7 +59,7 @@ async fn process_text_message_updates_book_and_metrics() {
     process_text_message(
         json.to_string(),
         &books,
-        &event_txs,
+        &channels,
         &Client::new(),
         "http://localhost/",
         "Test",
