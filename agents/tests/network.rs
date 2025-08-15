@@ -1,5 +1,5 @@
 use agents::adapter::binance::{run_ws, BinanceAdapter, BinanceConfig};
-use agents::ExchangeAdapter;
+use agents::{ChannelRegistry, ExchangeAdapter, TaskSet};
 use arb_core as core;
 use arb_core::rate_limit::TokenBucket;
 use dashmap::DashMap;
@@ -8,9 +8,8 @@ use reqwest::Client;
 use rustls::{ClientConfig, RootCertStore};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::{net::TcpListener, sync::{mpsc, Mutex}, task::JoinSet};
+use tokio::{net::TcpListener, sync::Mutex, task::JoinSet};
 use tokio_tungstenite::{accept_async, connect_async, tungstenite::protocol::Message};
-use agents::TaskSet;
 
 #[tokio::test]
 async fn run_ws_emits_event() {
@@ -29,9 +28,9 @@ async fn run_ws_emits_event() {
     let (ws_stream, _) = connect_async(url).await.unwrap();
 
     let books = Arc::new(DashMap::new());
-    let (tx, mut rx) = mpsc::channel(1);
-    let channels = Arc::new(DashMap::new());
-    channels.insert("Test:BTCUSDT".into(), tx);
+    let channels = ChannelRegistry::new(1);
+    let (_, rx) = channels.get_or_create("Test:BTCUSDT");
+    let mut rx = rx.expect("receiver");
     let http_bucket = Arc::new(TokenBucket::new(1, 1, Duration::from_secs(1)));
 
     run_ws(
@@ -73,9 +72,7 @@ async fn subscribe_handles_reconnect_failures() {
     std::env::set_var("MAX_FAILURES", "1");
     let client = Client::new();
     let task_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
-    let event_txs = Arc::new(DashMap::new());
-    let (tx, _rx) = mpsc::channel(1);
-    event_txs.insert("Test:BTCUSDT".into(), tx);
+    let channels = ChannelRegistry::new(1);
     let tls = Arc::new(
         ClientConfig::builder()
             .with_safe_defaults()
@@ -88,7 +85,7 @@ async fn subscribe_handles_reconnect_failures() {
         1,
         String::new(),
         task_set.clone(),
-        event_txs,
+        channels,
         vec!["BTCUSDT".to_string()],
         tls,
     );

@@ -8,7 +8,7 @@ use reqwest::Client;
 use rustls::ClientConfig;
 use tokio::sync::mpsc;
 
-use crate::TaskSet;
+use crate::{ChannelRegistry, TaskSet};
 
 pub type AdapterFactory = Arc<
     dyn Fn(
@@ -16,10 +16,10 @@ pub type AdapterFactory = Arc<
             &core::config::ExchangeConfig,
             Client,
             TaskSet,
-            Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
+            ChannelRegistry,
             Arc<ClientConfig>,
-            usize,
-        ) -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>>
+        )
+            -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>>
         + Send
         + Sync,
 >;

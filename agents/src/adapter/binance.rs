@@ -32,10 +32,10 @@ use core::events::{DepthUpdateEvent, Event, StreamMessage};
 use core::rate_limit::TokenBucket;
 
 use super::ExchangeAdapter;
-use crate::{registry, TaskSet};
+use crate::{registry, ChannelRegistry, TaskSet};
 use futures::future::BoxFuture;
-use tracing::error;
 use std::sync::Once;
+use tracing::error;
 
 /// Configuration for a single Binance exchange endpoint.
 pub struct BinanceConfig {
@@ -121,55 +121,59 @@ pub fn register() {
             let cfg_ref: &'static BinanceConfig = exch;
             registry::register_adapter(
                 cfg_ref.id,
-                Arc::new(move |
-                        global_cfg: &'static core::config::Config,
-                        exchange_cfg: &core::config::ExchangeConfig,
-                        client: Client,
-                        task_set: TaskSet,
-                        event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
-                        tls_config: Arc<ClientConfig>,
-                        event_buffer_size: usize|
-                        -> BoxFuture<'static, Result<Vec<mpsc::Receiver<StreamMessage<'static>>>>> {
-                    let cfg = cfg_ref;
-                    let initial_symbols = exchange_cfg.symbols.clone();
-                    Box::pin(async move {
-                        let mut symbols = initial_symbols;
-                        if symbols.is_empty() {
-                            symbols = fetch_symbols(cfg.info_url).await?;
-                        }
+                Arc::new(
+                    move |global_cfg: &'static core::config::Config,
+                          exchange_cfg: &core::config::ExchangeConfig,
+                          client: Client,
+                          task_set: TaskSet,
+                          channels: ChannelRegistry,
+                          tls_config: Arc<ClientConfig>|
+                          -> BoxFuture<
+                        'static,
+                        Result<Vec<mpsc::Receiver<StreamMessage<'static>>>>,
+                    > {
+                        let cfg = cfg_ref;
+                        let initial_symbols = exchange_cfg.symbols.clone();
+                        Box::pin(async move {
+                            let mut symbols = initial_symbols;
+                            if symbols.is_empty() {
+                                symbols = fetch_symbols(cfg.info_url).await?;
+                            }
 
-                        let mut receivers = Vec::new();
-                        for symbol in &symbols {
-                            let (tx, rx) = mpsc::channel(event_buffer_size);
-                            let key = format!("{}:{}", cfg.name, symbol);
-                            event_txs.insert(key, tx);
-                            receivers.push(rx);
-                        }
-
-                        let adapter = BinanceAdapter::new(
-                            cfg,
-                            client.clone(),
-                            global_cfg.chunk_size,
-                            global_cfg.proxy_url.clone().unwrap_or_default(),
-                            task_set.clone(),
-                            event_txs.clone(),
-                            symbols,
-                            tls_config.clone(),
-                        );
-
-                        {
-                            let mut set = task_set.lock().await;
-                            set.spawn(async move {
-                                let mut adapter = adapter;
-                                if let Err(e) = adapter.run().await {
-                                    error!("Failed to run adapter: {}", e);
+                            let mut receivers = Vec::new();
+                            for symbol in &symbols {
+                                let key = format!("{}:{}", cfg.name, symbol);
+                                let (_, rx) = channels.get_or_create(&key);
+                                if let Some(rx) = rx {
+                                    receivers.push(rx);
                                 }
-                            });
-                        }
+                            }
 
-                        Ok(receivers)
-                    })
-                }),
+                            let adapter = BinanceAdapter::new(
+                                cfg,
+                                client.clone(),
+                                global_cfg.chunk_size,
+                                global_cfg.proxy_url.clone().unwrap_or_default(),
+                                task_set.clone(),
+                                channels.clone(),
+                                symbols,
+                                tls_config.clone(),
+                            );
+
+                            {
+                                let mut set = task_set.lock().await;
+                                set.spawn(async move {
+                                    let mut adapter = adapter;
+                                    if let Err(e) = adapter.run().await {
+                                        error!("Failed to run adapter: {}", e);
+                                    }
+                                });
+                            }
+
+                            Ok(receivers)
+                        })
+                    },
+                ),
             );
         }
     });
@@ -182,7 +186,7 @@ pub struct BinanceAdapter {
     chunk_size: usize,
     proxy_url: String,
     task_set: TaskSet,
-    event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+    channels: ChannelRegistry,
     symbols: Vec<String>,
     orderbooks: Arc<DashMap<String, OrderBook>>,
     tls_config: Arc<ClientConfig>,
@@ -198,7 +202,7 @@ impl BinanceAdapter {
         chunk_size: usize,
         proxy_url: String,
         task_set: TaskSet,
-        event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+        channels: ChannelRegistry,
         symbols: Vec<String>,
         tls_config: Arc<ClientConfig>,
     ) -> Self {
@@ -209,7 +213,7 @@ impl BinanceAdapter {
             chunk_size,
             proxy_url,
             task_set,
-            event_txs,
+            channels,
             symbols,
             orderbooks: Arc::new(DashMap::new()),
             tls_config,
@@ -236,7 +240,7 @@ impl BinanceAdapter {
         let name = self.cfg.name.to_string();
         let task_set = self.task_set.clone();
         let books = self.orderbooks.clone();
-        let event_txs = self.event_txs.clone();
+        let channels = self.channels.clone();
         let client = self.client.clone();
         let tls_config = self.tls_config.clone();
         let http_bucket = self.http_bucket.clone();
@@ -269,7 +273,7 @@ impl BinanceAdapter {
                         chunk_len,
                         ws_bucket,
                         books,
-                        event_txs,
+                        channels.clone(),
                         client,
                         depth_base,
                         http_bucket,
@@ -290,7 +294,7 @@ impl BinanceAdapter {
                         chunk_len,
                         ws_bucket,
                         books,
-                        event_txs,
+                        channels,
                         client,
                         depth_base,
                         http_bucket,
@@ -306,6 +310,11 @@ impl BinanceAdapter {
 #[async_trait]
 impl ExchangeAdapter for BinanceAdapter {
     async fn subscribe(&mut self) -> Result<()> {
+        for symbol in &self.symbols {
+            let key = format!("{}:{}", self.cfg.name, symbol);
+            // Ensure a channel exists for each subscribed symbol
+            self.channels.get_or_create(&key);
+        }
         let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
         let cfg = stream_config_for_exchange(self.cfg.name);
         let chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
@@ -420,7 +429,7 @@ async fn reconnect_loop<F, Fut, S>(
     chunk_len: usize,
     ws_bucket: Arc<TokenBucket>,
     books: Arc<DashMap<String, OrderBook>>,
-    event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+    channels: ChannelRegistry,
     client: Client,
     depth_base: String,
     http_bucket: Arc<TokenBucket>,
@@ -459,7 +468,7 @@ async fn reconnect_loop<F, Fut, S>(
                 run_ws(
                     ws_stream,
                     books.clone(),
-                    event_txs.clone(),
+                    channels.clone(),
                     client.clone(),
                     depth_base.clone(),
                     name.clone(),
@@ -633,7 +642,7 @@ async fn update_order_book(
 pub async fn process_text_message(
     text: String,
     books: &Arc<DashMap<String, OrderBook>>,
-    event_txs: &Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+    channels: &ChannelRegistry,
     client: &Client,
     depth_base: &str,
     exchange: &str,
@@ -656,7 +665,7 @@ pub async fn process_text_message(
     }
 
     let key = format!("{}:{}", exchange, symbol);
-    if let Some(tx) = event_txs.get(&key) {
+    if let Some(tx) = channels.get(&key) {
         if let Err(e) = tx.send(event).await {
             tracing::warn!("failed to send event: {}", e);
         }
@@ -674,7 +683,7 @@ pub async fn process_text_message(
 pub async fn run_ws<S>(
     ws_stream: WebSocketStream<S>,
     books: Arc<DashMap<String, OrderBook>>,
-    event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>>,
+    channels: ChannelRegistry,
     client: Client,
     depth_base: String,
     exchange: String,
@@ -712,7 +721,7 @@ where
                         process_text_message(
                             text,
                             &books,
-                            &event_txs,
+                            &channels,
                             &client,
                             &depth_base,
                             &exchange,

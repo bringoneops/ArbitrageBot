@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
-use dashmap::DashMap;
 use reqwest::{Client, Proxy};
 use rustls::ClientConfig;
 use std::{env, sync::Arc};
-use tokio::{sync::{mpsc, Mutex}, task::JoinSet};
+use tokio::{
+    sync::{mpsc, Mutex},
+    task::JoinSet,
+};
 use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
 
@@ -78,17 +80,15 @@ pub async fn run() -> Result<()> {
     let join_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
 
     let event_buffer_size = cfg.event_buffer_size;
-    let event_txs: Arc<DashMap<String, mpsc::Sender<StreamMessage<'static>>>> =
-        Arc::new(DashMap::new());
+    let channels = agents::ChannelRegistry::new(event_buffer_size);
 
     // Create and spawn exchange adapters, collecting receivers for each partition.
     let receivers = spawn_adapters(
         cfg,
         client,
         join_set.clone(),
-        event_txs.clone(),
+        channels.clone(),
         tls_config.clone(),
-        event_buffer_size,
     )
     .await?;
 
@@ -97,7 +97,7 @@ pub async fn run() -> Result<()> {
     spawn_consumers(receivers, join_set.clone(), metrics_enabled).await;
 
     // Drop the original senders so receivers can terminate once all adapters finish.
-    drop(event_txs);
+    drop(channels);
 
     // Await all spawned tasks and log any errors.
     {

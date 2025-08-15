@@ -3,14 +3,14 @@ use std::sync::{
     Arc,
 };
 
-use agents::{run_adapters, spawn_adapters, ExchangeAdapter, BINANCE_EXCHANGES};
+use agents::{
+    run_adapters, spawn_adapters, ChannelRegistry, ExchangeAdapter, TaskSet, BINANCE_EXCHANGES,
+};
 use arb_core as core;
 use async_trait::async_trait;
-use dashmap::DashMap;
 use reqwest::Client;
 use rustls::{ClientConfig, RootCertStore};
-use tokio::{task::JoinSet, sync::Mutex};
-use agents::TaskSet;
+use tokio::{sync::Mutex, task::JoinSet};
 
 struct TestAdapter {
     counter: Arc<AtomicUsize>,
@@ -53,20 +53,11 @@ async fn spawn_adapters_ok() {
     );
 
     let task_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
-    let event_txs = Arc::new(DashMap::new());
+    let channels = ChannelRegistry::new(cfg.event_buffer_size);
 
-    assert!(
-        spawn_adapters(
-            cfg,
-            client,
-            task_set,
-            event_txs,
-            tls_config,
-            cfg.event_buffer_size,
-        )
+    assert!(spawn_adapters(cfg, client, task_set, channels, tls_config,)
         .await
-        .is_ok()
-    );
+        .is_ok());
 }
 
 #[tokio::test]
