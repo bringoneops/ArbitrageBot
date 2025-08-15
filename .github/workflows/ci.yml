@@ -13,12 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: trunk-io/trunk-action@v1
-        with:
-          arguments: fmt --ci
-      - uses: trunk-io/trunk-action@v1
-        with:
-          arguments: check --ci
+      - name: Install Trunk
+        run: |
+          curl https://get.trunk.io -fsSL | bash
+          trunk install
+      - name: Run Trunk fmt
+        run: trunk fmt --ci
+      - name: Run Trunk check
+        run: trunk check --ci
   test:
     runs-on: ubuntu-latest
     steps:
