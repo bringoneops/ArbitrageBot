@@ -107,6 +107,7 @@ pub async fn spawn_adapters(
     adapter::binance::register();
     adapter::mexc::register();
     adapter::latoken::register();
+    adapter::bitget::register();
 
     let mut receivers = Vec::new();
 

@@ -8,7 +8,15 @@ pub use arb_core::events::{
     StreamMessage, TickerEvent,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
-use events::{DepthUpdateEvent, TradeEvent};
+use events::{
+    DepthUpdateEvent,
+    TradeEvent,
+    MarkPriceEvent,
+    IndexPriceEvent,
+    FundingRateEvent,
+    OpenInterestEvent,
+    ForceOrderEvent,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum MdEvent {
@@ -19,6 +27,11 @@ pub enum MdEvent {
     Kline(Kline),
     DepthSnapshot(DepthSnapshot),
     AvgPrice(AvgPrice),
+    MarkPrice(MarkPrice),
+    IndexPrice(IndexPrice),
+    FundingRate(FundingRate),
+    OpenInterest(OpenInterest),
+    Liquidation(Liquidation),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -118,6 +131,47 @@ pub struct AvgPrice {
     pub price: f64,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MarkPrice {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub price: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct IndexPrice {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub price: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct FundingRate {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub rate: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct OpenInterest {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub open_interest: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Liquidation {
+    pub exchange: String,
+    pub symbol: String,
+    pub ts: u64,
+    pub price: f64,
+    pub quantity: f64,
+}
+
 impl<'a> From<TradeEvent<'a>> for Trade {
     fn from(ev: TradeEvent<'a>) -> Self {
         let side = if ev.buyer_is_maker { Side::Sell } else { Side::Buy };
@@ -179,7 +233,7 @@ impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
-            ts: ev.event_time,
+            ts: ev.event_time.saturating_mul(1_000_000),
             bids,
             asks,
             first_update_id: Some(ev.first_update_id),
@@ -330,6 +384,98 @@ impl<'a> From<TickerEvent<'a>> for MdEvent {
     }
 }
 
+impl<'a> From<MarkPriceEvent<'a>> for MarkPrice {
+    fn from(ev: MarkPriceEvent<'a>) -> Self {
+        let price = ev.mark_price_decimal().to_f64().unwrap_or_default();
+        Self {
+            exchange: "binance".to_string(),
+            symbol: ev.symbol,
+            ts: ev.event_time,
+            price,
+        }
+    }
+}
+
+impl<'a> From<MarkPriceEvent<'a>> for MdEvent {
+    fn from(ev: MarkPriceEvent<'a>) -> Self {
+        MdEvent::MarkPrice(ev.into())
+    }
+}
+
+impl<'a> From<IndexPriceEvent<'a>> for IndexPrice {
+    fn from(ev: IndexPriceEvent<'a>) -> Self {
+        let price = ev.index_price_decimal().to_f64().unwrap_or_default();
+        Self {
+            exchange: "binance".to_string(),
+            symbol: ev.symbol,
+            ts: ev.event_time,
+            price,
+        }
+    }
+}
+
+impl<'a> From<IndexPriceEvent<'a>> for MdEvent {
+    fn from(ev: IndexPriceEvent<'a>) -> Self {
+        MdEvent::IndexPrice(ev.into())
+    }
+}
+
+impl<'a> From<FundingRateEvent<'a>> for FundingRate {
+    fn from(ev: FundingRateEvent<'a>) -> Self {
+        let rate = ev.funding_rate_decimal().to_f64().unwrap_or_default();
+        Self {
+            exchange: "binance".to_string(),
+            symbol: ev.symbol,
+            ts: ev.event_time,
+            rate,
+        }
+    }
+}
+
+impl<'a> From<FundingRateEvent<'a>> for MdEvent {
+    fn from(ev: FundingRateEvent<'a>) -> Self {
+        MdEvent::FundingRate(ev.into())
+    }
+}
+
+impl<'a> From<OpenInterestEvent<'a>> for OpenInterest {
+    fn from(ev: OpenInterestEvent<'a>) -> Self {
+        let open_interest = ev.open_interest_decimal().to_f64().unwrap_or_default();
+        Self {
+            exchange: "binance".to_string(),
+            symbol: ev.symbol,
+            ts: ev.event_time,
+            open_interest,
+        }
+    }
+}
+
+impl<'a> From<OpenInterestEvent<'a>> for MdEvent {
+    fn from(ev: OpenInterestEvent<'a>) -> Self {
+        MdEvent::OpenInterest(ev.into())
+    }
+}
+
+impl<'a> From<ForceOrderEvent<'a>> for Liquidation {
+    fn from(ev: ForceOrderEvent<'a>) -> Self {
+        let price = ev.order.price_decimal().to_f64().unwrap_or_default();
+        let quantity = ev.order.original_quantity_decimal().to_f64().unwrap_or_default();
+        Self {
+            exchange: "binance".to_string(),
+            symbol: ev.order.symbol,
+            ts: ev.event_time,
+            price,
+            quantity,
+        }
+    }
+}
+
+impl<'a> From<ForceOrderEvent<'a>> for MdEvent {
+    fn from(ev: ForceOrderEvent<'a>) -> Self {
+        MdEvent::Liquidation(ev.into())
+    }
+}
+
 impl<'a> TryFrom<Event<'a>> for MdEvent {
     type Error = ();
     fn try_from(ev: Event<'a>) -> Result<Self, Self::Error> {
@@ -340,6 +486,11 @@ impl<'a> TryFrom<Event<'a>> for MdEvent {
             Event::MiniTicker(e) => Ok(MdEvent::from(e)),
             Event::Kline(e) => Ok(MdEvent::from(e)),
             Event::Ticker(e) => Ok(MdEvent::from(e)),
+            Event::MarkPrice(e) => Ok(MdEvent::from(e)),
+            Event::IndexPrice(e) => Ok(MdEvent::from(e)),
+            Event::FundingRate(e) => Ok(MdEvent::from(e)),
+            Event::OpenInterest(e) => Ok(MdEvent::from(e)),
+            Event::ForceOrder(e) => Ok(MdEvent::from(e)),
             _ => Err(()),
         }
     }

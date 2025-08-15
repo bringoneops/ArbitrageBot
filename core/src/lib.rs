@@ -60,9 +60,13 @@ static GATEIO_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     from_slice(&mut data).expect("invalid gateio stream configuration")
 });
 
+
 static LATOKEN_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     let mut data = include_bytes!("../../streams_latoken.json").to_vec();
     from_slice(&mut data).expect("invalid latoken stream configuration")
+static BITGET_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams_bitget.json").to_vec();
+    from_slice(&mut data).expect("invalid bitget stream configuration")
 });
 
 /// Returns the default stream configuration.
@@ -78,6 +82,7 @@ pub fn stream_config_for_exchange(name: &str) -> &'static StreamConfig {
         "Binance Options" => &OPTIONS_STREAM_CONFIG,
         "Gate.io Spot" => &GATEIO_STREAM_CONFIG,
         "LATOKEN" => &LATOKEN_STREAM_CONFIG,
+        "Bitget" => &BITGET_STREAM_CONFIG,
         _ => default_stream_config(),
     }
 }
