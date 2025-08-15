@@ -112,13 +112,14 @@ pub async fn spawn_adapters(
     adapter::binance::register();
     adapter::gateio::register();
     adapter::mexc::register();
+    adapter::bingx::register();
     adapter::kucoin::register();
     adapter::xt::register();
     adapter::bitmart::register();
     adapter::coinex::register();
     adapter::latoken::register();
     adapter::bitget::register();
-
+  
     let mut receivers = Vec::new();
 
     for exch in &cfg.exchanges {
