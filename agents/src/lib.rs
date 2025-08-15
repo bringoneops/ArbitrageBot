@@ -105,6 +105,7 @@ pub async fn spawn_adapters(
 ) -> Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>> {
     adapter::binance::register();
     adapter::mexc::register();
+    adapter::bingx::register();
 
     let mut receivers = Vec::new();
 
