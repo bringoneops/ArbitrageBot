@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use reqwest::{Client, Proxy};
-use std::sync::Arc;
+use std::{env, sync::Arc};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
@@ -24,8 +24,10 @@ pub async fn run() -> Result<()> {
     debug!(?cfg, "loaded config");
 
     let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
+    let user_agent = env::var("USER_AGENT")
+        .unwrap_or_else(|_| format!("ArbitrageBot/{}", env!("CARGO_PKG_VERSION")));
     let mut client_builder = Client::builder()
-        .user_agent("binance-us-all-streams")
+        .user_agent(user_agent)
         .use_preconfigured_tls(tls_config.clone());
     if let Some(proxy) = &cfg.proxy_url {
         if !proxy.is_empty() {
