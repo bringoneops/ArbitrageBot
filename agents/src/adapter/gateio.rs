@@ -8,7 +8,7 @@ use std::sync::{Arc, Once};
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{interval, sleep, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
@@ -278,9 +278,34 @@ impl ExchangeAdapter for GateioAdapter {
                     });
 
                     while let Some(msg) = read.next().await {
-                        if let Err(e) = msg {
-                            error!("websocket error: {}", e);
-                            break;
+                        match msg {
+                            Ok(Message::Text(text)) => {
+                                if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                                    if v.get("method")
+                                        .and_then(|m| m.as_str())
+                                        == Some("kline.update")
+                                    {
+                                        if let Some(params) =
+                                            v.get("params").and_then(|p| p.as_array())
+                                        {
+                                            if let Some(symbol) =
+                                                params.get(0).and_then(|s| s.as_str())
+                                            {
+                                                debug!("kline update for {}", symbol);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(Message::Ping(p)) => {
+                                let _ = write.lock().await.send(Message::Pong(p)).await;
+                            }
+                            Ok(Message::Close(_)) => break,
+                            Err(e) => {
+                                error!("websocket error: {}", e);
+                                break;
+                            }
+                            _ => {}
                         }
                     }
 
