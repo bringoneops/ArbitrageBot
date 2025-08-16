@@ -1,9 +1,9 @@
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use canonical::{
     events::{
-        Event, ForceOrder, ForceOrderEvent, FundingRateEvent, IndexPriceEvent, Kline as EventKline,
-        KlineEvent, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
-        TickerEvent, TradeEvent, GateioStreamMessage,
+        BingxStreamMessage, Event, ForceOrder, ForceOrderEvent, FundingRateEvent,
+        GateioStreamMessage, IndexPriceEvent, Kline as EventKline, KlineEvent, MarkPriceEvent,
+        MexcStreamMessage, MiniTickerEvent, OpenInterestEvent, TickerEvent, TradeEvent,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
@@ -143,6 +143,62 @@ fn mexc_book_ticker_event_to_canonical() {
             assert_eq!(t, de);
         }
         _ => panic!("expected book ticker"),
+    }
+}
+
+#[test]
+fn bingx_trade_event_to_canonical() {
+    let msg: BingxStreamMessage<'_> = serde_json::from_value(json!({
+        "e": "trade",
+        "E": 1u64,
+        "s": "BTCUSDT",
+        "t": 10u64,
+        "p": "93200.0",
+        "q": "0.5",
+        "b": 1u64,
+        "a": 2u64,
+        "T": 1u64,
+        "m": true
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "bingx");
+            assert_eq!(t.symbol, "BTCUSDT");
+            assert_eq!(t.price, 93200.0);
+            assert_eq!(t.side, Some(Side::Sell));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn bingx_depth_event_to_canonical() {
+    let msg: BingxStreamMessage<'_> = serde_json::from_value(json!({
+        "e": "depthUpdate",
+        "E": 1u64,
+        "s": "BTCUSDT",
+        "U": 100u64,
+        "u": 101u64,
+        "b": [["93200.0", "1.0"]],
+        "a": [["93300.0", "2.0"]]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "bingx");
+            assert_eq!(b.symbol, "BTCUSDT");
+            assert_eq!(b.bids[0].price, 93200.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
     }
 }
 

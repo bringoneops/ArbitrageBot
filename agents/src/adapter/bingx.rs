@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
 use core::{chunk_streams_with_config, stream_config_for_exchange};
+use core::events::BingxStreamMessage;
 use futures::{future, future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
@@ -224,13 +225,32 @@ impl ExchangeAdapter for BingxAdapter {
                                             }
                                             Some(Ok(Message::Pong(_))) => {}
                                             Some(Ok(Message::Text(text))) => {
-                                                if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                                                if let Ok(msg) = serde_json::from_str::<BingxStreamMessage>(&text) {
+                                                    match msg {
+                                                        BingxStreamMessage::Trade(_) => {
+                                                            info!("bingx trade event: {}", text);
+                                                        }
+                                                        BingxStreamMessage::DepthUpdate(_) => {
+                                                            info!("bingx depth event: {}", text);
+                                                        }
+                                                        BingxStreamMessage::Unknown => {}
+                                                    }
+                                                } else if let Ok(v) = serde_json::from_str::<Value>(&text) {
                                                     if let Some(ping) = v.get("ping").cloned() {
                                                         let pong = serde_json::json!({"pong": ping});
-                                                        if ws.send(Message::Text(pong.to_string())).await.is_err() {
+                                                        if ws
+                                                            .send(Message::Text(pong.to_string()))
+                                                            .await
+                                                            .is_err()
+                                                        {
                                                             break;
                                                         }
-                                                    } else if v.get("e").and_then(|e| e.as_str()) == Some("kline") || v.get("kline").is_some() {
+                                                    } else if v
+                                                        .get("e")
+                                                        .and_then(|e| e.as_str())
+                                                        == Some("kline")
+                                                        || v.get("kline").is_some()
+                                                    {
                                                         info!("bingx received kline event: {}", text);
                                                     }
                                                 }

@@ -578,6 +578,55 @@ pub struct GateioKline<'a> {
     pub volume: Cow<'a, str>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "e")]
+pub enum BingxStreamMessage<'a> {
+    #[serde(rename = "trade")]
+    Trade(BingxTradeEvent<'a>),
+    #[serde(rename = "depthUpdate")]
+    DepthUpdate(BingxDepthEvent<'a>),
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BingxTradeEvent<'a> {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "t", default)]
+    pub trade_id: Option<u64>,
+    #[serde(rename = "p")]
+    pub price: Cow<'a, str>,
+    #[serde(rename = "q")]
+    pub quantity: Cow<'a, str>,
+    #[serde(rename = "b", default)]
+    pub buyer_order_id: Option<u64>,
+    #[serde(rename = "a", default)]
+    pub seller_order_id: Option<u64>,
+    #[serde(rename = "T")]
+    pub trade_time: u64,
+    #[serde(rename = "m", default)]
+    pub buyer_is_maker: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct BingxDepthEvent<'a> {
+    #[serde(rename = "E")]
+    pub event_time: u64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "U", default)]
+    pub first_update_id: Option<u64>,
+    #[serde(rename = "u", default)]
+    pub final_update_id: Option<u64>,
+    #[serde(rename = "b", default)]
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "a", default)]
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+}
+
 impl<'a> TradeEvent<'a> {
     pub fn channel(&self) -> Channel {
         Channel::Trade
