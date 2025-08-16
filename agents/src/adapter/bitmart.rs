@@ -12,10 +12,10 @@ use tokio::sync::mpsc;
 use tokio::{
     signal,
     task::JoinHandle,
-    time::{sleep, Duration},
+    time::{interval, sleep, Duration, Instant},
 };
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use tracing::error;
+use tracing::{error, info, warn};
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
@@ -205,12 +205,18 @@ impl BitmartAdapter {
 #[async_trait]
 impl ExchangeAdapter for BitmartAdapter {
     async fn subscribe(&mut self) -> Result<()> {
-        let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
-        let cfg = core::stream_config_for_exchange(self.cfg.name);
-        let chunks = core::chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
-
-        for chunk in chunks {
-            let symbols = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for symbols in self.symbols.chunks(self.chunk_size) {
+            let topics: Vec<String> = symbols
+                .iter()
+                .flat_map(|s| {
+                    [
+                        format!("spot/trade:{}", s),
+                        format!("spot/depth5:{}", s),
+                        format!("spot/kline1m:{}", s),
+                    ]
+                })
+                .collect();
+            let topic_count = topics.len();
             let ws_url = self.cfg.ws_base.to_string();
             let shutdown = self.shutdown.clone();
             let handle = tokio::spawn(async move {
@@ -220,23 +226,39 @@ impl ExchangeAdapter for BitmartAdapter {
                     }
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
-                            let args: Vec<_> = symbols
-                                .iter()
-                                .map(|s| format!("spot/depth5:{}", s))
-                                .collect();
-                            let sub = serde_json::json!({"action":"subscribe","args": args});
-                            let _ = ws.send(Message::Text(sub.to_string())).await;
-                            while let Some(msg) = ws.next().await {
-                                match msg {
-                                    Ok(Message::Ping(p)) => {
-                                        let _ = ws.send(Message::Pong(p)).await;
+                            info!(endpoint = %ws_url, topics = topic_count, "bitmart websocket connected");
+                            let sub = serde_json::json!({"action":"subscribe","args": topics.clone()});
+                            if ws.send(Message::Text(sub.to_string())).await.is_err() {
+                                warn!("bitmart subscription failed");
+                                break;
+                            }
+                            info!(endpoint = %ws_url, topics = topic_count, "bitmart subscribed");
+                            let mut last_ping = Instant::now();
+                            let mut hb = interval(Duration::from_secs(30));
+                            loop {
+                                tokio::select! {
+                                    msg = ws.next() => {
+                                        match msg {
+                                            Some(Ok(Message::Ping(p))) => {
+                                                last_ping = Instant::now();
+                                                if ws.send(Message::Pong(p)).await.is_err() { break; }
+                                            }
+                                            Some(Ok(Message::Pong(_))) => { last_ping = Instant::now(); }
+                                            Some(Ok(Message::Close(_))) | Some(Err(_)) | None => { break; }
+                                            _ => {}
+                                        }
                                     }
-                                    Ok(Message::Close(_)) | Err(_) => break,
-                                    _ => {}
+                                    _ = hb.tick() => {
+                                        if last_ping.elapsed() >= Duration::from_secs(30) {
+                                            if ws.send(Message::Ping(Vec::new())).await.is_err() { break; }
+                                            last_ping = Instant::now();
+                                        }
+                                    }
                                 }
                             }
+                            info!("bitmart websocket disconnected, reconnecting");
                         }
-                        Err(_) => {}
+                        Err(e) => warn!("bitmart connect error: {}", e),
                     }
                     if shutdown.load(Ordering::Relaxed) {
                         break;
