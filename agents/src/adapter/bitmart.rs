@@ -340,6 +340,13 @@ impl ExchangeAdapter for BitmartAdapter {
             let topics: Vec<String> = chunk_symbols
                 .iter()
                 .flat_map(|s| {
+                    [
+                        format!("spot/trade:{}", s),
+                        format!("spot/depth5:{}", s),
+                        format!("spot/depth50:{}", s),
+                        format!("spot/depth/increase100:{}", s),
+                        format!("spot/kline1m:{}", s),
+                    ]
                     let mut t = vec![
                         format!("{}/trade:{}", prefix, s),
                         format!("{}/ticker:{}", prefix, s),
@@ -358,6 +365,10 @@ impl ExchangeAdapter for BitmartAdapter {
                     }
                     t
                 })
+                .collect();
+            let snapshot_topics: Vec<String> = symbols
+                .iter()
+                .map(|s| format!("spot/depth50:{}", s))
                 .collect();
             let topic_count = topics.len();
             let ws_url = self.cfg.ws_base.to_string();
@@ -381,6 +392,10 @@ impl ExchangeAdapter for BitmartAdapter {
                             if ws.send(Message::Text(sub.to_string())).await.is_err() {
                                 warn!("bitmart subscription failed");
                                 break;
+                            }
+                            let snap = serde_json::json!({"action":"request","args": snapshot_topics.clone()});
+                            if ws.send(Message::Text(snap.to_string())).await.is_err() {
+                                warn!("bitmart snapshot request failed");
                             }
                             info!(endpoint = %ws_url, topics = topic_count, "bitmart subscribed");
 
