@@ -75,7 +75,7 @@ pub const BINANCE_EXCHANGES: &[BinanceConfig] = &[
         id: "binance_options",
         name: "Binance Options",
         info_url: "https://vapi.binance.com/vapi/v1/exchangeInfo",
-        ws_base: "wss://vstream.binance.com/stream?streams=",
+        ws_base: "wss://voptions.binance.com/stream",
     },
 ];
 
@@ -465,6 +465,7 @@ async fn reconnect_loop<F, Fut, S>(
             Ok(ws_stream) => {
                 connected = true;
                 backoff = Duration::from_secs(1);
+                tracing::info!("subscribed {} topics to {}", chunk_len, url);
                 run_ws(
                     ws_stream,
                     books.clone(),
