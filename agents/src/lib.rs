@@ -123,6 +123,7 @@ pub async fn spawn_adapters(
     adapter::bitmart::register();
     adapter::coinex::register();
     adapter::latoken::register();
+    adapter::lbank::register();
     adapter::bitget::register();
 
     let mut receivers = Vec::new();
