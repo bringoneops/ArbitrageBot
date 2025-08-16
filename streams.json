@@ -116,6 +116,12 @@
     "markPriceKline_8h",
     "openInterest",
     "takerBuySellVolume",
+    "ticker",
+    "ticker_1M",
+    "ticker_1d",
+    "ticker_1h",
+    "ticker_1w",
+    "ticker_4h",
     "trade"
   ]
 }
