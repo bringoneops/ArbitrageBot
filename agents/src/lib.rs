@@ -55,12 +55,15 @@ impl ChannelRegistry {
         mpsc::Sender<core::events::StreamMessage<'static>>,
         Option<mpsc::Receiver<core::events::StreamMessage<'static>>>,
     ) {
-        if let Some(tx) = self.senders.get(key) {
-            (tx.clone(), None)
-        } else {
-            let (tx, rx) = mpsc::channel(self.buffer);
-            self.senders.insert(key.to_string(), tx.clone());
-            (tx, Some(rx))
+        use dashmap::mapref::entry::Entry;
+
+        match self.senders.entry(key.to_string()) {
+            Entry::Occupied(entry) => (entry.get().clone(), None),
+            Entry::Vacant(entry) => {
+                let (tx, rx) = mpsc::channel(self.buffer);
+                entry.insert(tx.clone());
+                (tx, Some(rx))
+            }
         }
     }
 
