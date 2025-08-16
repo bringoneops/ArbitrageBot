@@ -5,13 +5,13 @@ use std::convert::TryFrom;
 pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
-    BookTickerEvent, Event, GateioStreamMessage, KlineEvent, MexcEvent, MexcStreamMessage,
-    MiniTickerEvent, StreamMessage, TickerEvent,
+    BingxStreamMessage, BookTickerEvent, Event, GateioStreamMessage, KlineEvent, MexcEvent,
+    MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
-    DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline,
-    GateioTrade, IndexPriceEvent, MarkPriceEvent, OpenInterestEvent, TradeEvent,
+    DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline, GateioTrade,
+    IndexPriceEvent, MarkPriceEvent, OpenInterestEvent, TradeEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -498,6 +498,67 @@ impl<'a> TryFrom<Event<'a>> for MdEvent {
             Event::OpenInterest(e) => Ok(MdEvent::from(e)),
             Event::ForceOrder(e) => Ok(MdEvent::from(e)),
             _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: BingxStreamMessage<'a>) -> Result<Self, Self::Error> {
+        match msg {
+            BingxStreamMessage::Trade(t) => {
+                let price: f64 = t.price.parse().ok().ok_or(())?;
+                let quantity: f64 = t.quantity.parse().ok().ok_or(())?;
+                let side = t
+                    .buyer_is_maker
+                    .map(|m| if m { Side::Sell } else { Side::Buy });
+                Ok(MdEvent::Trade(Trade {
+                    exchange: "bingx".to_string(),
+                    symbol: t.symbol,
+                    price,
+                    quantity,
+                    trade_id: t.trade_id,
+                    buyer_order_id: t.buyer_order_id,
+                    seller_order_id: t.seller_order_id,
+                    timestamp: t.trade_time * 1_000_000,
+                    side,
+                }))
+            }
+            BingxStreamMessage::DepthUpdate(d) => {
+                let bids = d
+                    .bids
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Bid,
+                        })
+                    })
+                    .collect();
+                let asks = d
+                    .asks
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Ask,
+                        })
+                    })
+                    .collect();
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "bingx".to_string(),
+                    symbol: d.symbol,
+                    ts: d.event_time * 1_000_000,
+                    bids,
+                    asks,
+                    first_update_id: d.first_update_id,
+                    final_update_id: d.final_update_id,
+                    previous_final_update_id: None,
+                }))
+            }
+            BingxStreamMessage::Unknown => Err(()),
         }
     }
 }
