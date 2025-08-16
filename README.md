@@ -282,7 +282,6 @@ as defined in [`streams.json`](streams.json):
 - `markPriceKline_5m`
 - `markPriceKline_6h`
 - `markPriceKline_8h`
-- `miniTicker`
 - `openInterest`
 - `takerBuySellVolume`
 - `ticker`
@@ -291,7 +290,6 @@ as defined in [`streams.json`](streams.json):
 - `ticker_1h`
 - `ticker_1w`
 - `ticker_4h`
-- `trade`
 
 ### Options Streams
 
