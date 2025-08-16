@@ -24,8 +24,6 @@ fn includes_global_streams() {
 fn includes_per_symbol_streams() {
     let chunks = chunk_streams(&["BTCUSDT"], 100);
     let streams: Vec<String> = chunks.into_iter().flatten().collect();
-    assert!(streams.contains(&"btcusdt@miniTicker".to_string()));
-    assert!(streams.contains(&"btcusdt@ticker".to_string()));
     assert!(streams.contains(&"btcusdt@bookTicker".to_string()));
     assert!(streams.contains(&"btcusdt@markPrice".to_string()));
     assert!(streams.contains(&"btcusdt@markPrice@1s".to_string()));
