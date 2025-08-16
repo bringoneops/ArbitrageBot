@@ -14,7 +14,7 @@ use std::sync::{
 use tokio::{
     signal,
     task::JoinHandle,
-    time::{sleep, Duration},
+    time::{interval, sleep, Duration},
 };
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
@@ -23,7 +23,7 @@ use crate::{registry, ChannelRegistry, TaskSet};
 use futures::future::BoxFuture;
 use std::sync::Once;
 use tokio::sync::mpsc;
-use tracing::error;
+use tracing::{error, info, warn};
 
 /// Configuration for a single MEXC exchange endpoint.
 pub struct MexcConfig {
@@ -208,7 +208,13 @@ impl ExchangeAdapter for MexcAdapter {
                         Ok((mut ws, _)) => {
                             let params: Vec<String> = symbols
                                 .iter()
-                                .map(|s| format!("spot@public.depth.v3.api@{}@5", s))
+                                .flat_map(|s| {
+                                    vec![
+                                        format!("spot@public.depth.v3.api@{}@5", s),
+                                        format!("spot@public.deals.v3.api@{}", s),
+                                        format!("spot@public.kline.v3.api@{}@Min1", s),
+                                    ]
+                                })
                                 .collect();
                             let sub = serde_json::json!({
                                 "method": "SUBSCRIPTION",
@@ -216,19 +222,26 @@ impl ExchangeAdapter for MexcAdapter {
                                 "id": rand::random::<u32>(),
                             });
                             if ws.send(Message::Text(sub.to_string())).await.is_ok() {
+                                info!("mexc subscribed {} topics", params.len());
+                                let mut hb = interval(Duration::from_secs(20));
                                 loop {
                                     tokio::select! {
                                         msg = ws.next() => {
                                             match msg {
                                                 Some(Ok(Message::Ping(p))) => {
-                                                    ws.send(Message::Pong(p)).await.map_err(|e| {
-                                                        tracing::error!("mexc ws pong error: {}", e);
-                                                        e
-                                                    })?;
+                                                    if ws.send(Message::Pong(p)).await.is_err() {
+                                                        break;
+                                                    }
                                                 },
+                                                Some(Ok(Message::Pong(_))) => {},
                                                 Some(Ok(Message::Close(_))) | None => { break; },
                                                 Some(Ok(_)) => {},
-                                                Some(Err(e)) => { tracing::warn!("mexc ws error: {}", e); break; },
+                                                Some(Err(e)) => { warn!("mexc ws error: {}", e); break; },
+                                            }
+                                        }
+                                        _ = hb.tick() => {
+                                            if ws.send(Message::Ping(Vec::new())).await.is_err() {
+                                                break;
                                             }
                                         }
                                         _ = async {
@@ -244,7 +257,7 @@ impl ExchangeAdapter for MexcAdapter {
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("mexc connect error: {}", e);
+                            warn!("mexc connect error: {}", e);
                         }
                     }
                     if shutdown.load(Ordering::Relaxed) {
