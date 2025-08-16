@@ -1,10 +1,10 @@
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use canonical::{
     events::{
-        BingxStreamMessage, Event, ForceOrder, ForceOrderEvent, FundingRateEvent,
-        GateioStreamMessage, IndexPriceEvent, Kline as EventKline, KlineEvent, KucoinStreamMessage,
-        MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent, TickerEvent,
-        TradeEvent, XtStreamMessage,
+        BingxStreamMessage, BitmartStreamMessage, Event, ForceOrder, ForceOrderEvent,
+        FundingRateEvent, GateioStreamMessage, IndexPriceEvent, Kline as EventKline, KlineEvent,
+        KucoinStreamMessage, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
+        TickerEvent, TradeEvent, XtStreamMessage,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
@@ -726,5 +726,143 @@ fn kucoin_kline_message_to_canonical() {
             assert_eq!(k, de);
         }
         _ => panic!("expected kline"),
+    }
+}
+
+#[test]
+fn bitmart_trade_message_to_canonical() {
+    let msg: BitmartStreamMessage<'_> = serde_json::from_value(json!({
+        "table": "spot/trade",
+        "data": [{
+            "symbol": "BTC_USDT",
+            "price": "100.0",
+            "size": "0.5",
+            "side": "buy",
+            "time": 1u64
+        }]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "bitmart");
+            assert_eq!(t.symbol, "BTC_USDT");
+            assert_eq!(t.price, 100.0);
+            assert_eq!(t.side, Some(Side::Buy));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn bitmart_depth_message_to_canonical() {
+    let msg: BitmartStreamMessage<'_> = serde_json::from_value(json!({
+        "table": "spot/depth5",
+        "data": [{
+            "symbol": "BTC_USDT",
+            "ms_t": 1u64,
+            "bids": [["100.0", "1.0"]],
+            "asks": [["101.0", "2.0"]],
+            "version": 2u64,
+            "prev_version": 1u64
+        }]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "bitmart");
+            assert_eq!(b.symbol, "BTC_USDT");
+            assert_eq!(b.bids[0].price, 100.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn bitmart_ticker_message_to_canonical() {
+    let msg: BitmartStreamMessage<'_> = serde_json::from_value(json!({
+        "table": "spot/ticker",
+        "data": [{
+            "symbol": "BTC_USDT",
+            "ms_t": 1u64,
+            "best_bid": "100.0",
+            "best_bid_size": "1.0",
+            "best_ask": "101.0",
+            "best_ask_size": "2.0"
+        }]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::BookTicker(t) => {
+            assert_eq!(t.exchange, "bitmart");
+            assert_eq!(t.symbol, "BTC_USDT");
+            assert_eq!(t.bid_price, 100.0);
+            let s = serde_json::to_string(&t).unwrap();
+            let de: BookTicker = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected book ticker"),
+    }
+}
+
+#[test]
+fn bitmart_kline_message_to_canonical() {
+    let msg: BitmartStreamMessage<'_> = serde_json::from_value(json!({
+        "table": "spot/kline1m",
+        "data": [{
+            "symbol": "BTC_USDT",
+            "ms_t": 1u64,
+            "open_price": "90",
+            "close_price": "100",
+            "high_price": "110",
+            "low_price": "80",
+            "volume": "1000"
+        }]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Kline(k) => {
+            assert_eq!(k.exchange, "bitmart");
+            assert_eq!(k.symbol, "BTC_USDT");
+            assert_eq!(k.open, 90.0);
+            let s = serde_json::to_string(&k).unwrap();
+            let de: CanonKline = serde_json::from_str(&s).unwrap();
+            assert_eq!(k, de);
+        }
+        _ => panic!("expected kline"),
+    }
+}
+
+#[test]
+fn bitmart_funding_rate_message_to_canonical() {
+    let msg: BitmartStreamMessage<'_> = serde_json::from_value(json!({
+        "table": "futures/fundingRate",
+        "data": [{
+            "symbol": "BTC_USDT",
+            "fundingRate": "0.01",
+            "fundingTime": 1u64
+        }]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::FundingRate(f) => {
+            assert_eq!(f.exchange, "bitmart");
+            assert_eq!(f.symbol, "BTC_USDT");
+            assert_eq!(f.rate, 0.01);
+            let s = serde_json::to_string(&f).unwrap();
+            let de: CanonFundingRate = serde_json::from_str(&s).unwrap();
+            assert_eq!(f, de);
+        }
+        _ => panic!("expected funding rate"),
     }
 }

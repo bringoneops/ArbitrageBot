@@ -742,6 +742,82 @@ pub struct XtTicker<'a> {
     pub ask_qty: Cow<'a, str>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct BitmartStreamMessage<'a> {
+    pub table: Cow<'a, str>,
+    #[serde(default)]
+    pub data: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BitmartTradeEvent<'a> {
+    pub symbol: String,
+    pub price: Cow<'a, str>,
+    #[serde(rename = "size", alias = "qty")]
+    pub quantity: Cow<'a, str>,
+    pub side: Cow<'a, str>,
+    #[serde(rename = "time")]
+    pub trade_time: u64,
+    #[serde(default)]
+    pub seq_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct BitmartDepthEvent<'a> {
+    pub symbol: String,
+    #[serde(rename = "ms_t", alias = "timestamp")]
+    pub timestamp: u64,
+    #[serde(rename = "bids", alias = "buys", default)]
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "asks", alias = "sells", default)]
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "version", alias = "seq_id", default)]
+    pub version: Option<u64>,
+    #[serde(rename = "prev_version", alias = "prev_seq_id", default)]
+    pub prev_version: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BitmartTickerEvent<'a> {
+    pub symbol: String,
+    #[serde(rename = "ms_t", alias = "timestamp")]
+    pub timestamp: u64,
+    #[serde(rename = "best_bid", alias = "bestBid")]
+    pub best_bid: Cow<'a, str>,
+    #[serde(rename = "best_bid_size", alias = "bestBidSize")]
+    pub best_bid_size: Cow<'a, str>,
+    #[serde(rename = "best_ask", alias = "bestAsk")]
+    pub best_ask: Cow<'a, str>,
+    #[serde(rename = "best_ask_size", alias = "bestAskSize")]
+    pub best_ask_size: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BitmartKlineEvent<'a> {
+    pub symbol: String,
+    #[serde(rename = "ms_t", alias = "timestamp")]
+    pub timestamp: u64,
+    #[serde(rename = "open_price", alias = "open")]
+    pub open: Cow<'a, str>,
+    #[serde(rename = "close_price", alias = "close")]
+    pub close: Cow<'a, str>,
+    #[serde(rename = "high_price", alias = "high")]
+    pub high: Cow<'a, str>,
+    #[serde(rename = "low_price", alias = "low")]
+    pub low: Cow<'a, str>,
+    #[serde(rename = "volume", alias = "vol")]
+    pub volume: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BitmartFundingRateEvent<'a> {
+    pub symbol: String,
+    #[serde(rename = "fundingRate", alias = "funding_rate")]
+    pub funding_rate: Cow<'a, str>,
+    #[serde(rename = "fundingTime", alias = "funding_time")]
+    pub funding_time: u64,
+}
+
 impl<'a> TradeEvent<'a> {
     pub fn channel(&self) -> Channel {
         Channel::Trade

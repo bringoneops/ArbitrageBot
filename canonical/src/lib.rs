@@ -5,15 +5,16 @@ use std::convert::TryFrom;
 pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
-    BingxStreamMessage, BookTickerEvent, Event, GateioStreamMessage, KlineEvent,
-    KucoinStreamMessage, MexcEvent, MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent,
-    XtStreamMessage,
+    BingxStreamMessage, BitmartStreamMessage, BookTickerEvent, Event, GateioStreamMessage,
+    KlineEvent, KucoinStreamMessage, MexcEvent, MexcStreamMessage, MiniTickerEvent, StreamMessage,
+    TickerEvent, XtStreamMessage,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
-    DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline, GateioTrade,
-    IndexPriceEvent, KucoinKline, KucoinLevel2, KucoinTrade, MarkPriceEvent, OpenInterestEvent,
-    TradeEvent, XtEvent,
+    BitmartDepthEvent, BitmartFundingRateEvent, BitmartKlineEvent, BitmartTickerEvent,
+    BitmartTradeEvent, DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth,
+    GateioKline, GateioTrade, IndexPriceEvent, KucoinKline, KucoinLevel2, KucoinTrade,
+    MarkPriceEvent, OpenInterestEvent, TradeEvent, XtEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -561,6 +562,103 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                 }))
             }
             BingxStreamMessage::Unknown => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: BitmartStreamMessage<'a>) -> Result<Self, Self::Error> {
+        let table = msg.table.as_ref();
+        let mut data_iter = msg.data.into_iter();
+        let v = data_iter.next().ok_or(())?;
+        if table.contains("trade") {
+            let t: BitmartTradeEvent = serde_json::from_value(v).map_err(|_| ())?;
+            let price: f64 = t.price.parse().ok().ok_or(())?;
+            let quantity: f64 = t.quantity.parse().ok().ok_or(())?;
+            let side = match t.side.as_ref() {
+                "buy" | "BUY" => Some(Side::Buy),
+                "sell" | "SELL" => Some(Side::Sell),
+                _ => None,
+            };
+            Ok(MdEvent::Trade(Trade {
+                exchange: "bitmart".to_string(),
+                symbol: t.symbol,
+                price,
+                quantity,
+                trade_id: t.seq_id,
+                buyer_order_id: None,
+                seller_order_id: None,
+                timestamp: t.trade_time * 1_000_000,
+                side,
+            }))
+        } else if table.contains("depth") {
+            let d: BitmartDepthEvent = serde_json::from_value(v).map_err(|_| ())?;
+            let bids = d
+                .bids
+                .into_iter()
+                .filter_map(|[p, q]| {
+                    Some(Level {
+                        price: p.parse().ok()?,
+                        quantity: q.parse().ok()?,
+                        kind: BookKind::Bid,
+                    })
+                })
+                .collect();
+            let asks = d
+                .asks
+                .into_iter()
+                .filter_map(|[p, q]| {
+                    Some(Level {
+                        price: p.parse().ok()?,
+                        quantity: q.parse().ok()?,
+                        kind: BookKind::Ask,
+                    })
+                })
+                .collect();
+            Ok(MdEvent::DepthL2Update(DepthL2Update {
+                exchange: "bitmart".to_string(),
+                symbol: d.symbol,
+                ts: d.timestamp,
+                bids,
+                asks,
+                first_update_id: None,
+                final_update_id: d.version,
+                previous_final_update_id: d.prev_version,
+            }))
+        } else if table.contains("ticker") {
+            let t: BitmartTickerEvent = serde_json::from_value(v).map_err(|_| ())?;
+            Ok(MdEvent::BookTicker(BookTicker {
+                exchange: "bitmart".to_string(),
+                symbol: t.symbol,
+                ts: t.timestamp,
+                bid_price: t.best_bid.parse().ok().ok_or(())?,
+                bid_quantity: t.best_bid_size.parse().ok().ok_or(())?,
+                ask_price: t.best_ask.parse().ok().ok_or(())?,
+                ask_quantity: t.best_ask_size.parse().ok().ok_or(())?,
+            }))
+        } else if table.contains("kline") {
+            let k: BitmartKlineEvent = serde_json::from_value(v).map_err(|_| ())?;
+            Ok(MdEvent::Kline(Kline {
+                exchange: "bitmart".to_string(),
+                symbol: k.symbol,
+                ts: k.timestamp,
+                open: k.open.parse().ok().ok_or(())?,
+                close: k.close.parse().ok().ok_or(())?,
+                high: k.high.parse().ok().ok_or(())?,
+                low: k.low.parse().ok().ok_or(())?,
+                volume: k.volume.parse().ok().ok_or(())?,
+            }))
+        } else if table.contains("fundingRate") {
+            let f: BitmartFundingRateEvent = serde_json::from_value(v).map_err(|_| ())?;
+            Ok(MdEvent::FundingRate(FundingRate {
+                exchange: "bitmart".to_string(),
+                symbol: f.symbol,
+                ts: f.funding_time,
+                rate: f.funding_rate.parse().ok().ok_or(())?,
+            }))
+        } else {
+            Err(())
         }
     }
 }
