@@ -8,9 +8,9 @@
     "/contractMarket/level2Depth5",
     "/contractMarket/level2Depth50",
     "/contractMarket/execution",
-    "/contractMarket/tradeOrders",
     "/contractMarket/indexPrice",
     "/contractMarket/markPrice",
-    "/contractMarket/fundingRate"
+    "/contractMarket/fundingRate",
+    "/contractMarket/candles:*"
   ]
 }

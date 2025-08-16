@@ -198,6 +198,7 @@ impl ExchangeAdapter for XtAdapter {
 
         for chunk in chunks {
             let topics = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            tracing::debug!(?topics, "xt subscribing to topics");
             let topic_count = topics.len();
             let ws_url = self.cfg.ws_base.to_string();
             let ws_bucket = self.ws_bucket.clone();

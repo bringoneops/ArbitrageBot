@@ -1,12 +1,16 @@
 use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
+use dashmap::DashMap;
 use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Once,
+use std::{
+    borrow::Cow,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Once,
+    },
 };
 use tokio::sync::mpsc;
 use tokio::{
@@ -112,6 +116,124 @@ pub async fn fetch_symbols(cfg: &BitmartConfig) -> Result<Vec<String>> {
     Ok(symbols)
 }
 
+fn parse_depth_side(side: Option<&Value>) -> Vec<[String; 2]> {
+    let mut out = Vec::new();
+    if let Some(arr) = side.and_then(|v| v.as_array()) {
+        for level in arr {
+            if let Some(vals) = level.as_array() {
+                if vals.len() >= 2 {
+                    let price = vals[0].as_str().unwrap_or_default().to_string();
+                    let qty = vals[1].as_str().unwrap_or_default().to_string();
+                    out.push([price, qty]);
+                }
+            } else if let Some(obj) = level.as_object() {
+                let price = obj
+                    .get("price")
+                    .or_else(|| obj.get("p"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let qty = obj
+                    .get("amount")
+                    .or_else(|| obj.get("q"))
+                    .or_else(|| obj.get("volume"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                out.push([price, qty]);
+            }
+        }
+    }
+    out
+}
+
+async fn fetch_depth_snapshot(
+    client: &Client,
+    symbol: &str,
+    is_contract: bool,
+) -> Result<core::OrderBook> {
+    let url = if is_contract {
+        format!(
+            "https://api-cloud.bitmart.com/contract/public/depth?symbol={}",
+            symbol
+        )
+    } else {
+        format!(
+            "https://api-cloud.bitmart.com/spot/v1/symbols/book?symbol={}",
+            symbol
+        )
+    };
+
+    let resp = client.get(&url).send().await?.error_for_status()?;
+    let val: Value = resp.json().await?;
+    let data = val.get("data").ok_or_else(|| anyhow!("missing data"))?;
+
+    let bids = parse_depth_side(data.get("buys").or_else(|| data.get("bids")));
+    let asks = parse_depth_side(data.get("sells").or_else(|| data.get("asks")));
+
+    let last_update_id = data
+        .get("timestamp")
+        .or_else(|| data.get("ms_t"))
+        .or_else(|| data.get("seq_id"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    Ok(core::DepthSnapshot {
+        last_update_id,
+        bids,
+        asks,
+    }
+    .into())
+}
+
+fn parse_depth_update_frame(
+    val: &Value,
+) -> Result<core::events::DepthUpdateEvent<'static>> {
+    let symbol = val
+        .get("symbol")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing symbol"))?
+        .to_string();
+
+    let bids = parse_depth_side(val.get("bids").or_else(|| val.get("buys")))
+        .into_iter()
+        .map(|[p, q]| [Cow::Owned(p), Cow::Owned(q)])
+        .collect();
+    let asks = parse_depth_side(val.get("asks").or_else(|| val.get("sells")))
+        .into_iter()
+        .map(|[p, q]| [Cow::Owned(p), Cow::Owned(q)])
+        .collect();
+
+    let final_update_id = val
+        .get("seq_id")
+        .or_else(|| val.get("sequence"))
+        .or_else(|| val.get("version"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let prev_final_update_id = val
+        .get("prev_seq_id")
+        .or_else(|| val.get("prev_sequence"))
+        .or_else(|| val.get("last_version"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(final_update_id);
+    let first_update_id = prev_final_update_id + 1;
+    let event_time = val
+        .get("timestamp")
+        .or_else(|| val.get("ms_t"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    Ok(core::events::DepthUpdateEvent {
+        event_time,
+        symbol,
+        first_update_id,
+        final_update_id,
+        previous_final_update_id: prev_final_update_id,
+        bids,
+        asks,
+    })
+}
+
 static REGISTER: Once = Once::new();
 
 pub fn register() {
@@ -177,11 +299,12 @@ pub fn register() {
 /// Adapter implementing the `ExchangeAdapter` trait for BitMart.
 pub struct BitmartAdapter {
     cfg: &'static BitmartConfig,
-    _client: Client,
+    client: Client,
     chunk_size: usize,
     symbols: Vec<String>,
     tasks: Vec<JoinHandle<Result<()>>>,
     shutdown: Arc<AtomicBool>,
+    orderbooks: Arc<DashMap<String, core::OrderBook>>,
 }
 
 impl BitmartAdapter {
@@ -193,11 +316,12 @@ impl BitmartAdapter {
     ) -> Self {
         Self {
             cfg,
-            _client: client,
+            client,
             chunk_size,
             symbols,
             tasks: Vec::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
+            orderbooks: Arc::new(DashMap::new()),
         }
     }
 }
@@ -212,6 +336,8 @@ impl ExchangeAdapter for BitmartAdapter {
                 "futures"
             };
             let topics: Vec<String> = symbols
+            let chunk_symbols: Vec<String> = symbols.to_vec();
+            let topics: Vec<String> = chunk_symbols
                 .iter()
                 .flat_map(|s| {
                     let mut t = vec![
@@ -236,6 +362,12 @@ impl ExchangeAdapter for BitmartAdapter {
             let topic_count = topics.len();
             let ws_url = self.cfg.ws_base.to_string();
             let shutdown = self.shutdown.clone();
+            let client = self.client.clone();
+            let books = self.orderbooks.clone();
+            let cfg = self.cfg;
+            let has_depth_increase = topics
+                .iter()
+                .any(|t| t.starts_with("spot/depth/increase") || t.starts_with("futures/depthIncrease"));
             let handle = tokio::spawn(async move {
                 loop {
                     if shutdown.load(Ordering::Relaxed) {
@@ -251,12 +383,64 @@ impl ExchangeAdapter for BitmartAdapter {
                                 break;
                             }
                             info!(endpoint = %ws_url, topics = topic_count, "bitmart subscribed");
+
+                            if has_depth_increase {
+                                let is_contract = cfg.id.contains("contract");
+                                for sym in &chunk_symbols {
+                                    match fetch_depth_snapshot(&client, sym, is_contract).await {
+                                        Ok(book) => { books.insert(sym.clone(), book); }
+                                        Err(e) => warn!(symbol = %sym, "snapshot fetch failed: {}", e),
+                                    }
+                                }
+                            }
+
                             let mut last_ping = Instant::now();
                             let mut hb = interval(Duration::from_secs(30));
                             loop {
                                 tokio::select! {
                                     msg = ws.next() => {
                                         match msg {
+                                            Some(Ok(Message::Text(text))) => {
+                                                if has_depth_increase {
+                                                    if let Ok(val) = serde_json::from_str::<Value>(&text) {
+                                                        if let Some(table) = val.get("table").and_then(|v| v.as_str()) {
+                                                            if table.starts_with("spot/depth/increase") || table.starts_with("futures/depthIncrease") {
+                                                                if let Some(arr) = val.get("data").and_then(|v| v.as_array()) {
+                                                                    for entry in arr {
+                                                                        if let Ok(update) = parse_depth_update_frame(entry) {
+                                                                            let sym = update.symbol.clone();
+                                                                            if let Some(mut book) = books.get_mut(&sym) {
+                                                                                let res = core::apply_depth_update(&mut book, &update);
+                                                                                if res == core::ApplyResult::Gap {
+                                                                                    let is_contract = cfg.id.contains("contract");
+                                                                                    if let Ok(new_book) = fetch_depth_snapshot(&client, &sym, is_contract).await {
+                                                                                        books.insert(sym.clone(), new_book);
+                                                                                    }
+                                                                                }
+                                                                            } else {
+                                                                                let snap = core::DepthSnapshot {
+                                                                                    last_update_id: update.final_update_id,
+                                                                                    bids: update
+                                                                                        .bids
+                                                                                        .iter()
+                                                                                        .map(|[p, q]| [p.to_string(), q.to_string()])
+                                                                                        .collect(),
+                                                                                    asks: update
+                                                                                        .asks
+                                                                                        .iter()
+                                                                                        .map(|[p, q]| [p.to_string(), q.to_string()])
+                                                                                        .collect(),
+                                                                                };
+                                                                                books.insert(sym.clone(), snap.into());
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             Some(Ok(Message::Ping(p))) => {
                                                 last_ping = Instant::now();
                                                 if ws.send(Message::Pong(p)).await.is_err() { break; }
