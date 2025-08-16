@@ -875,6 +875,96 @@ pub struct CoinexKline<'a> {
     pub volume: Cow<'a, str>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct LatokenStreamMessage<'a> {
+    pub topic: Cow<'a, str>,
+    pub symbol: String,
+    #[serde(default)]
+    pub data: Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LatokenTradeEvent<'a> {
+    #[serde(rename = "t", alias = "timestamp")]
+    pub timestamp: u64,
+    #[serde(rename = "p", alias = "price")]
+    pub price: Cow<'a, str>,
+    #[serde(rename = "q", alias = "quantity", alias = "volume")]
+    pub quantity: Cow<'a, str>,
+    #[serde(rename = "m", alias = "maker", default)]
+    pub maker: Option<bool>,
+    #[serde(rename = "id", alias = "tradeId", alias = "trade_id", default)]
+    pub id: Option<u64>,
+    #[serde(rename = "side", default)]
+    pub side: Option<Cow<'a, str>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LatokenDepthEvent<'a> {
+    #[serde(rename = "t", alias = "timestamp")]
+    pub timestamp: u64,
+    #[serde(rename = "b", alias = "bids", default)]
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "a", alias = "asks", default)]
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "U", alias = "firstUpdateId", default)]
+    pub first_update_id: Option<u64>,
+    #[serde(rename = "u", alias = "finalUpdateId", default)]
+    pub final_update_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LatokenKlineEvent<'a> {
+    #[serde(rename = "t", alias = "timestamp")]
+    pub timestamp: u64,
+    #[serde(rename = "o", alias = "open")]
+    pub open: Cow<'a, str>,
+    #[serde(rename = "c", alias = "close")]
+    pub close: Cow<'a, str>,
+    #[serde(rename = "h", alias = "high")]
+    pub high: Cow<'a, str>,
+    #[serde(rename = "l", alias = "low")]
+    pub low: Cow<'a, str>,
+    #[serde(rename = "v", alias = "volume")]
+    pub volume: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LatokenTickerEvent<'a> {
+    #[serde(rename = "t", alias = "timestamp", default)]
+    pub timestamp: u64,
+    #[serde(
+        rename = "bp",
+        alias = "bid",
+        alias = "bestBidPrice",
+        alias = "bidPrice"
+    )]
+    pub bid_price: Cow<'a, str>,
+    #[serde(
+        rename = "bq",
+        alias = "bidVolume",
+        alias = "bestBidVolume",
+        alias = "bidQty",
+        default
+    )]
+    pub bid_qty: Cow<'a, str>,
+    #[serde(
+        rename = "ap",
+        alias = "ask",
+        alias = "bestAskPrice",
+        alias = "askPrice"
+    )]
+    pub ask_price: Cow<'a, str>,
+    #[serde(
+        rename = "aq",
+        alias = "askVolume",
+        alias = "bestAskVolume",
+        alias = "askQty",
+        default
+    )]
+    pub ask_qty: Cow<'a, str>,
+}
+
 impl<'a> TradeEvent<'a> {
     pub fn channel(&self) -> Channel {
         Channel::Trade
