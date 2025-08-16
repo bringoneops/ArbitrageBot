@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
+use tokio::task::JoinHandle;
 use tokio::time;
 
 /// Rate limiter using the classic token bucket algorithm.
@@ -23,6 +24,7 @@ use tokio::time;
 #[derive(Debug)]
 pub struct TokenBucket {
     semaphore: Arc<Semaphore>,
+    refill_handle: JoinHandle<()>,
 }
 
 impl TokenBucket {
@@ -39,7 +41,7 @@ impl TokenBucket {
         let refill_sem = semaphore.clone();
         let cap = capacity as usize;
         let add = tokens_per_interval as usize;
-        tokio::spawn(async move {
+        let refill_handle = tokio::spawn(async move {
             let mut ticker = time::interval(interval);
             loop {
                 ticker.tick().await;
@@ -50,7 +52,10 @@ impl TokenBucket {
                 }
             }
         });
-        Self { semaphore }
+        Self {
+            semaphore,
+            refill_handle,
+        }
     }
 
     /// Acquire `tokens` from the bucket, waiting if necessary.
@@ -71,5 +76,11 @@ impl TokenBucket {
     /// Return the current number of available tokens.
     pub fn available(&self) -> usize {
         self.semaphore.available_permits()
+    }
+}
+
+impl Drop for TokenBucket {
+    fn drop(&mut self) {
+        self.refill_handle.abort();
     }
 }
