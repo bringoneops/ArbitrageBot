@@ -2,12 +2,14 @@ use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
 use core::{chunk_streams_with_config, stream_config_for_exchange};
-use futures::future::BoxFuture;
+use futures::{future, future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
 use std::sync::{Arc, Once};
 use tokio::sync::mpsc;
-use tracing::error;
+use tokio::time::{interval, sleep, Duration};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tracing::{error, info, warn};
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
@@ -194,12 +196,62 @@ impl ExchangeAdapter for BingxAdapter {
     async fn subscribe(&mut self) -> Result<()> {
         let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
         let cfg = stream_config_for_exchange(self.cfg.name);
-        let _ = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
+        let chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
+
+        for chunk in chunks {
+            let ws_url = self.cfg.ws_base.to_string();
+            tokio::spawn(async move {
+                loop {
+                    match connect_async(&ws_url).await {
+                        Ok((mut ws, _)) => {
+                            let sub = serde_json::json!({
+                                "op": "subscribe",
+                                "args": chunk,
+                            });
+                            if ws.send(Message::Text(sub.to_string())).await.is_ok() {
+                                info!("bingx subscribed {} topics", chunk.len());
+                            }
+
+                            let mut hb = interval(Duration::from_secs(20));
+                            loop {
+                                tokio::select! {
+                                    msg = ws.next() => {
+                                        match msg {
+                                            Some(Ok(Message::Ping(p))) => {
+                                                if ws.send(Message::Pong(p)).await.is_err() {
+                                                    break;
+                                                }
+                                            }
+                                            Some(Ok(Message::Pong(_))) => {}
+                                            Some(Ok(Message::Close(_))) | Some(Err(_)) | None => {
+                                                break;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    _ = hb.tick() => {
+                                        if ws.send(Message::Ping(Vec::new())).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            info!("bingx websocket disconnected, reconnecting");
+                        }
+                        Err(e) => warn!("bingx connect error: {}", e),
+                    }
+                    sleep(Duration::from_secs(5)).await;
+                }
+            });
+        }
+
         Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
-        self.subscribe().await
+        self.subscribe().await?;
+        future::pending::<()>().await;
+        Ok(())
     }
 
     async fn heartbeat(&mut self) -> Result<()> {
