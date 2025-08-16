@@ -27,11 +27,17 @@ pub struct ExchangeConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub enum Symbols {
+    All,
+    List(Vec<String>),
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub proxy_url: Option<String>,
-    pub spot_symbols: Vec<String>,
-    pub futures_symbols: Vec<String>,
-    pub mexc_symbols: Vec<String>,
+    pub spot_symbols: Symbols,
+    pub futures_symbols: Symbols,
+    pub mexc_symbols: Symbols,
     pub chunk_size: usize,
     pub event_buffer_size: usize,
     pub http_burst: u32,
@@ -56,8 +62,8 @@ fn has_valid_credentials(c: &Credentials) -> bool {
     !c.api_key.is_empty() && !c.api_secret.is_empty()
 }
 
-fn is_missing_required_symbols(enabled: bool, list_is_empty: bool, all_flag: bool) -> bool {
-    enabled && !all_flag && list_is_empty
+fn is_missing_required_symbols(enabled: bool, symbols: &Symbols) -> bool {
+    matches!((enabled, symbols), (true, Symbols::List(list)) if list.is_empty())
 }
 
 fn rate_limits_present(http_burst: u32, http_refill: u32, ws_burst: u32, ws_refill: u32) -> bool {
@@ -100,15 +106,16 @@ fn load_credentials() -> Result<Credentials> {
 
 /* -------------------------------- parsers -------------------------------- */
 
-fn parse_symbols_env(var: &str) -> Vec<String> {
+fn parse_symbols_env(var: &str) -> Symbols {
     match env::var(var) {
-        Ok(v) if v.eq_ignore_ascii_case("ALL") => Vec::new(),
-        Ok(v) => v
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-            .collect(),
-        Err(_) => Vec::new(),
+        Ok(v) if v.eq_ignore_ascii_case("ALL") => Symbols::All,
+        Ok(v) => Symbols::List(
+            v.split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect(),
+        ),
+        Err(_) => Symbols::List(Vec::new()),
     }
 }
 
@@ -165,7 +172,10 @@ impl Config {
             .into_iter()
             .map(|id| {
                 let var = format!("{}_SYMBOLS", id.to_uppercase());
-                let symbols = parse_symbols_env(&var);
+                let symbols = match parse_symbols_env(&var) {
+                    Symbols::All => Vec::new(),
+                    Symbols::List(list) => list,
+                };
                 ExchangeConfig { id, symbols }
             })
             .collect();
@@ -211,26 +221,10 @@ impl Config {
     }
 
     fn validate_symbols(&self) -> Result<()> {
-        // Compute “ALL” flags once to avoid repeated env reads and boolean noise.
-        let spot_all = env::var("SPOT_SYMBOLS")
-            .unwrap_or_default()
-            .eq_ignore_ascii_case("ALL");
-        let futures_all = env::var("FUTURES_SYMBOLS")
-            .unwrap_or_default()
-            .eq_ignore_ascii_case("ALL");
-        let mexc_all = env::var("MEXC_SYMBOLS")
-            .unwrap_or_default()
-            .eq_ignore_ascii_case("ALL");
-
-        let missing_spot =
-            is_missing_required_symbols(self.enable_spot, self.spot_symbols.is_empty(), spot_all);
-        let missing_futures = is_missing_required_symbols(
-            self.enable_futures,
-            self.futures_symbols.is_empty(),
-            futures_all,
-        );
-        let missing_mexc =
-            is_missing_required_symbols(self.enable_mexc, self.mexc_symbols.is_empty(), mexc_all);
+        let missing_spot = is_missing_required_symbols(self.enable_spot, &self.spot_symbols);
+        let missing_futures =
+            is_missing_required_symbols(self.enable_futures, &self.futures_symbols);
+        let missing_mexc = is_missing_required_symbols(self.enable_mexc, &self.mexc_symbols);
 
         if missing_spot {
             return Err(anyhow!(
