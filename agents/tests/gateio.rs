@@ -1,4 +1,5 @@
 use agents::adapter::gateio::{fetch_symbols, GateioConfig};
+use reqwest::Client;
 
 #[tokio::test]
 #[ignore]
@@ -10,6 +11,7 @@ async fn fetch_symbols_returns_pairs() {
         info_url: INFO_URL,
         ws_base: "",
     };
-    let symbols = fetch_symbols(&cfg).await.unwrap();
+    let client = Client::new();
+    let symbols = fetch_symbols(&client, &cfg).await.unwrap();
     assert!(!symbols.is_empty());
 }

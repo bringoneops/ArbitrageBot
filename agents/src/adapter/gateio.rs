@@ -37,9 +37,10 @@ pub const GATEIO_EXCHANGES: &[GateioConfig] = &[
     },
 ];
 
-/// Retrieve all trading symbols for Gate.io across market types.
-pub async fn fetch_symbols(cfg: &GateioConfig) -> Result<Vec<String>> {
-    let client = Client::new();
+/// Retrieve all trading symbols for Gate.io across market types using the provided HTTP client.
+///
+/// The caller must supply a reusable [`reqwest::Client`] instance for efficiency.
+pub async fn fetch_symbols(client: &Client, cfg: &GateioConfig) -> Result<Vec<String>> {
     let mut result: Vec<String> = Vec::new();
     let limit = 100u32;
 
@@ -146,7 +147,7 @@ pub fn register() {
                         Box::pin(async move {
                             let mut symbols = initial_symbols;
                             if symbols.is_empty() {
-                                symbols = fetch_symbols(cfg).await?;
+                                symbols = fetch_symbols(&client, cfg).await?;
                             }
 
                             let mut receivers = Vec::new();
