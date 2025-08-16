@@ -13,6 +13,8 @@
     "kline_1M",
     "depth5",
     "depth20",
+    "spot/depth50",
+    "spot/depth/increase100",
     "trade"
   ]
 }

@@ -114,7 +114,6 @@
     "markPriceKline_5m",
     "markPriceKline_6h",
     "markPriceKline_8h",
-    "miniTicker",
     "openInterest",
     "takerBuySellVolume",
     "ticker",
@@ -123,8 +122,6 @@
     "ticker_1h",
     "ticker_1w",
     "ticker_4h",
-    "topLongShortAccountRatio",
-    "topLongShortPositionRatio",
     "trade"
   ]
 }
