@@ -10,6 +10,7 @@
     "/contractMarket/execution",
     "/contractMarket/indexPrice",
     "/contractMarket/markPrice",
-    "/contractMarket/fundingRate"
+    "/contractMarket/fundingRate",
+    "/contractMarket/candles:*"
   ]
 }
