@@ -7,12 +7,13 @@ use arb_core::events::Channel;
 pub use arb_core::events::{
     BingxStreamMessage, BookTickerEvent, Event, GateioStreamMessage, KlineEvent,
     KucoinStreamMessage, MexcEvent, MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent,
+    XtStreamMessage,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
     DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline, GateioTrade,
     IndexPriceEvent, KucoinKline, KucoinLevel2, KucoinTrade, MarkPriceEvent, OpenInterestEvent,
-    TradeEvent,
+    TradeEvent, XtEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -730,6 +731,88 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     volume: k.volume.parse().ok().ok_or(())?,
                 }))
             }
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: XtStreamMessage<'a>) -> Result<Self, Self::Error> {
+        let (symbol, channel) = msg.topic.split_once('@').ok_or(())?;
+        match msg.data {
+            XtEvent::Trade(mut trades) if channel == "trade" => {
+                let trade = trades.pop().ok_or(())?;
+                let price: f64 = trade.price.parse().ok().ok_or(())?;
+                let quantity: f64 = trade.quantity.parse().ok().ok_or(())?;
+                let side = trade
+                    .buyer_is_maker
+                    .map(|m| if m { Side::Sell } else { Side::Buy });
+                Ok(MdEvent::Trade(Trade {
+                    exchange: "xt".to_string(),
+                    symbol: symbol.to_string(),
+                    price,
+                    quantity,
+                    trade_id: trade.i,
+                    buyer_order_id: None,
+                    seller_order_id: None,
+                    timestamp: trade.trade_time * 1_000_000,
+                    side,
+                }))
+            }
+            XtEvent::Depth(d) if channel == "depth" => {
+                let bids = d
+                    .bids
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Bid,
+                        })
+                    })
+                    .collect();
+                let asks = d
+                    .asks
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Ask,
+                        })
+                    })
+                    .collect();
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "xt".to_string(),
+                    symbol: symbol.to_string(),
+                    ts: d.timestamp,
+                    bids,
+                    asks,
+                    first_update_id: None,
+                    final_update_id: None,
+                    previous_final_update_id: None,
+                }))
+            }
+            XtEvent::Kline(k) if channel == "kline" => Ok(MdEvent::Kline(Kline {
+                exchange: "xt".to_string(),
+                symbol: symbol.to_string(),
+                ts: k.timestamp,
+                open: k.open.parse().ok().ok_or(())?,
+                close: k.close.parse().ok().ok_or(())?,
+                high: k.high.parse().ok().ok_or(())?,
+                low: k.low.parse().ok().ok_or(())?,
+                volume: k.volume.parse().ok().ok_or(())?,
+            })),
+            XtEvent::Ticker(t) if channel == "ticker" => Ok(MdEvent::BookTicker(BookTicker {
+                exchange: "xt".to_string(),
+                symbol: symbol.to_string(),
+                ts: t.timestamp,
+                bid_price: t.bid_price.parse().ok().ok_or(())?,
+                bid_quantity: t.bid_qty.parse().ok().ok_or(())?,
+                ask_price: t.ask_price.parse().ok().ok_or(())?,
+                ask_quantity: t.ask_qty.parse().ok().ok_or(())?,
+            })),
             _ => Err(()),
         }
     }

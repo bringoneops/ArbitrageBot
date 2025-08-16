@@ -3,7 +3,8 @@ use canonical::{
     events::{
         BingxStreamMessage, Event, ForceOrder, ForceOrderEvent, FundingRateEvent,
         GateioStreamMessage, IndexPriceEvent, Kline as EventKline, KlineEvent, KucoinStreamMessage,
-        MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent, TickerEvent, TradeEvent,
+        MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent, TickerEvent,
+        TradeEvent, XtStreamMessage,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
@@ -199,6 +200,114 @@ fn bingx_depth_event_to_canonical() {
             assert_eq!(b, de);
         }
         _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn xt_trade_event_to_canonical() {
+    let msg: XtStreamMessage<'_> = serde_json::from_value(json!({
+        "topic": "BTC_USDT@trade",
+        "data": [{
+            "i": 1u64,
+            "p": "100.0",
+            "q": "0.5",
+            "T": 1u64,
+            "m": true
+        }]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "xt");
+            assert_eq!(t.symbol, "BTC_USDT");
+            assert_eq!(t.price, 100.0);
+            assert_eq!(t.side, Some(Side::Sell));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn xt_depth_event_to_canonical() {
+    let msg: XtStreamMessage<'_> = serde_json::from_value(json!({
+        "topic": "BTC_USDT@depth",
+        "data": {
+            "t": 1u64,
+            "b": [["100.0", "1.0"]],
+            "a": [["101.0", "2.0"]]
+        }
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "xt");
+            assert_eq!(b.symbol, "BTC_USDT");
+            assert_eq!(b.bids[0].price, 100.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn xt_kline_event_to_canonical() {
+    let msg: XtStreamMessage<'_> = serde_json::from_value(json!({
+        "topic": "BTC_USDT@kline",
+        "data": {
+            "t": 1u64,
+            "o": "90",
+            "c": "100",
+            "h": "110",
+            "l": "80",
+            "v": "1000"
+        }
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Kline(k) => {
+            assert_eq!(k.exchange, "xt");
+            assert_eq!(k.symbol, "BTC_USDT");
+            assert_eq!(k.open, 90.0);
+            let s = serde_json::to_string(&k).unwrap();
+            let de: CanonKline = serde_json::from_str(&s).unwrap();
+            assert_eq!(k, de);
+        }
+        _ => panic!("expected kline"),
+    }
+}
+
+#[test]
+fn xt_ticker_event_to_canonical() {
+    let msg: XtStreamMessage<'_> = serde_json::from_value(json!({
+        "topic": "BTC_USDT@ticker",
+        "data": {
+            "t": 1u64,
+            "bp": "100",
+            "bq": "1",
+            "ap": "101",
+            "aq": "2"
+        }
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::BookTicker(t) => {
+            assert_eq!(t.exchange, "xt");
+            assert_eq!(t.symbol, "BTC_USDT");
+            assert_eq!(t.bid_price, 100.0);
+            let s = serde_json::to_string(&t).unwrap();
+            let de: BookTicker = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected book ticker"),
     }
 }
 
@@ -545,7 +654,8 @@ fn kucoin_trade_message_to_canonical() {
             "makerOrderId": "2",
             "time": 1u64
         }
-    })).unwrap();
+    }))
+    .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
         MdEvent::Trade(t) => {
@@ -576,7 +686,8 @@ fn kucoin_depth_message_to_canonical() {
                 "asks": [["101.0", "2.0", "2"]]
             }
         }
-    })).unwrap();
+    }))
+    .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
         MdEvent::DepthL2Update(b) => {
@@ -602,7 +713,8 @@ fn kucoin_kline_message_to_canonical() {
             "symbol": "BTC-USDT",
             "time": 1u64
         }
-    })).unwrap();
+    }))
+    .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
         MdEvent::Kline(k) => {
