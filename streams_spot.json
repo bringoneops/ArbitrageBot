@@ -3,10 +3,8 @@
     "!bookTicker@arr",
     "!miniTicker@arr",
     "!ticker@arr",
-    "!ticker_1M@arr",
     "!ticker_1d@arr",
     "!ticker_1h@arr",
-    "!ticker_1w@arr",
     "!ticker_4h@arr"
   ],
   "per_symbol": [
