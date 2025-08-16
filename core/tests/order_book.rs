@@ -1,6 +1,6 @@
 use arb_core as core;
-use core::{apply_depth_update, fast_forward, ApplyResult, DepthSnapshot, OrderBook};
 use core::events::DepthUpdateEvent;
+use core::{apply_depth_update, fast_forward, ApplyResult, DepthSnapshot, OrderBook};
 
 #[test]
 fn merges_snapshot_and_diff() {

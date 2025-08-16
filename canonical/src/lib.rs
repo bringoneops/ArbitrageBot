@@ -3,20 +3,15 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 pub use arb_core::events;
+use arb_core::events::Channel;
 pub use arb_core::events::{
     BookTickerEvent, Event, KlineEvent, MexcEvent, MexcStreamMessage, MiniTickerEvent,
     StreamMessage, TickerEvent,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
-use arb_core::events::Channel;
 use events::{
-    DepthUpdateEvent,
-    TradeEvent,
-    MarkPriceEvent,
-    IndexPriceEvent,
-    FundingRateEvent,
-    OpenInterestEvent,
-    ForceOrderEvent,
+    DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, IndexPriceEvent, MarkPriceEvent,
+    OpenInterestEvent, TradeEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -176,7 +171,11 @@ pub struct Liquidation {
 
 impl<'a> From<TradeEvent<'a>> for Trade {
     fn from(ev: TradeEvent<'a>) -> Self {
-        let side = if ev.buyer_is_maker { Side::Sell } else { Side::Buy };
+        let side = if ev.buyer_is_maker {
+            Side::Sell
+        } else {
+            Side::Buy
+        };
         let price = ev.price_decimal().to_f64().unwrap_or_default();
         let quantity = ev.quantity_decimal().to_f64().unwrap_or_default();
         Self {
@@ -462,7 +461,11 @@ impl<'a> From<OpenInterestEvent<'a>> for MdEvent {
 impl<'a> From<ForceOrderEvent<'a>> for Liquidation {
     fn from(ev: ForceOrderEvent<'a>) -> Self {
         let price = ev.order.price_decimal().to_f64().unwrap_or_default();
-        let quantity = ev.order.original_quantity_decimal().to_f64().unwrap_or_default();
+        let quantity = ev
+            .order
+            .original_quantity_decimal()
+            .to_f64()
+            .unwrap_or_default();
         Self {
             exchange: "binance".to_string(),
             symbol: ev.order.symbol,
@@ -667,4 +670,3 @@ impl Liquidation {
         Channel::Liquidation
     }
 }
-

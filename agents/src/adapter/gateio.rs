@@ -56,9 +56,7 @@ pub async fn fetch_symbols(cfg: &GateioConfig) -> Result<Vec<String>> {
                     .await?
                     .error_for_status()?;
                 let data: Value = resp.json().await?;
-                let arr = data
-                    .as_array()
-                    .ok_or_else(|| anyhow!("expected array"))?;
+                let arr = data.as_array().ok_or_else(|| anyhow!("expected array"))?;
                 if arr.is_empty() {
                     break;
                 }
@@ -95,9 +93,7 @@ pub async fn fetch_symbols(cfg: &GateioConfig) -> Result<Vec<String>> {
                 .await?
                 .error_for_status()?;
             let data: Value = resp.json().await?;
-            let arr = data
-                .as_array()
-                .ok_or_else(|| anyhow!("expected array"))?;
+            let arr = data.as_array().ok_or_else(|| anyhow!("expected array"))?;
             if arr.is_empty() {
                 break;
             }
@@ -134,8 +130,7 @@ pub fn register() {
             registry::register_adapter(
                 cfg_ref.id,
                 Arc::new(
-                    move |
-                          global_cfg: &'static core::config::Config,
+                    move |global_cfg: &'static core::config::Config,
                           exchange_cfg: &core::config::ExchangeConfig,
                           client: Client,
                           task_set: TaskSet,
@@ -238,4 +233,3 @@ impl ExchangeAdapter for GateioAdapter {
         Ok(())
     }
 }
-

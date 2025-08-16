@@ -37,11 +37,7 @@ pub const BITMART_EXCHANGES: &[BitmartConfig] = &[
 
 /// Retrieve all spot trading symbols from BitMart.
 pub async fn fetch_spot_symbols(url: &str) -> Result<Vec<String>> {
-    let resp = Client::new()
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?;
+    let resp = Client::new().get(url).send().await?.error_for_status()?;
     let data: Value = resp.json().await?;
     let arr = data
         .get("data")
@@ -73,11 +69,7 @@ pub async fn fetch_spot_symbols(url: &str) -> Result<Vec<String>> {
 
 /// Retrieve all contract trading symbols from BitMart.
 pub async fn fetch_contract_symbols(url: &str) -> Result<Vec<String>> {
-    let resp = Client::new()
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?;
+    let resp = Client::new().get(url).send().await?.error_for_status()?;
     let data: Value = resp.json().await?;
     let arr = data
         .get("data")
@@ -191,8 +183,8 @@ impl ExchangeAdapter for BitmartAdapter {
 
     async fn run(&mut self) -> Result<()> {
         self.auth().await?;
-       self.backfill().await?;
-       self.subscribe().await?;
+        self.backfill().await?;
+        self.subscribe().await?;
         self.heartbeat().await?;
         Ok(())
     }

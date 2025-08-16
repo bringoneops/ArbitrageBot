@@ -1,16 +1,15 @@
+use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use canonical::{
     events::{
-        Event, FundingRateEvent, ForceOrder, ForceOrderEvent, IndexPriceEvent,
-        Kline as EventKline, KlineEvent, MarkPriceEvent, MexcStreamMessage,
-        MiniTickerEvent, OpenInterestEvent, TickerEvent, TradeEvent,
+        Event, ForceOrder, ForceOrderEvent, FundingRateEvent, IndexPriceEvent, Kline as EventKline,
+        KlineEvent, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
+        TickerEvent, TradeEvent,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
-    FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice,
-    Kline as CanonKline, Liquidation as CanonLiquidation, MarkPrice as CanonMarkPrice,
-    MdEvent, MiniTicker as CanonMiniTicker, OpenInterest as CanonOpenInterest,
-    Side, Trade,
+    FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
+    Liquidation as CanonLiquidation, MarkPrice as CanonMarkPrice, MdEvent,
+    MiniTicker as CanonMiniTicker, OpenInterest as CanonOpenInterest, Side, Trade,
 };
-use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use serde_json::json;
 use std::borrow::Cow;
 
@@ -73,7 +72,8 @@ fn mexc_trade_event_to_canonical() {
         },
         "symbol": "BTCUSDT",
         "sendtime": 1736409765052u64
-    })).unwrap();
+    }))
+    .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
         MdEvent::Trade(t) => {
@@ -102,7 +102,8 @@ fn mexc_depth_event_to_canonical() {
         },
         "symbol": "BTCUSDT",
         "sendtime": 1736411507002u64
-    })).unwrap();
+    }))
+    .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
         MdEvent::DepthL2Update(b) => {
@@ -129,7 +130,8 @@ fn mexc_book_ticker_event_to_canonical() {
         },
         "symbol": "BTCUSDT",
         "sendtime": 1736412092433u64
-    })).unwrap();
+    }))
+    .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
     match md {
         MdEvent::BookTicker(t) => {
@@ -374,4 +376,3 @@ fn force_order_event_to_canonical() {
         _ => panic!("expected liquidation"),
     }
 }
-
