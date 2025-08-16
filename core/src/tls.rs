@@ -63,8 +63,8 @@ pub fn build_tls_config(
     if !cert_pins.is_empty() {
         let pins: Vec<Vec<u8>> = cert_pins
             .iter()
-            .filter_map(|p| hex::decode(p).ok())
-            .collect();
+            .map(|p| hex::decode(p).with_context(|| format!("decoding pin: {p}")))
+            .collect::<Result<_>>()?;
         config
             .dangerous()
             .set_certificate_verifier(Arc::new(PinnedVerifier::new(verifier, pins)));
