@@ -23,6 +23,23 @@ exchange produces data in a common format.
 
 This project connects to the Binance.US, Binance.com (global), Binance Futures, Binance Delivery, and Binance Options WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
 
+## Supported Exchanges & Channels
+
+- **BingX:** `depth`, `trades`, `ticker`
+- **Bitget:** `depth`, `trade`, `ticker`
+- **Bitmart Spot:** `ticker`, `kline_1m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_4h`, `kline_1d`, `kline_1w`, `kline_1M`, `depth5`, `depth20`, `trade`
+- **Bitmart Contract:** all spot channels above plus `funding_rate`
+- **CoinEx Spot & Perpetual:** `depth.subscribe`, `deals.subscribe`, `state.subscribe`, `kline.subscribe`
+- **Gate.io Spot/Futures:** `order_book_update`, `trades`, `tickers`
+- **KuCoin Spot:** global `/market/ticker:all`, `/market/snapshot:all`; per-symbol `/market/ticker`, `/market/snapshot`, `/market/level2`, `/market/level2Depth5`, `/market/level2Depth50`, `/market/match`
+- **KuCoin Futures:** global `/contractMarket/ticker:all`; per-symbol `/contractMarket/ticker`, `/contractMarket/level2`, `/contractMarket/level2Depth5`, `/contractMarket/level2Depth50`, `/contractMarket/execution`, `/contractMarket/tradeOrders`, `/contractMarket/indexPrice`, `/contractMarket/markPrice`, `/contractMarket/fundingRate`
+- **Latoken:** `trades`, `ticker`, `orderbook`
+- **LBank:** `ticker`, `trade`, `depth`, `kline_1m`, `kline_3m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_2h`, `kline_4h`, `kline_6h`, `kline_12h`, `kline_1d`, `kline_1w`, `kline_1M`
+- **XT:** `depth`, `trade`, `kline`
+- **Binance Spot:** global `!bookTicker@arr`, `!miniTicker@arr`, `!ticker@arr`, `!ticker_1M@arr`, `!ticker_1d@arr`, `!ticker_1h@arr`, `!ticker_1w@arr`, `!ticker_4h@arr`; per-symbol `aggTrade`, `bookTicker`, `depth@100ms`, `kline_1m`, `kline_3m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_2h`, `kline_4h`, `kline_6h`, `kline_8h`, `kline_12h`, `kline_1d`, `kline_3d`, `kline_1w`, `kline_1M`, `miniTicker`, `ticker`, `ticker_1h`, `ticker_4h`, `ticker_1d`, `ticker_1w`, `ticker_1M`, `trade`
+- **Binance Futures:** global `!bookTicker@arr`, `!markPrice@arr`, `!markPrice@arr@1s`, `!miniTicker@arr`, `!ticker@arr`, `!ticker_1M@arr`, `!ticker_1d@arr`, `!ticker_1h@arr`, `!ticker_1w@arr`, `!ticker_4h@arr`, `forceOrder@arr`; per-symbol all `continuousKline_*`, `depth*`, `forceOrder`, `indexPrice*`, `kline_*`, `markPrice*`, `miniTicker`, `openInterest`, `takerBuySellVolume`, `ticker_*`, `topLongShortAccountRatio`, `topLongShortPositionRatio`, `trade`
+- **Binance Options:** global `!bookTicker@arr`, `!miniTicker@arr`, `!ticker@arr`; per-symbol `bookTicker`, `miniTicker`, `ticker`, `trade`, `kline_1m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_2h`, `kline_4h`, `kline_1d`, `kline_1w`, `greeks`, `openInterest`, `impliedVolatility`
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for coding style, testing, and PR guidelines.
