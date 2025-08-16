@@ -223,6 +223,18 @@ impl ExchangeAdapter for BingxAdapter {
                                                 }
                                             }
                                             Some(Ok(Message::Pong(_))) => {}
+                                            Some(Ok(Message::Text(text))) => {
+                                                if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                                                    if let Some(ping) = v.get("ping").cloned() {
+                                                        let pong = serde_json::json!({"pong": ping});
+                                                        if ws.send(Message::Text(pong.to_string())).await.is_err() {
+                                                            break;
+                                                        }
+                                                    } else if v.get("e").and_then(|e| e.as_str()) == Some("kline") || v.get("kline").is_some() {
+                                                        info!("bingx received kline event: {}", text);
+                                                    }
+                                                }
+                                            }
                                             Some(Ok(Message::Close(_))) | Some(Err(_)) | None => {
                                                 break;
                                             }
