@@ -2,11 +2,20 @@ use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
 use core::events::StreamMessage;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::{Arc, Once};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Once,
+};
 use tokio::sync::mpsc;
+use tokio::{
+    signal,
+    task::JoinHandle,
+    time::{sleep, Duration},
+};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tracing::error;
 
 use super::ExchangeAdapter;
@@ -16,12 +25,14 @@ use crate::{registry, ChannelRegistry, TaskSet};
 pub struct BitgetConfig {
     pub id: &'static str,
     pub name: &'static str,
+    pub ws_base: &'static str,
 }
 
 /// Supported Bitget exchange endpoints.
 pub const BITGET_EXCHANGES: &[BitgetConfig] = &[BitgetConfig {
     id: "bitget",
     name: "Bitget",
+    ws_base: "wss://ws.bitget.com/spot/v1/stream",
 }];
 
 /// Retrieve all trading symbols across Bitget spot and futures markets.
@@ -147,10 +158,12 @@ pub fn register() {
 
 /// Placeholder adapter for Bitget. Full streaming support is not yet implemented.
 pub struct BitgetAdapter {
-    _cfg: &'static BitgetConfig,
+    cfg: &'static BitgetConfig,
     _client: Client,
-    _chunk_size: usize,
-    _symbols: Vec<String>,
+    chunk_size: usize,
+    symbols: Vec<String>,
+    tasks: Vec<JoinHandle<Result<()>>>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl BitgetAdapter {
@@ -161,10 +174,12 @@ impl BitgetAdapter {
         symbols: Vec<String>,
     ) -> Self {
         Self {
-            _cfg: cfg,
+            cfg,
             _client: client,
-            _chunk_size: chunk_size,
-            _symbols: symbols,
+            chunk_size,
+            symbols,
+            tasks: Vec::new(),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -172,11 +187,59 @@ impl BitgetAdapter {
 #[async_trait]
 impl super::ExchangeAdapter for BitgetAdapter {
     async fn subscribe(&mut self) -> Result<()> {
+        let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
+        let cfg = core::stream_config_for_exchange(self.cfg.name);
+        let chunks = core::chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
+
+        for chunk in chunks {
+            let symbols = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let ws_url = self.cfg.ws_base.to_string();
+            let shutdown = self.shutdown.clone();
+
+            let handle = tokio::spawn(async move {
+                loop {
+                    if shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    match connect_async(&ws_url).await {
+                        Ok((mut ws, _)) => {
+                            let args: Vec<_> = symbols
+                                .iter()
+                                .map(|s| serde_json::json!({"channel":"ticker","instId":s}))
+                                .collect();
+                            let sub = serde_json::json!({"op":"subscribe","args": args});
+                            let _ = ws.send(Message::Text(sub.to_string())).await;
+                            while let Some(msg) = ws.next().await {
+                                match msg {
+                                    Ok(Message::Ping(p)) => {
+                                        let _ = ws.send(Message::Pong(p)).await;
+                                    }
+                                    Ok(Message::Close(_)) | Err(_) => break,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                    if shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    sleep(Duration::from_secs(5)).await;
+                }
+                Ok::<(), anyhow::Error>(())
+            });
+            self.tasks.push(handle);
+        }
         Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
-        // Streaming not implemented yet.
+        self.subscribe().await?;
+        let _ = signal::ctrl_c().await;
+        self.shutdown.store(true, Ordering::SeqCst);
+        for handle in self.tasks.drain(..) {
+            let _ = handle.await;
+        }
         Ok(())
     }
 

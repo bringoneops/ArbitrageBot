@@ -26,7 +26,7 @@ pub struct LbankConfig {
 pub const LBANK_EXCHANGES: &[LbankConfig] = &[LbankConfig {
     id: "lbank_spot",
     name: "LBank",
-    ws_base: "wss://api.lbkex.com/ws",
+    ws_base: "wss://www.lbkex.net/ws/",
 }];
 
 const SPOT_URL: &str = "https://api.lbkex.com/v2/currencyPairs.do";
