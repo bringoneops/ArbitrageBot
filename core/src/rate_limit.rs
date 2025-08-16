@@ -25,6 +25,7 @@ use tokio::time;
 pub struct TokenBucket {
     semaphore: Arc<Semaphore>,
     refill_handle: JoinHandle<()>,
+    capacity: usize,
 }
 
 impl TokenBucket {
@@ -37,9 +38,10 @@ impl TokenBucket {
     /// refills. The task holds the only mutable reference to the semaphore and
     /// therefore no external synchronization is required.
     pub fn new(capacity: u32, tokens_per_interval: u32, interval: Duration) -> Self {
-        let semaphore = Arc::new(Semaphore::new(capacity as usize));
+        let capacity = capacity as usize;
+        let semaphore = Arc::new(Semaphore::new(capacity));
         let refill_sem = semaphore.clone();
-        let cap = capacity as usize;
+        let cap = capacity;
         let add = tokens_per_interval as usize;
         let refill_handle = tokio::spawn(async move {
             let mut ticker = time::interval(interval);
@@ -55,6 +57,7 @@ impl TokenBucket {
         Self {
             semaphore,
             refill_handle,
+            capacity,
         }
     }
 
@@ -64,6 +67,7 @@ impl TokenBucket {
     /// semaphore without blocking threads until the refill task adds enough
     /// tokens.
     pub async fn acquire(&self, tokens: u32) {
+        let tokens = tokens.min(self.capacity as u32);
         // `acquire_many` returns a permit guard that releases permits when
         // dropped. We "forget" it to permanently consume the permits.
         self.semaphore
