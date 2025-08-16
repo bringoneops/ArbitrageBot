@@ -9,6 +9,7 @@
     "/market/level2",
     "/market/level2Depth5",
     "/market/level2Depth50",
-    "/market/match"
+    "/market/match",
+    "/market/candles:*"
   ]
 }
