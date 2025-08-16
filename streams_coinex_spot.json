@@ -4,6 +4,8 @@
     "depth.subscribe",
     "deals.subscribe",
     "state.subscribe",
-    "kline.subscribe"
+    "kline.subscribe",
+    "bbo.subscribe",
+    "index.subscribe"
   ]
 }

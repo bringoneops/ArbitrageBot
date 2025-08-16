@@ -33,6 +33,7 @@ dependencies = [
  "rand 0.8.5",
  "reqwest",
  "rustls 0.21.12",
+ "serde",
  "serde_json",
  "simd-json",
  "tokio",

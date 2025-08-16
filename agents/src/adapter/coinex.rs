@@ -6,6 +6,7 @@ use core::{chunk_streams_with_config, stream_config_for_exchange, OrderBook};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -93,6 +94,18 @@ pub async fn fetch_symbols() -> Result<Vec<String>> {
     symbols.sort();
     symbols.dedup();
     Ok(symbols)
+}
+
+#[derive(Debug, Deserialize)]
+struct BboData {
+    #[serde(rename = "b", alias = "bid")]
+    b: String,
+    #[serde(rename = "B", alias = "bidVolume", default)]
+    B: String,
+    #[serde(rename = "a", alias = "ask")]
+    a: String,
+    #[serde(rename = "A", alias = "askVolume", default)]
+    A: String,
 }
 
 static REGISTER: Once = Once::new();
@@ -245,8 +258,20 @@ impl ExchangeAdapter for CoinexAdapter {
                                     "id": 0,
                                 });
                                 let _ = ws.send(Message::Text(sub.to_string())).await;
+                                let sub = serde_json::json!({
+                                    "method": "bbo.subscribe",
+                                    "params": [symbol],
+                                    "id": 0,
+                                });
+                                let _ = ws.send(Message::Text(sub.to_string())).await;
+                                let sub = serde_json::json!({
+                                    "method": "index.subscribe",
+                                    "params": [symbol],
+                                    "id": 0,
+                                });
+                                let _ = ws.send(Message::Text(sub.to_string())).await;
                             }
-                            let topics = symbols.len() * 4;
+                            let topics = symbols.len() * 6;
                             tracing::info!("subscribed {topics} topics to {ws_url}");
                             loop {
                                 tokio::select! {
@@ -257,6 +282,34 @@ impl ExchangeAdapter for CoinexAdapter {
                                                     tracing::error!("coinex ws pong error: {}", e);
                                                     e
                                                 })?;
+                                            },
+                                            Some(Ok(Message::Text(text))) => {
+                                                if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                                                    if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
+                                                        match method {
+                                                            "bbo.update" => {
+                                                                if let Some(params) = v.get("params").and_then(|p| p.as_array()) {
+                                                                    if params.len() >= 2 {
+                                                                        let symbol = params[0].as_str().unwrap_or_default();
+                                                                        if let Ok(data) = serde_json::from_value::<BboData>(params[1].clone()) {
+                                                                            tracing::debug!("coinex bbo {} bid {} ask {}", symbol, data.b, data.a);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            "index.update" => {
+                                                                if let Some(params) = v.get("params").and_then(|p| p.as_array()) {
+                                                                    if params.len() >= 2 {
+                                                                        let symbol = params[0].as_str().unwrap_or_default();
+                                                                        let price = params[1].as_str().unwrap_or_default();
+                                                                        tracing::debug!("coinex index {} price {}", symbol, price);
+                                                                    }
+                                                                }
+                                                            },
+                                                            _ => {}
+                                                        }
+                                                    }
+                                                }
                                             },
                                             Some(Ok(Message::Close(_))) | None => { break; },
                                             Some(Ok(_)) => {},
