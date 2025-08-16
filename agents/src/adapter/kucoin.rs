@@ -1,11 +1,16 @@
 use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::{Arc, Once};
-use tokio::sync::mpsc;
+use tokio::{
+    sync::mpsc,
+    time::{interval, sleep, Duration},
+};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use uuid::Uuid;
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
@@ -104,16 +109,117 @@ impl KucoinAdapter {
             symbols,
         }
     }
+
+    async fn connect_once(&self) -> Result<()> {
+        let api_base = if self.cfg.id.contains("futures") {
+            "https://api-futures.kucoin.com"
+        } else {
+            "https://api.kucoin.com"
+        };
+        let bullet_url = format!("{}/api/v1/bullet-public", api_base);
+        let resp: Value = self
+            ._client
+            .post(&bullet_url)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let data = resp.get("data").ok_or_else(|| anyhow!("missing data"))?;
+        let token = data
+            .get("token")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing token"))?;
+        let instance = data
+            .get("instanceServers")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .ok_or_else(|| anyhow!("missing instance server"))?;
+        let endpoint = instance
+            .get("endpoint")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing endpoint"))?;
+        let ping_interval = instance
+            .get("pingInterval")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(50000);
+
+        let ws_url = format!("{}?token={}", endpoint, token);
+        let (ws_stream, _) = connect_async(&ws_url).await?;
+        let (mut write, mut read) = ws_stream.split();
+
+        for symbol in &self.symbols {
+            let topics = [
+                format!("/market/match:{}", symbol),
+                format!("/market/level2:{}", symbol),
+                format!("/market/candles:1min:{}", symbol),
+            ];
+            for topic in topics {
+                let msg = json!({
+                    "id": Uuid::new_v4().to_string(),
+                    "type": "subscribe",
+                    "topic": topic,
+                    "privateChannel": false,
+                    "response": true,
+                });
+                write.send(Message::Text(msg.to_string())).await?;
+            }
+        }
+
+        let mut intv = interval(Duration::from_millis(ping_interval));
+        loop {
+            tokio::select! {
+                _ = intv.tick() => {
+                    let ping = json!({
+                        "id": Uuid::new_v4().to_string(),
+                        "type": "ping"
+                    });
+                    if write.send(Message::Text(ping.to_string())).await.is_err() {
+                        break;
+                    }
+                }
+                msg = read.next() => {
+                    match msg {
+                        Some(Ok(Message::Text(text))) => {
+                            if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                                if v.get("type").and_then(|v| v.as_str()) == Some("ping") {
+                                    if let Some(id) = v.get("id").and_then(|v| v.as_str()) {
+                                        let pong = json!({"id": id, "type": "pong"});
+                                        let _ = write.send(Message::Text(pong.to_string())).await;
+                                    }
+                                }
+                            }
+                        }
+                        Some(Ok(Message::Ping(data))) => {
+                            let _ = write.send(Message::Pong(data)).await;
+                        }
+                        Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl ExchangeAdapter for KucoinAdapter {
     async fn subscribe(&mut self) -> Result<()> {
+        loop {
+            if let Err(e) = self.connect_once().await {
+                tracing::error!("kucoin connection error: {}", e);
+                sleep(Duration::from_secs(1)).await;
+            }
+        }
+        #[allow(unreachable_code)]
         Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
-        self.subscribe().await
+        self.subscribe().await?;
+        futures::future::pending::<()>().await;
+        Ok(())
     }
 
     async fn heartbeat(&mut self) -> Result<()> {
