@@ -3,7 +3,7 @@ use canonical::{
     events::{
         Event, ForceOrder, ForceOrderEvent, FundingRateEvent, IndexPriceEvent, Kline as EventKline,
         KlineEvent, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
-        TickerEvent, TradeEvent,
+        TickerEvent, TradeEvent, GateioStreamMessage,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
@@ -374,5 +374,101 @@ fn force_order_event_to_canonical() {
             assert_eq!(l, de);
         }
         _ => panic!("expected liquidation"),
+    }
+}
+
+#[test]
+fn gateio_trade_message_to_canonical() {
+    let s = json!({
+        "method": "trades.update",
+        "params": [
+            "BTC_USDT",
+            [{
+                "id": 1,
+                "create_time_ms": 1736409765000u64,
+                "price": "93220.00",
+                "amount": "0.044",
+                "side": "sell"
+            }]
+        ]
+    })
+    .to_string();
+    let msg: GateioStreamMessage<'_> = serde_json::from_str(&s).unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "gateio");
+            assert_eq!(t.symbol, "BTC_USDT");
+            assert_eq!(t.price, 93220.0);
+            assert_eq!(t.quantity, 0.044);
+            assert_eq!(t.side, Some(Side::Sell));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn gateio_depth_message_to_canonical() {
+    let s = json!({
+        "method": "depth.update",
+        "params": [
+            "BTC_USDT",
+            {
+                "t": 1736411507000u64,
+                "bids": [["92876.00", "0.10000000"]],
+                "asks": [["92877.58", "0.00000000"]],
+                "id": 100
+            }
+        ]
+    })
+    .to_string();
+    let msg: GateioStreamMessage<'_> = serde_json::from_str(&s).unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "gateio");
+            assert_eq!(b.symbol, "BTC_USDT");
+            assert_eq!(b.bids[0].price, 92876.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn gateio_kline_message_to_canonical() {
+    let s = json!({
+        "method": "kline.update",
+        "params": [
+            "BTC_USDT",
+            [{
+                "t": 1736409765000u64,
+                "o": "93000.0",
+                "c": "93200.0",
+                "h": "93300.0",
+                "l": "92900.0",
+                "v": "10"
+            }],
+            "1m"
+        ]
+    })
+    .to_string();
+    let msg: GateioStreamMessage<'_> = serde_json::from_str(&s).unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Kline(k) => {
+            assert_eq!(k.exchange, "gateio");
+            assert_eq!(k.symbol, "BTC_USDT");
+            assert_eq!(k.open, 93000.0);
+            let s = serde_json::to_string(&k).unwrap();
+            let de: CanonKline = serde_json::from_str(&s).unwrap();
+            assert_eq!(k, de);
+        }
+        _ => panic!("expected kline"),
     }
 }

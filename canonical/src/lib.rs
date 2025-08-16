@@ -5,13 +5,13 @@ use std::convert::TryFrom;
 pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
-    BookTickerEvent, Event, KlineEvent, MexcEvent, MexcStreamMessage, MiniTickerEvent,
-    StreamMessage, TickerEvent,
+    BookTickerEvent, Event, GateioStreamMessage, KlineEvent, MexcEvent, MexcStreamMessage,
+    MiniTickerEvent, StreamMessage, TickerEvent,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
-    DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, IndexPriceEvent, MarkPriceEvent,
-    OpenInterestEvent, TradeEvent,
+    DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline,
+    GateioTrade, IndexPriceEvent, MarkPriceEvent, OpenInterestEvent, TradeEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -576,6 +576,99 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     ask_quantity,
                 }))
             }
+        }
+    }
+}
+
+impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: GateioStreamMessage<'a>) -> Result<Self, Self::Error> {
+        match msg.method {
+            "trades.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let trades: Vec<GateioTrade> =
+                    serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
+                        .map_err(|_| ())?;
+                let trade = trades.first().ok_or(())?;
+                let price: f64 = trade.price.parse().ok().ok_or(())?;
+                let quantity: f64 = trade.amount.parse().ok().ok_or(())?;
+                let side = match trade.side.as_ref() {
+                    "buy" => Some(Side::Buy),
+                    "sell" => Some(Side::Sell),
+                    _ => None,
+                };
+                Ok(MdEvent::Trade(Trade {
+                    exchange: "gateio".to_string(),
+                    symbol: symbol.to_string(),
+                    price,
+                    quantity,
+                    trade_id: Some(trade.id),
+                    buyer_order_id: None,
+                    seller_order_id: None,
+                    timestamp: trade.create_time_ms,
+                    side,
+                }))
+            }
+            "depth.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let depth: GateioDepth =
+                    serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
+                        .map_err(|_| ())?;
+                let bids = depth
+                    .bids
+                    .into_iter()
+                    .filter_map(|lvl| {
+                        let price: f64 = lvl[0].parse().ok()?;
+                        let quantity: f64 = lvl[1].parse().ok()?;
+                        Some(Level {
+                            price,
+                            quantity,
+                            kind: BookKind::Bid,
+                        })
+                    })
+                    .collect();
+                let asks = depth
+                    .asks
+                    .into_iter()
+                    .filter_map(|lvl| {
+                        let price: f64 = lvl[0].parse().ok()?;
+                        let quantity: f64 = lvl[1].parse().ok()?;
+                        Some(Level {
+                            price,
+                            quantity,
+                            kind: BookKind::Ask,
+                        })
+                    })
+                    .collect();
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "gateio".to_string(),
+                    symbol: symbol.to_string(),
+                    ts: depth.timestamp,
+                    bids,
+                    asks,
+                    first_update_id: depth.id,
+                    final_update_id: depth.id,
+                    previous_final_update_id: None,
+                }))
+            }
+            "kline.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let klines: Vec<GateioKline> =
+                    serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
+                        .map_err(|_| ())?;
+                let k = klines.first().ok_or(())?;
+                Ok(MdEvent::Kline(Kline {
+                    exchange: "gateio".to_string(),
+                    symbol: symbol.to_string(),
+                    ts: k.timestamp,
+                    open: k.open.parse().ok().ok_or(())?,
+                    close: k.close.parse().ok().ok_or(())?,
+                    high: k.high.parse().ok().ok_or(())?,
+                    low: k.low.parse().ok().ok_or(())?,
+                    volume: k.volume.parse().ok().ok_or(())?,
+                }))
+            }
+            _ => Err(()),
         }
     }
 }

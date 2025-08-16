@@ -534,6 +534,50 @@ pub struct MexcBookTicker<'a> {
     pub ask_qty: Cow<'a, str>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GateioStreamMessage<'a> {
+    pub method: &'a str,
+    pub params: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GateioTrade<'a> {
+    pub id: u64,
+    #[serde(rename = "create_time_ms")]
+    pub create_time_ms: u64,
+    pub price: Cow<'a, str>,
+    pub amount: Cow<'a, str>,
+    pub side: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GateioDepth<'a> {
+    #[serde(rename = "t")]
+    pub timestamp: u64,
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+    #[serde(default)]
+    pub id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GateioKline<'a> {
+    #[serde(rename = "t")]
+    pub timestamp: u64,
+    #[serde(rename = "o")]
+    pub open: Cow<'a, str>,
+    #[serde(rename = "c")]
+    pub close: Cow<'a, str>,
+    #[serde(rename = "h")]
+    pub high: Cow<'a, str>,
+    #[serde(rename = "l")]
+    pub low: Cow<'a, str>,
+    #[serde(rename = "v")]
+    pub volume: Cow<'a, str>,
+}
+
 impl<'a> TradeEvent<'a> {
     pub fn channel(&self) -> Channel {
         Channel::Trade
