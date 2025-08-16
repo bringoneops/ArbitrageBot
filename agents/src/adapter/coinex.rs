@@ -239,7 +239,15 @@ impl ExchangeAdapter for CoinexAdapter {
                                     "id": 0,
                                 });
                                 let _ = ws.send(Message::Text(sub.to_string())).await;
+                                let sub = serde_json::json!({
+                                    "method": "kline.subscribe",
+                                    "params": [symbol, 60],
+                                    "id": 0,
+                                });
+                                let _ = ws.send(Message::Text(sub.to_string())).await;
                             }
+                            let topics = symbols.len() * 4;
+                            tracing::info!("subscribed {topics} topics to {ws_url}");
                             loop {
                                 tokio::select! {
                                     msg = ws.next() => {

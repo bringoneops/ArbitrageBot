@@ -3,6 +3,7 @@
   "per_symbol": [
     "depth.subscribe",
     "deals.subscribe",
-    "state.subscribe"
+    "state.subscribe",
+    "kline.subscribe"
   ]
 }
