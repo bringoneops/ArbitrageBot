@@ -673,6 +673,75 @@ pub struct KucoinKline<'a> {
     pub time: u64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct XtStreamMessage<'a> {
+    pub topic: Cow<'a, str>,
+    pub data: XtEvent<'a>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum XtEvent<'a> {
+    Trade(Vec<XtTrade<'a>>),
+    Kline(XtKline<'a>),
+    Ticker(XtTicker<'a>),
+    Depth(XtDepth<'a>),
+}
+
+#[derive(Debug, Deserialize)]
+pub struct XtTrade<'a> {
+    #[serde(default)]
+    pub i: Option<u64>,
+    #[serde(rename = "p")]
+    pub price: Cow<'a, str>,
+    #[serde(rename = "q")]
+    pub quantity: Cow<'a, str>,
+    #[serde(rename = "T")]
+    pub trade_time: u64,
+    #[serde(rename = "m", default)]
+    pub buyer_is_maker: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct XtDepth<'a> {
+    #[serde(rename = "t")]
+    pub timestamp: u64,
+    #[serde(rename = "b", default)]
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "a", default)]
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct XtKline<'a> {
+    #[serde(rename = "t")]
+    pub timestamp: u64,
+    #[serde(rename = "o")]
+    pub open: Cow<'a, str>,
+    #[serde(rename = "c")]
+    pub close: Cow<'a, str>,
+    #[serde(rename = "h")]
+    pub high: Cow<'a, str>,
+    #[serde(rename = "l")]
+    pub low: Cow<'a, str>,
+    #[serde(rename = "v")]
+    pub volume: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct XtTicker<'a> {
+    #[serde(rename = "t")]
+    pub timestamp: u64,
+    #[serde(rename = "bp")]
+    pub bid_price: Cow<'a, str>,
+    #[serde(rename = "bq")]
+    pub bid_qty: Cow<'a, str>,
+    #[serde(rename = "ap")]
+    pub ask_price: Cow<'a, str>,
+    #[serde(rename = "aq")]
+    pub ask_qty: Cow<'a, str>,
+}
+
 impl<'a> TradeEvent<'a> {
     pub fn channel(&self) -> Channel {
         Channel::Trade
@@ -822,3 +891,6 @@ decimal_accessors!(GreeksEvent { delta => delta_decimal, gamma => gamma_decimal,
 decimal_option_accessors!(GreeksEvent { rho => rho_decimal });
 decimal_accessors!(OpenInterestEvent { open_interest => open_interest_decimal });
 decimal_accessors!(ImpliedVolatilityEvent { implied_volatility => implied_volatility_decimal });
+decimal_accessors!(XtTrade { price => price_decimal, quantity => quantity_decimal });
+decimal_accessors!(XtKline { open => open_decimal, close => close_decimal, high => high_decimal, low => low_decimal, volume => volume_decimal });
+decimal_accessors!(XtTicker { bid_price => bid_price_decimal, bid_qty => bid_qty_decimal, ask_price => ask_price_decimal, ask_qty => ask_qty_decimal });
