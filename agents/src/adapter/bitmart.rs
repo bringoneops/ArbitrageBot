@@ -330,15 +330,33 @@ impl BitmartAdapter {
 impl ExchangeAdapter for BitmartAdapter {
     async fn subscribe(&mut self) -> Result<()> {
         for symbols in self.symbols.chunks(self.chunk_size) {
+            let prefix = if self.cfg.id == "bitmart_spot" {
+                "spot"
+            } else {
+                "futures"
+            };
+            let topics: Vec<String> = symbols
             let chunk_symbols: Vec<String> = symbols.to_vec();
             let topics: Vec<String> = chunk_symbols
                 .iter()
                 .flat_map(|s| {
-                    [
-                        format!("spot/trade:{}", s),
-                        format!("spot/depth5:{}", s),
-                        format!("spot/kline1m:{}", s),
-                    ]
+                    let mut t = vec![
+                        format!("{}/trade:{}", prefix, s),
+                        format!("{}/ticker:{}", prefix, s),
+                    ];
+                    if prefix == "spot" {
+                        t.push(format!("{}/kline1m:{}", prefix, s));
+                        t.push(format!("{}/depth5:{}", prefix, s));
+                        t.push(format!("{}/depth20:{}", prefix, s));
+                    } else {
+                        t.push(format!("{}/klineBin1m:{}", prefix, s));
+                        t.push(format!("{}/depth5:{}", prefix, s));
+                        t.push(format!("{}/depth20:{}", prefix, s));
+                        t.push(format!("{}/depthIncrease5:{}", prefix, s));
+                        t.push(format!("{}/depthIncrease20:{}", prefix, s));
+                        t.push(format!("{}/fundingRate:{}", prefix, s));
+                    }
+                    t
                 })
                 .collect();
             let topic_count = topics.len();
@@ -358,7 +376,8 @@ impl ExchangeAdapter for BitmartAdapter {
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             info!(endpoint = %ws_url, topics = topic_count, "bitmart websocket connected");
-                            let sub = serde_json::json!({"action":"subscribe","args": topics.clone()});
+                            let sub =
+                                serde_json::json!({"action":"subscribe","args": topics.clone()});
                             if ws.send(Message::Text(sub.to_string())).await.is_err() {
                                 warn!("bitmart subscription failed");
                                 break;
