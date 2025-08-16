@@ -6,15 +6,17 @@ use async_trait::async_trait;
 use core::rate_limit::TokenBucket;
 use core::{chunk_streams_with_config, stream_config_for_exchange};
 use dashmap::DashMap;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Once;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-use tracing::error;
+use tokio::time::{interval, sleep, Duration};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tracing::{error, info};
 
 /// Configuration for a single LATOKEN exchange endpoint.
 pub struct LatokenConfig {
@@ -165,12 +167,24 @@ impl ExchangeAdapter for LatokenAdapter {
         let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
         let cfg = stream_config_for_exchange(self.cfg.name);
         let _chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
-        // Actual subscription logic to LATOKEN would be implemented here.
+
+        for symbol in self.symbols.clone() {
+            let url = self.cfg.ws_base.to_string();
+            let shutdown = self.shutdown.clone();
+            let handle = tokio::spawn(async move {
+                if let Err(e) = LatokenAdapter::run_symbol(url, symbol, shutdown).await {
+                    error!("latoken stream error: {}", e);
+                }
+                Ok(())
+            });
+            self.tasks.push(handle);
+        }
         Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
         self.subscribe().await?;
+        futures::future::pending::<()>().await;
         Ok(())
     }
 
@@ -183,6 +197,90 @@ impl ExchangeAdapter for LatokenAdapter {
     }
 
     async fn backfill(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl LatokenAdapter {
+    async fn run_symbol(url: String, symbol: String, shutdown: Arc<AtomicBool>) -> Result<()> {
+        loop {
+            let (ws_stream, _) = connect_async(&url).await?;
+            info!("latoken connected: {}", symbol);
+            let (write, mut read) = ws_stream.split();
+            let write = Arc::new(Mutex::new(write));
+
+            let subs = vec![
+                json!({"type": "subscribe", "symbol": symbol, "topic": "trade"}),
+                json!({"type": "subscribe", "symbol": symbol, "topic": "depth"}),
+                json!({"type": "subscribe", "symbol": symbol, "topic": "kline"}),
+            ];
+            for sub in subs {
+                if write
+                    .lock()
+                    .await
+                    .send(Message::Text(sub.to_string()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+
+            let ping_writer = write.clone();
+            let ping_shutdown = shutdown.clone();
+            tokio::spawn(async move {
+                let mut intv = interval(Duration::from_secs(30));
+                while !ping_shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                    intv.tick().await;
+                    if ping_writer
+                        .lock()
+                        .await
+                        .send(Message::Ping(Vec::new()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+
+            while let Some(msg) = read.next().await {
+                match msg {
+                    Ok(Message::Text(text)) => {
+                        if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                            if let Some(ping) = v.get("ping").cloned() {
+                                let pong = json!({"pong": ping});
+                                let _ = write
+                                    .lock()
+                                    .await
+                                    .send(Message::Text(pong.to_string()))
+                                    .await;
+                                continue;
+                            }
+                        }
+                    }
+                    Ok(Message::Ping(data)) => {
+                        let _ = write.lock().await.send(Message::Pong(data)).await;
+                    }
+                    Ok(Message::Pong(_)) => {}
+                    Err(e) => {
+                        error!("latoken {} error: {}", symbol, e);
+                        break;
+                    }
+                    _ => {}
+                }
+                if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+            }
+
+            info!("latoken disconnected: {}", symbol);
+
+            if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            sleep(Duration::from_secs(5)).await;
+        }
         Ok(())
     }
 }
