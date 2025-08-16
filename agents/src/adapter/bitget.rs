@@ -16,7 +16,7 @@ use tokio::{
     time::{sleep, Duration},
 };
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use tracing::error;
+use tracing::{error, info, warn};
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
@@ -187,12 +187,8 @@ impl BitgetAdapter {
 #[async_trait]
 impl super::ExchangeAdapter for BitgetAdapter {
     async fn subscribe(&mut self) -> Result<()> {
-        let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
-        let cfg = core::stream_config_for_exchange(self.cfg.name);
-        let chunks = core::chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
-
-        for chunk in chunks {
-            let symbols = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for symbols in self.symbols.chunks(self.chunk_size) {
+            let symbol_list = symbols.iter().map(|s| s.to_string()).collect::<Vec<_>>();
             let ws_url = self.cfg.ws_base.to_string();
             let shutdown = self.shutdown.clone();
 
@@ -203,23 +199,38 @@ impl super::ExchangeAdapter for BitgetAdapter {
                     }
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
-                            let args: Vec<_> = symbols
-                                .iter()
-                                .map(|s| serde_json::json!({"channel":"ticker","instId":s}))
-                                .collect();
+                            let mut args = Vec::new();
+                            for s in &symbol_list {
+                                args.push(serde_json::json!({"channel":"trade","instId":s}));
+                                args.push(serde_json::json!({"channel":"depth","instId":s}));
+                                args.push(serde_json::json!({"channel":"candle1m","instId":s}));
+                            }
                             let sub = serde_json::json!({"op":"subscribe","args": args});
-                            let _ = ws.send(Message::Text(sub.to_string())).await;
-                            while let Some(msg) = ws.next().await {
-                                match msg {
-                                    Ok(Message::Ping(p)) => {
-                                        let _ = ws.send(Message::Pong(p)).await;
+                            if ws.send(Message::Text(sub.to_string())).await.is_ok() {
+                                info!("bitget subscribed {} topics", args.len());
+                            }
+
+                            let mut hb = tokio::time::interval(Duration::from_secs(20));
+                            loop {
+                                tokio::select! {
+                                    msg = ws.next() => {
+                                        match msg {
+                                            Some(Ok(Message::Ping(p))) => {
+                                                if ws.send(Message::Pong(p)).await.is_err() { break; }
+                                            }
+                                            Some(Ok(Message::Pong(_))) => {}
+                                            Some(Ok(Message::Close(_))) | Some(Err(_)) | None => { break; }
+                                            _ => {}
+                                        }
                                     }
-                                    Ok(Message::Close(_)) | Err(_) => break,
-                                    _ => {}
+                                    _ = hb.tick() => {
+                                        if ws.send(Message::Ping(Vec::new())).await.is_err() { break; }
+                                    }
                                 }
                             }
+                            warn!("bitget websocket disconnected, reconnecting");
                         }
-                        Err(_) => {}
+                        Err(e) => warn!("bitget connect error: {}", e),
                     }
                     if shutdown.load(Ordering::Relaxed) {
                         break;
