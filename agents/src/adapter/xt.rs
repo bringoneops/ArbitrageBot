@@ -197,12 +197,15 @@ impl ExchangeAdapter for XtAdapter {
         let chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
 
         for chunk in chunks {
-            let streams = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let topics = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let topic_count = topics.len();
             let ws_url = self.cfg.ws_base.to_string();
             let ws_bucket = self.ws_bucket.clone();
             let shutdown = self.shutdown.clone();
 
             let handle = tokio::spawn(async move {
+                let topics = topics;
+                let ws_url = ws_url;
                 loop {
                     if shutdown.load(Ordering::Relaxed) {
                         break;
@@ -211,12 +214,21 @@ impl ExchangeAdapter for XtAdapter {
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             let sub = serde_json::json!({
-                                "action": "subscribe",
-                                "channels": streams,
+                                "op": "sub",
+                                "topics": topics.clone(),
                             });
                             let _ = ws.send(Message::Text(sub.to_string())).await;
+                            tracing::info!("subscribed {} topics to {}", topic_count, ws_url);
+
+                            let mut ping_intv = tokio::time::interval(Duration::from_secs(30));
                             loop {
                                 tokio::select! {
+                                    _ = ping_intv.tick() => {
+                                        if let Err(e) = ws.send(Message::Ping(Vec::new())).await {
+                                            tracing::warn!("xt ws ping error: {}", e);
+                                            break;
+                                        }
+                                    }
                                     msg = ws.next() => {
                                         match msg {
                                             Some(Ok(Message::Ping(p))) => {
