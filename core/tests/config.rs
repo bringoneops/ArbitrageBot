@@ -1,13 +1,13 @@
 use arb_core as core;
-use core::config::{Config, Credentials};
+use core::config::{Config, Credentials, Symbols};
 
 #[test]
 fn empty_spot_symbols_fails() {
     let cfg = Config {
         proxy_url: None,
-        spot_symbols: vec![],
-        futures_symbols: vec![],
-        mexc_symbols: vec![],
+        spot_symbols: Symbols::List(vec![]),
+        futures_symbols: Symbols::List(vec![]),
+        mexc_symbols: Symbols::List(vec![]),
         chunk_size: 1,
         event_buffer_size: 1,
         http_burst: 1,
@@ -33,9 +33,9 @@ fn empty_spot_symbols_fails() {
 fn empty_futures_symbols_fails() {
     let cfg = Config {
         proxy_url: None,
-        spot_symbols: vec![],
-        futures_symbols: vec![],
-        mexc_symbols: vec![],
+        spot_symbols: Symbols::List(vec![]),
+        futures_symbols: Symbols::List(vec![]),
+        mexc_symbols: Symbols::List(vec![]),
         chunk_size: 1,
         event_buffer_size: 1,
         http_burst: 1,
@@ -61,9 +61,9 @@ fn empty_futures_symbols_fails() {
 fn invalid_chunk_size_fails() {
     let cfg = Config {
         proxy_url: None,
-        spot_symbols: vec!["BTCUSDT".into()],
-        futures_symbols: vec![],
-        mexc_symbols: vec![],
+        spot_symbols: Symbols::List(vec!["BTCUSDT".into()]),
+        futures_symbols: Symbols::List(vec![]),
+        mexc_symbols: Symbols::List(vec![]),
         chunk_size: 0,
         event_buffer_size: 1,
         http_burst: 1,
@@ -89,9 +89,9 @@ fn invalid_chunk_size_fails() {
 fn invalid_event_buffer_size_fails() {
     let cfg = Config {
         proxy_url: None,
-        spot_symbols: vec!["BTCUSDT".into()],
-        futures_symbols: vec![],
-        mexc_symbols: vec![],
+        spot_symbols: Symbols::List(vec!["BTCUSDT".into()]),
+        futures_symbols: Symbols::List(vec![]),
+        mexc_symbols: Symbols::List(vec![]),
         chunk_size: 10,
         event_buffer_size: 0,
         http_burst: 1,
