@@ -212,9 +212,15 @@ impl ExchangeAdapter for BitmartAdapter {
                     [
                         format!("spot/trade:{}", s),
                         format!("spot/depth5:{}", s),
+                        format!("spot/depth50:{}", s),
+                        format!("spot/depth/increase100:{}", s),
                         format!("spot/kline1m:{}", s),
                     ]
                 })
+                .collect();
+            let snapshot_topics: Vec<String> = symbols
+                .iter()
+                .map(|s| format!("spot/depth50:{}", s))
                 .collect();
             let topic_count = topics.len();
             let ws_url = self.cfg.ws_base.to_string();
@@ -227,10 +233,15 @@ impl ExchangeAdapter for BitmartAdapter {
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             info!(endpoint = %ws_url, topics = topic_count, "bitmart websocket connected");
-                            let sub = serde_json::json!({"action":"subscribe","args": topics.clone()});
+                            let sub =
+                                serde_json::json!({"action":"subscribe","args": topics.clone()});
                             if ws.send(Message::Text(sub.to_string())).await.is_err() {
                                 warn!("bitmart subscription failed");
                                 break;
+                            }
+                            let snap = serde_json::json!({"action":"request","args": snapshot_topics.clone()});
+                            if ws.send(Message::Text(snap.to_string())).await.is_err() {
+                                warn!("bitmart snapshot request failed");
                             }
                             info!(endpoint = %ws_url, topics = topic_count, "bitmart subscribed");
                             let mut last_ping = Instant::now();
