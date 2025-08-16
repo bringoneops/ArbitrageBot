@@ -1,10 +1,10 @@
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use canonical::{
     events::{
-        BingxStreamMessage, BitmartStreamMessage, Event, ForceOrder, ForceOrderEvent,
-        FundingRateEvent, GateioStreamMessage, IndexPriceEvent, Kline as EventKline, KlineEvent,
-        KucoinStreamMessage, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
-        TickerEvent, TradeEvent, XtStreamMessage,
+        BingxStreamMessage, BitmartStreamMessage, CoinexStreamMessage, Event, ForceOrder,
+        ForceOrderEvent, FundingRateEvent, GateioStreamMessage, IndexPriceEvent,
+        Kline as EventKline, KlineEvent, KucoinStreamMessage, MarkPriceEvent, MexcStreamMessage,
+        MiniTickerEvent, OpenInterestEvent, TickerEvent, TradeEvent, XtStreamMessage,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
@@ -864,5 +864,99 @@ fn bitmart_funding_rate_message_to_canonical() {
             assert_eq!(f, de);
         }
         _ => panic!("expected funding rate"),
+    }
+}
+
+#[test]
+fn coinex_trade_event_to_canonical() {
+    let msg: CoinexStreamMessage<'_> = serde_json::from_value(json!({
+        "method": "deals.update",
+        "params": [
+            "BTCUSDT",
+            [{"id": 1u64, "time": 1u64, "price": "93200.0", "amount": "0.5", "side": "sell"}]
+        ]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "coinex");
+            assert_eq!(t.symbol, "BTCUSDT");
+            assert_eq!(t.price, 93200.0);
+            assert_eq!(t.side, Some(Side::Sell));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn coinex_depth_event_to_canonical() {
+    let msg: CoinexStreamMessage<'_> = serde_json::from_value(json!({
+        "method": "depth.update",
+        "params": [
+            "BTCUSDT",
+            {"bids": [["93200.0", "1.0"]], "asks": [["93300.0", "2.0"]], "ts": 1u64}
+        ]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "coinex");
+            assert_eq!(b.symbol, "BTCUSDT");
+            assert_eq!(b.bids[0].price, 93200.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn coinex_bbo_event_to_canonical() {
+    let msg: CoinexStreamMessage<'_> = serde_json::from_value(json!({
+        "method": "bbo.update",
+        "params": [
+            "BTCUSDT",
+            {"b": "93200.0", "B": "1.0", "a": "93201.0", "A": "2.0"}
+        ]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::BookTicker(t) => {
+            assert_eq!(t.exchange, "coinex");
+            assert_eq!(t.symbol, "BTCUSDT");
+            assert_eq!(t.bid_price, 93200.0);
+            let s = serde_json::to_string(&t).unwrap();
+            let de: BookTicker = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected book ticker"),
+    }
+}
+
+#[test]
+fn coinex_index_event_to_canonical() {
+    let msg: CoinexStreamMessage<'_> = serde_json::from_value(json!({
+        "method": "index.update",
+        "params": ["BTCUSDT", "93200.0"]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::IndexPrice(p) => {
+            assert_eq!(p.exchange, "coinex");
+            assert_eq!(p.symbol, "BTCUSDT");
+            assert_eq!(p.price, 93200.0);
+            let s = serde_json::to_string(&p).unwrap();
+            let de: CanonIndexPrice = serde_json::from_str(&s).unwrap();
+            assert_eq!(p, de);
+        }
+        _ => panic!("expected index price"),
     }
 }
