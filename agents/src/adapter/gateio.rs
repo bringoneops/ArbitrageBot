@@ -1,13 +1,14 @@
 use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
-use core::stream_config_for_exchange;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::{Arc, Once};
-use tokio::sync::mpsc;
-use tracing::error;
+use tokio::sync::{mpsc, Mutex};
+use tokio::time::{interval, sleep, Duration};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tracing::{error, info};
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
@@ -26,13 +27,13 @@ pub const GATEIO_EXCHANGES: &[GateioConfig] = &[
         id: "gateio_spot",
         name: "Gate.io Spot",
         info_url: "https://api.gateio.ws/api/v4/spot/currency_pairs",
-        ws_base: "wss://api.gateio.ws/ws/v4/",
+        ws_base: "wss://ws.gate.com/v3/",
     },
     GateioConfig {
         id: "gateio_futures",
         name: "Gate.io Futures",
         info_url: "https://api.gateio.ws/api/v4/futures/{settle}/contracts",
-        ws_base: "wss://fx-ws.gateio.ws/v4/ws/{settle}",
+        ws_base: "wss://ws.gate.com/v3/",
     },
 ];
 
@@ -210,10 +211,87 @@ impl GateioAdapter {
 #[async_trait]
 impl ExchangeAdapter for GateioAdapter {
     async fn subscribe(&mut self) -> Result<()> {
-        // Real implementation would subscribe to depth, trades, ticker, etc.
-        let _ = stream_config_for_exchange(self.cfg.name);
-        let _ = &self.symbols;
-        Ok(())
+        let symbols = self.symbols.clone();
+        loop {
+            match connect_async(self.cfg.ws_base).await {
+                Ok((ws_stream, _)) => {
+                    let (write, mut read) = ws_stream.split();
+                    let write = Arc::new(Mutex::new(write));
+
+                    info!(
+                        "connected to {}: trades={}, depth={}, kline={}",
+                        self.cfg.name,
+                        symbols.len(),
+                        symbols.len(),
+                        symbols.len()
+                    );
+
+                    {
+                        let mut w = write.lock().await;
+                        w.send(Message::Text(
+                            json!({
+                                "id": 1,
+                                "method": "trades.subscribe",
+                                "params": symbols.clone()
+                            })
+                            .to_string(),
+                        ))
+                        .await?;
+                        w.send(Message::Text(
+                            json!({
+                                "id": 2,
+                                "method": "depth.subscribe",
+                                "params": symbols.clone()
+                            })
+                            .to_string(),
+                        ))
+                        .await?;
+                        let kline_params: Vec<Value> =
+                            symbols.iter().map(|s| json!([s, "1m"])).collect();
+                        w.send(Message::Text(
+                            json!({
+                                "id": 3,
+                                "method": "kline.subscribe",
+                                "params": kline_params
+                            })
+                            .to_string(),
+                        ))
+                        .await?;
+                    }
+
+                    let ping_writer = write.clone();
+                    let heartbeat = tokio::spawn(async move {
+                        let mut intv = interval(Duration::from_secs(30));
+                        loop {
+                            intv.tick().await;
+                            if ping_writer
+                                .lock()
+                                .await
+                                .send(Message::Text(json!({"method": "server.ping"}).to_string()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                    });
+
+                    while let Some(msg) = read.next().await {
+                        if let Err(e) = msg {
+                            error!("websocket error: {}", e);
+                            break;
+                        }
+                    }
+
+                    heartbeat.abort();
+                }
+                Err(e) => {
+                    error!("connect error: {}", e);
+                }
+            }
+            sleep(Duration::from_secs(5)).await;
+            info!("reconnecting to {}", self.cfg.name);
+        }
     }
 
     async fn run(&mut self) -> Result<()> {
