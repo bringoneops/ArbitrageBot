@@ -608,8 +608,18 @@ fn log_and_metric_event(
         }
         #[cfg(feature = "debug-logs")]
         tracing::debug!(?event);
-        let raw = unsafe { std::str::from_utf8_unchecked(bytes) };
-        handle_stream_event(event, raw);
+        // Use `from_utf8` instead of `from_utf8_unchecked` to avoid
+        // potential UB from invalid payloads. The validation cost is
+        // negligible, and we fall back to a lossy conversion only on
+        // error, which should be rare.
+        let raw = match std::str::from_utf8(bytes) {
+            Ok(s) => std::borrow::Cow::Borrowed(s),
+            Err(e) => {
+                tracing::warn!("non-UTF8 WebSocket payload: {}", e);
+                std::borrow::Cow::Owned(String::from_utf8_lossy(bytes).into_owned())
+            }
+        };
+        handle_stream_event(event, raw.as_ref());
     });
     (symbol, pipeline_start, span)
 }
