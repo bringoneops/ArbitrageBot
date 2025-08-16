@@ -1,11 +1,20 @@
 use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::{Arc, Once};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Once,
+};
 use tokio::sync::mpsc;
+use tokio::{
+    signal,
+    task::JoinHandle,
+    time::{sleep, Duration},
+};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tracing::error;
 
 use super::ExchangeAdapter;
@@ -17,6 +26,7 @@ pub struct BitmartConfig {
     pub name: &'static str,
     pub spot_url: &'static str,
     pub contract_url: &'static str,
+    pub ws_base: &'static str,
 }
 
 /// All BitMart exchanges supported by this adapter.
@@ -26,12 +36,14 @@ pub const BITMART_EXCHANGES: &[BitmartConfig] = &[
         name: "BitMart Spot",
         spot_url: "https://api-cloud.bitmart.com/spot/v1/symbols/details",
         contract_url: "https://api-cloud.bitmart.com/contract/v1/ifcontract/contracts",
+        ws_base: "wss://ws-manager-compress.bitmart.com?protocol=1.1",
     },
     BitmartConfig {
         id: "bitmart_contract",
         name: "BitMart Contract",
         spot_url: "https://api-cloud.bitmart.com/spot/v1/symbols/details",
         contract_url: "https://api-cloud.bitmart.com/contract/v1/ifcontract/contracts",
+        ws_base: "wss://ws-manager-compress.bitmart.com?protocol=1.1",
     },
 ];
 
@@ -109,7 +121,7 @@ pub fn register() {
             registry::register_adapter(
                 cfg_ref.id,
                 Arc::new(
-                    move |_global_cfg: &'static core::config::Config,
+                    move |global_cfg: &'static core::config::Config,
                           exchange_cfg: &core::config::ExchangeConfig,
                           client: Client,
                           task_set: TaskSet,
@@ -136,7 +148,12 @@ pub fn register() {
                                 }
                             }
 
-                            let adapter = BitmartAdapter::new(cfg, client.clone(), symbols);
+                            let adapter = BitmartAdapter::new(
+                                cfg,
+                                client.clone(),
+                                global_cfg.chunk_size,
+                                symbols,
+                            );
 
                             {
                                 let mut set = task_set.lock().await;
@@ -161,15 +178,26 @@ pub fn register() {
 pub struct BitmartAdapter {
     cfg: &'static BitmartConfig,
     _client: Client,
+    chunk_size: usize,
     symbols: Vec<String>,
+    tasks: Vec<JoinHandle<Result<()>>>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl BitmartAdapter {
-    pub fn new(cfg: &'static BitmartConfig, client: Client, symbols: Vec<String>) -> Self {
+    pub fn new(
+        cfg: &'static BitmartConfig,
+        client: Client,
+        chunk_size: usize,
+        symbols: Vec<String>,
+    ) -> Self {
         Self {
             cfg,
             _client: client,
+            chunk_size,
             symbols,
+            tasks: Vec::new(),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -177,15 +205,58 @@ impl BitmartAdapter {
 #[async_trait]
 impl ExchangeAdapter for BitmartAdapter {
     async fn subscribe(&mut self) -> Result<()> {
-        // Subscription logic will be implemented later.
+        let symbol_refs: Vec<&str> = self.symbols.iter().map(|s| s.as_str()).collect();
+        let cfg = core::stream_config_for_exchange(self.cfg.name);
+        let chunks = core::chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
+
+        for chunk in chunks {
+            let symbols = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let ws_url = self.cfg.ws_base.to_string();
+            let shutdown = self.shutdown.clone();
+            let handle = tokio::spawn(async move {
+                loop {
+                    if shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    match connect_async(&ws_url).await {
+                        Ok((mut ws, _)) => {
+                            let args: Vec<_> = symbols
+                                .iter()
+                                .map(|s| format!("spot/depth5:{}", s))
+                                .collect();
+                            let sub = serde_json::json!({"action":"subscribe","args": args});
+                            let _ = ws.send(Message::Text(sub.to_string())).await;
+                            while let Some(msg) = ws.next().await {
+                                match msg {
+                                    Ok(Message::Ping(p)) => {
+                                        let _ = ws.send(Message::Pong(p)).await;
+                                    }
+                                    Ok(Message::Close(_)) | Err(_) => break,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                    if shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    sleep(Duration::from_secs(5)).await;
+                }
+                Ok::<(), anyhow::Error>(())
+            });
+            self.tasks.push(handle);
+        }
         Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
-        self.auth().await?;
-        self.backfill().await?;
         self.subscribe().await?;
-        self.heartbeat().await?;
+        let _ = signal::ctrl_c().await;
+        self.shutdown.store(true, Ordering::SeqCst);
+        for handle in self.tasks.drain(..) {
+            let _ = handle.await;
+        }
         Ok(())
     }
 

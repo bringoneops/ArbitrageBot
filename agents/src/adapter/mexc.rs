@@ -38,7 +38,7 @@ pub const MEXC_EXCHANGES: &[MexcConfig] = &[MexcConfig {
     id: "mexc_spot",
     name: "MEXC Spot",
     info_url: "https://api.mexc.com/api/v3/exchangeInfo",
-    ws_base: "wss://wbs.mexc.com/ws",
+    ws_base: "wss://wbs-api.mexc.com/ws",
 }];
 
 /// Retrieve all trading symbols for MEXC using its `exchangeInfo` endpoint.

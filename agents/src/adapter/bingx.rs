@@ -31,14 +31,14 @@ pub const BINGX_EXCHANGES: &[BingxConfig] = &[
         id: "bingx_spot",
         name: "BingX Spot",
         info_url: "https://open-api.bingx.com/openApi/spot/v1/common/symbols",
-        ws_base: "wss://open-api-ws.bingx.com/market",
+        ws_base: "wss://open-api-ws.bingx.com/",
         market: MarketType::Spot,
     },
     BingxConfig {
         id: "bingx_swap",
         name: "BingX Swap",
         info_url: "https://open-api.bingx.com/openApi/swap/v2/market/symbolList",
-        ws_base: "wss://open-api-ws.bingx.com/market",
+        ws_base: "wss://open-api-ws.bingx.com/",
         market: MarketType::Swap,
     },
 ];

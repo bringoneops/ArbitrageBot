@@ -40,12 +40,12 @@ pub const XT_EXCHANGES: &[XtConfig] = &[
     XtConfig {
         id: "xt_spot",
         name: "XT Spot",
-        ws_base: "wss://stream.xt.com/ws?streams=",
+        ws_base: "wss://stream.xt.com/public",
     },
     XtConfig {
         id: "xt_futures",
         name: "XT Futures",
-        ws_base: "wss://stream.xt.com/futures/ws?streams=",
+        ws_base: "wss://stream.xt.com/futures/public",
     },
 ];
 
@@ -197,8 +197,8 @@ impl ExchangeAdapter for XtAdapter {
         let chunks = chunk_streams_with_config(&symbol_refs, self.chunk_size, cfg);
 
         for chunk in chunks {
-            let stream_path = chunk.join("/");
-            let ws_url = format!("{}{}", self.cfg.ws_base, stream_path);
+            let streams = chunk.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let ws_url = self.cfg.ws_base.to_string();
             let ws_bucket = self.ws_bucket.clone();
             let shutdown = self.shutdown.clone();
 
@@ -209,31 +209,38 @@ impl ExchangeAdapter for XtAdapter {
                     }
                     ws_bucket.acquire(1).await;
                     match connect_async(&ws_url).await {
-                        Ok((mut ws, _)) => loop {
-                            tokio::select! {
-                                msg = ws.next() => {
-                                    match msg {
-                                        Some(Ok(Message::Ping(p))) => {
-                                            ws.send(Message::Pong(p)).await.map_err(|e| {
-                                                tracing::error!("xt ws pong error: {}", e);
-                                                e
-                                            })?;
-                                        },
-                                        Some(Ok(Message::Close(_))) | None => { break; },
-                                        Some(Ok(_)) => {},
-                                        Some(Err(e)) => { tracing::warn!("xt ws error: {}", e); break; },
+                        Ok((mut ws, _)) => {
+                            let sub = serde_json::json!({
+                                "action": "subscribe",
+                                "channels": streams,
+                            });
+                            let _ = ws.send(Message::Text(sub.to_string())).await;
+                            loop {
+                                tokio::select! {
+                                    msg = ws.next() => {
+                                        match msg {
+                                            Some(Ok(Message::Ping(p))) => {
+                                                ws.send(Message::Pong(p)).await.map_err(|e| {
+                                                    tracing::error!("xt ws pong error: {}", e);
+                                                    e
+                                                })?;
+                                            },
+                                            Some(Ok(Message::Close(_))) | None => { break; },
+                                            Some(Ok(_)) => {},
+                                            Some(Err(e)) => { tracing::warn!("xt ws error: {}", e); break; },
+                                        }
                                     }
-                                }
-                                _ = async {
-                                    while !shutdown.load(Ordering::Relaxed) {
-                                        sleep(Duration::from_secs(1)).await;
+                                    _ = async {
+                                        while !shutdown.load(Ordering::Relaxed) {
+                                            sleep(Duration::from_secs(1)).await;
+                                        }
+                                    } => {
+                                        let _ = ws.close(None).await;
+                                        return Ok(());
                                     }
-                                } => {
-                                    let _ = ws.close(None).await;
-                                    return Ok(());
                                 }
                             }
-                        },
+                        }
                         Err(e) => {
                             tracing::warn!("xt connect error: {}", e);
                         }
