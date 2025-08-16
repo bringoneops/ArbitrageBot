@@ -5,9 +5,13 @@ use core::events::StreamMessage;
 use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Once,
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Once,
+    },
 };
 use tokio::sync::mpsc;
 use tokio::{
@@ -130,12 +134,13 @@ pub fn register() {
                                 }
                             }
 
-                            let adapter = BitgetAdapter::new(
-                                cfg,
-                                client.clone(),
-                                global_cfg.chunk_size,
-                                symbols,
-                            );
+                              let adapter = BitgetAdapter::new(
+                                  cfg,
+                                  client.clone(),
+                                  global_cfg.chunk_size,
+                                  symbols,
+                                  channels.clone(),
+                              );
 
                             {
                                 let mut set = task_set.lock().await;
@@ -162,6 +167,7 @@ pub struct BitgetAdapter {
     _client: Client,
     chunk_size: usize,
     symbols: Vec<String>,
+    channels: ChannelRegistry,
     tasks: Vec<JoinHandle<Result<()>>>,
     shutdown: Arc<AtomicBool>,
 }
@@ -172,12 +178,14 @@ impl BitgetAdapter {
         client: Client,
         chunk_size: usize,
         symbols: Vec<String>,
+        channels: ChannelRegistry,
     ) -> Self {
         Self {
             cfg,
             _client: client,
             chunk_size,
             symbols,
+            channels,
             tasks: Vec::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
         }
@@ -191,6 +199,8 @@ impl super::ExchangeAdapter for BitgetAdapter {
             let symbol_list = symbols.iter().map(|s| s.to_string()).collect::<Vec<_>>();
             let ws_url = self.cfg.ws_base.to_string();
             let shutdown = self.shutdown.clone();
+            let channels = self.channels.clone();
+            let cfg = self.cfg;
 
             let handle = tokio::spawn(async move {
                 loop {
@@ -200,10 +210,15 @@ impl super::ExchangeAdapter for BitgetAdapter {
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             let mut args = Vec::new();
+                            let mut senders: HashMap<String, mpsc::Sender<StreamMessage<'static>>> = HashMap::new();
                             for s in &symbol_list {
                                 args.push(serde_json::json!({"channel":"trade","instId":s}));
                                 args.push(serde_json::json!({"channel":"depth","instId":s}));
                                 args.push(serde_json::json!({"channel":"candle1m","instId":s}));
+                                let key = format!("{}:{}", cfg.name, s);
+                                if let Some(tx) = channels.get(&key) {
+                                    senders.insert(s.clone(), tx);
+                                }
                             }
                             let sub = serde_json::json!({"op":"subscribe","args": args});
                             if ws.send(Message::Text(sub.to_string())).await.is_ok() {
@@ -215,6 +230,17 @@ impl super::ExchangeAdapter for BitgetAdapter {
                                 tokio::select! {
                                     msg = ws.next() => {
                                         match msg {
+                                            Some(Ok(Message::Text(text))) => {
+                                                if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                                                    if let Some(event) = parse_candle_message(&v) {
+                                                        if let Some(sym) = event.data.symbol() {
+                                                            if let Some(tx) = senders.get(sym) {
+                                                                if tx.send(event).await.is_err() { break; }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             Some(Ok(Message::Ping(p))) => {
                                                 if ws.send(Message::Pong(p)).await.is_err() { break; }
                                             }
@@ -265,4 +291,46 @@ impl super::ExchangeAdapter for BitgetAdapter {
     async fn backfill(&mut self) -> Result<()> {
         Ok(())
     }
+}
+
+fn parse_candle_message(val: &Value) -> Option<StreamMessage<'static>> {
+    let arg = val.get("arg")?.as_object()?;
+    let channel = arg.get("channel")?.as_str()?;
+    if !channel.starts_with("candle") {
+        return None;
+    }
+    let inst_id = arg.get("instId")?.as_str()?.to_string();
+    let interval = channel.strip_prefix("candle").unwrap_or("");
+    let data = val.get("data")?.as_array()?.get(0)?.as_array()?;
+    let ts = data.get(0)?.as_str()?.parse::<u64>().unwrap_or(0);
+    let open = data.get(1).and_then(|v| v.as_str()).unwrap_or("0");
+    let high = data.get(2).and_then(|v| v.as_str()).unwrap_or("0");
+    let low = data.get(3).and_then(|v| v.as_str()).unwrap_or("0");
+    let close = data.get(4).and_then(|v| v.as_str()).unwrap_or("0");
+    let vol = data.get(5).and_then(|v| v.as_str()).unwrap_or("0");
+
+    let event = core::events::KlineEvent {
+        event_time: ts,
+        symbol: inst_id.clone(),
+        kline: core::events::Kline {
+            start_time: ts,
+            close_time: ts,
+            interval: interval.to_string(),
+            open: Cow::Owned(open.to_string()),
+            close: Cow::Owned(close.to_string()),
+            high: Cow::Owned(high.to_string()),
+            low: Cow::Owned(low.to_string()),
+            volume: Cow::Owned(vol.to_string()),
+            trades: 0,
+            is_closed: true,
+            quote_volume: Cow::Owned("0".to_string()),
+            taker_buy_base_volume: Cow::Owned("0".to_string()),
+            taker_buy_quote_volume: Cow::Owned("0".to_string()),
+        },
+    };
+
+    Some(StreamMessage {
+        stream: Box::leak(format!("{}@{}", inst_id, channel).into_boxed_str()).into(),
+        data: core::events::Event::Kline(event),
+    })
 }
