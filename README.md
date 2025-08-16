@@ -32,7 +32,7 @@ This project connects to the Binance.US, Binance.com (global), Binance Futures, 
 - **CoinEx Spot & Perpetual:** `depth.subscribe`, `deals.subscribe`, `state.subscribe`, `kline.subscribe`
 - **Gate.io Spot/Futures:** `order_book_update`, `trades`, `tickers`
 - **KuCoin Spot:** global `/market/ticker:all`, `/market/snapshot:all`; per-symbol `/market/ticker`, `/market/snapshot`, `/market/level2`, `/market/level2Depth5`, `/market/level2Depth50`, `/market/match`
-- **KuCoin Futures:** global `/contractMarket/ticker:all`; per-symbol `/contractMarket/ticker`, `/contractMarket/level2`, `/contractMarket/level2Depth5`, `/contractMarket/level2Depth50`, `/contractMarket/execution`, `/contractMarket/tradeOrders`, `/contractMarket/indexPrice`, `/contractMarket/markPrice`, `/contractMarket/fundingRate`
+- **KuCoin Futures:** global `/contractMarket/ticker:all`; per-symbol `/contractMarket/ticker`, `/contractMarket/level2`, `/contractMarket/level2Depth5`, `/contractMarket/level2Depth50`, `/contractMarket/execution`, `/contractMarket/indexPrice`, `/contractMarket/markPrice`, `/contractMarket/fundingRate`, `/contractMarket/candles:*`
 - **Latoken:** `trades`, `ticker`, `orderbook`
 - **LBank:** `ticker`, `trade`, `depth`, `kline_1m`, `kline_3m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_2h`, `kline_4h`, `kline_6h`, `kline_12h`, `kline_1d`, `kline_1w`, `kline_1M`
 - **XT:** `depth`, `trade`, `kline`
