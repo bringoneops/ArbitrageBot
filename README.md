@@ -291,8 +291,6 @@ as defined in [`streams.json`](streams.json):
 - `ticker_1h`
 - `ticker_1w`
 - `ticker_4h`
-- `topLongShortAccountRatio`
-- `topLongShortPositionRatio`
 - `trade`
 
 ### Options Streams
