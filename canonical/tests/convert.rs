@@ -3,8 +3,9 @@ use canonical::{
     events::{
         BingxStreamMessage, BitmartStreamMessage, CoinexStreamMessage, Event, ForceOrder,
         ForceOrderEvent, FundingRateEvent, GateioStreamMessage, IndexPriceEvent,
-        Kline as EventKline, KlineEvent, KucoinStreamMessage, MarkPriceEvent, MexcStreamMessage,
-        MiniTickerEvent, OpenInterestEvent, TickerEvent, TradeEvent, XtStreamMessage,
+        Kline as EventKline, KlineEvent, KucoinStreamMessage, LatokenStreamMessage,
+        MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent, TickerEvent,
+        TradeEvent, XtStreamMessage,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
@@ -308,6 +309,73 @@ fn xt_ticker_event_to_canonical() {
             assert_eq!(t, de);
         }
         _ => panic!("expected book ticker"),
+    }
+}
+
+#[test]
+fn latoken_trade_event_to_canonical() {
+    let msg: LatokenStreamMessage<'_> = serde_json::from_value(json!({
+        "topic": "trade",
+        "symbol": "BTCUSDT",
+        "data": {"t": 1u64, "p": "100.0", "q": "0.5", "m": true}
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "latoken");
+            assert_eq!(t.symbol, "BTCUSDT");
+            assert_eq!(t.price, 100.0);
+            assert_eq!(t.side, Some(Side::Sell));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn latoken_depth_event_to_canonical() {
+    let msg: LatokenStreamMessage<'_> = serde_json::from_value(json!({
+        "topic": "depth",
+        "symbol": "BTCUSDT",
+        "data": {"t": 1u64, "b": [["100.0", "1.0"]], "a": [["101.0", "2.0"]]}
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "latoken");
+            assert_eq!(b.symbol, "BTCUSDT");
+            assert_eq!(b.bids[0].price, 100.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn latoken_kline_event_to_canonical() {
+    let msg: LatokenStreamMessage<'_> = serde_json::from_value(json!({
+        "topic": "kline",
+        "symbol": "BTCUSDT",
+        "data": {"t": 1u64, "o": "90", "c": "100", "h": "110", "l": "80", "v": "1000"}
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Kline(k) => {
+            assert_eq!(k.exchange, "latoken");
+            assert_eq!(k.symbol, "BTCUSDT");
+            assert_eq!(k.open, 90.0);
+            let s = serde_json::to_string(&k).unwrap();
+            let de: CanonKline = serde_json::from_str(&s).unwrap();
+            assert_eq!(k, de);
+        }
+        _ => panic!("expected kline"),
     }
 }
 

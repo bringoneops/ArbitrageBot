@@ -6,15 +6,16 @@ pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
     BingxStreamMessage, BitmartStreamMessage, BookTickerEvent, CoinexStreamMessage, Event,
-    GateioStreamMessage, KlineEvent, KucoinStreamMessage, MexcEvent, MexcStreamMessage,
-    MiniTickerEvent, StreamMessage, TickerEvent, XtStreamMessage,
+    GateioStreamMessage, KlineEvent, KucoinStreamMessage, LatokenStreamMessage, MexcEvent,
+    MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent, XtStreamMessage,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
     BitmartDepthEvent, BitmartFundingRateEvent, BitmartKlineEvent, BitmartTickerEvent,
     BitmartTradeEvent, CoinexBbo, CoinexDepth, CoinexKline, CoinexTrade, DepthUpdateEvent,
     ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline, GateioTrade, IndexPriceEvent,
-    KucoinKline, KucoinLevel2, KucoinTrade, MarkPriceEvent, OpenInterestEvent, TradeEvent, XtEvent,
+    KucoinKline, KucoinLevel2, KucoinTrade, LatokenDepthEvent, LatokenKlineEvent,
+    LatokenTickerEvent, LatokenTradeEvent, MarkPriceEvent, OpenInterestEvent, TradeEvent, XtEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1031,6 +1032,99 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                 ask_price: t.ask_price.parse().ok().ok_or(())?,
                 ask_quantity: t.ask_qty.parse().ok().ok_or(())?,
             })),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: LatokenStreamMessage<'a>) -> Result<Self, Self::Error> {
+        match msg.topic.as_ref() {
+            "trade" => {
+                let t: LatokenTradeEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
+                let price: f64 = t.price.parse().ok().ok_or(())?;
+                let quantity: f64 = t.quantity.parse().ok().ok_or(())?;
+                let side = t
+                    .maker
+                    .map(|m| if m { Side::Sell } else { Side::Buy })
+                    .or_else(|| match t.side.as_ref().map(|s| s.as_ref()) {
+                        Some("buy") | Some("BUY") => Some(Side::Buy),
+                        Some("sell") | Some("SELL") => Some(Side::Sell),
+                        _ => None,
+                    });
+                Ok(MdEvent::Trade(Trade {
+                    exchange: "latoken".to_string(),
+                    symbol: msg.symbol,
+                    price,
+                    quantity,
+                    trade_id: t.id,
+                    buyer_order_id: None,
+                    seller_order_id: None,
+                    timestamp: t.timestamp * 1_000_000,
+                    side,
+                }))
+            }
+            "depth" | "orderbook" => {
+                let d: LatokenDepthEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
+                let bids = d
+                    .bids
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Bid,
+                        })
+                    })
+                    .collect();
+                let asks = d
+                    .asks
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Ask,
+                        })
+                    })
+                    .collect();
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "latoken".to_string(),
+                    symbol: msg.symbol,
+                    ts: d.timestamp * 1_000_000,
+                    bids,
+                    asks,
+                    first_update_id: d.first_update_id,
+                    final_update_id: d.final_update_id,
+                    previous_final_update_id: None,
+                }))
+            }
+            "kline" => {
+                let k: LatokenKlineEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
+                Ok(MdEvent::Kline(Kline {
+                    exchange: "latoken".to_string(),
+                    symbol: msg.symbol,
+                    ts: k.timestamp * 1_000_000,
+                    open: k.open.parse().ok().ok_or(())?,
+                    close: k.close.parse().ok().ok_or(())?,
+                    high: k.high.parse().ok().ok_or(())?,
+                    low: k.low.parse().ok().ok_or(())?,
+                    volume: k.volume.parse().ok().ok_or(())?,
+                }))
+            }
+            "ticker" => {
+                let t: LatokenTickerEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
+                Ok(MdEvent::BookTicker(BookTicker {
+                    exchange: "latoken".to_string(),
+                    symbol: msg.symbol,
+                    ts: t.timestamp * 1_000_000,
+                    bid_price: t.bid_price.parse().ok().ok_or(())?,
+                    bid_quantity: t.bid_qty.parse().ok().unwrap_or_default(),
+                    ask_price: t.ask_price.parse().ok().ok_or(())?,
+                    ask_quantity: t.ask_qty.parse().ok().unwrap_or_default(),
+                }))
+            }
             _ => Err(()),
         }
     }
