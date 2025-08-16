@@ -818,6 +818,63 @@ pub struct BitmartFundingRateEvent<'a> {
     pub funding_time: u64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CoinexStreamMessage<'a> {
+    pub method: Cow<'a, str>,
+    pub params: Vec<Value>,
+    #[serde(default)]
+    pub id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CoinexTrade<'a> {
+    pub id: u64,
+    #[serde(rename = "time")]
+    pub trade_time: u64,
+    pub price: Cow<'a, str>,
+    #[serde(rename = "amount")]
+    pub amount: Cow<'a, str>,
+    pub side: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CoinexDepth<'a> {
+    #[serde(default)]
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    #[serde(default)]
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "ts", default)]
+    pub timestamp: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CoinexBbo<'a> {
+    #[serde(rename = "b")]
+    pub bid_price: Cow<'a, str>,
+    #[serde(rename = "B", default)]
+    pub bid_qty: Cow<'a, str>,
+    #[serde(rename = "a")]
+    pub ask_price: Cow<'a, str>,
+    #[serde(rename = "A", default)]
+    pub ask_qty: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CoinexKline<'a> {
+    #[serde(rename = "t")]
+    pub timestamp: u64,
+    #[serde(rename = "o")]
+    pub open: Cow<'a, str>,
+    #[serde(rename = "c")]
+    pub close: Cow<'a, str>,
+    #[serde(rename = "h")]
+    pub high: Cow<'a, str>,
+    #[serde(rename = "l")]
+    pub low: Cow<'a, str>,
+    #[serde(rename = "v")]
+    pub volume: Cow<'a, str>,
+}
+
 impl<'a> TradeEvent<'a> {
     pub fn channel(&self) -> Channel {
         Channel::Trade

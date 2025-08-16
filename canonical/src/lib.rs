@@ -5,16 +5,16 @@ use std::convert::TryFrom;
 pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
-    BingxStreamMessage, BitmartStreamMessage, BookTickerEvent, Event, GateioStreamMessage,
-    KlineEvent, KucoinStreamMessage, MexcEvent, MexcStreamMessage, MiniTickerEvent, StreamMessage,
-    TickerEvent, XtStreamMessage,
+    BingxStreamMessage, BitmartStreamMessage, BookTickerEvent, CoinexStreamMessage, Event,
+    GateioStreamMessage, KlineEvent, KucoinStreamMessage, MexcEvent, MexcStreamMessage,
+    MiniTickerEvent, StreamMessage, TickerEvent, XtStreamMessage,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
     BitmartDepthEvent, BitmartFundingRateEvent, BitmartKlineEvent, BitmartTickerEvent,
-    BitmartTradeEvent, DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth,
-    GateioKline, GateioTrade, IndexPriceEvent, KucoinKline, KucoinLevel2, KucoinTrade,
-    MarkPriceEvent, OpenInterestEvent, TradeEvent, XtEvent,
+    BitmartTradeEvent, CoinexBbo, CoinexDepth, CoinexKline, CoinexTrade, DepthUpdateEvent,
+    ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline, GateioTrade, IndexPriceEvent,
+    KucoinKline, KucoinLevel2, KucoinTrade, MarkPriceEvent, OpenInterestEvent, TradeEvent, XtEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -659,6 +659,126 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
             }))
         } else {
             Err(())
+        }
+    }
+}
+
+impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: CoinexStreamMessage<'a>) -> Result<Self, Self::Error> {
+        match msg.method.as_ref() {
+            "deals.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let trades: Vec<CoinexTrade> =
+                    serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
+                        .map_err(|_| ())?;
+                let t = trades.first().ok_or(())?;
+                let price: f64 = t.price.parse().ok().ok_or(())?;
+                let quantity: f64 = t.amount.parse().ok().ok_or(())?;
+                let side = match t.side.as_ref() {
+                    "buy" | "BUY" => Some(Side::Buy),
+                    "sell" | "SELL" => Some(Side::Sell),
+                    _ => None,
+                };
+                Ok(MdEvent::Trade(Trade {
+                    exchange: "coinex".to_string(),
+                    symbol: symbol.to_string(),
+                    price,
+                    quantity,
+                    trade_id: Some(t.id),
+                    buyer_order_id: None,
+                    seller_order_id: None,
+                    timestamp: t.trade_time,
+                    side,
+                }))
+            }
+            "depth.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let depth: CoinexDepth =
+                    serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
+                        .map_err(|_| ())?;
+                let bids = depth
+                    .bids
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Bid,
+                        })
+                    })
+                    .collect();
+                let asks = depth
+                    .asks
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Ask,
+                        })
+                    })
+                    .collect();
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "coinex".to_string(),
+                    symbol: symbol.to_string(),
+                    ts: depth.timestamp.unwrap_or_default(),
+                    bids,
+                    asks,
+                    first_update_id: None,
+                    final_update_id: None,
+                    previous_final_update_id: None,
+                }))
+            }
+            "bbo.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let bbo: CoinexBbo = serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
+                    .map_err(|_| ())?;
+                Ok(MdEvent::BookTicker(BookTicker {
+                    exchange: "coinex".to_string(),
+                    symbol: symbol.to_string(),
+                    ts: 0,
+                    bid_price: bbo.bid_price.parse().ok().ok_or(())?,
+                    bid_quantity: bbo.bid_qty.parse().ok().ok_or(())?,
+                    ask_price: bbo.ask_price.parse().ok().ok_or(())?,
+                    ask_quantity: bbo.ask_qty.parse().ok().ok_or(())?,
+                }))
+            }
+            "kline.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let klines: Vec<CoinexKline> =
+                    serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
+                        .map_err(|_| ())?;
+                let k = klines.first().ok_or(())?;
+                Ok(MdEvent::Kline(Kline {
+                    exchange: "coinex".to_string(),
+                    symbol: symbol.to_string(),
+                    ts: k.timestamp,
+                    open: k.open.parse().ok().ok_or(())?,
+                    close: k.close.parse().ok().ok_or(())?,
+                    high: k.high.parse().ok().ok_or(())?,
+                    low: k.low.parse().ok().ok_or(())?,
+                    volume: k.volume.parse().ok().ok_or(())?,
+                }))
+            }
+            "index.update" => {
+                let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
+                let price: f64 = msg
+                    .params
+                    .get(1)
+                    .and_then(|v| v.as_str())
+                    .ok_or(())?
+                    .parse()
+                    .ok()
+                    .ok_or(())?;
+                Ok(MdEvent::IndexPrice(IndexPrice {
+                    exchange: "coinex".to_string(),
+                    symbol: symbol.to_string(),
+                    ts: 0,
+                    price,
+                }))
+            }
+            _ => Err(()),
         }
     }
 }
