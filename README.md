@@ -30,7 +30,7 @@ This project connects to the Binance.US, Binance.com (global), Binance Futures, 
 - **Bitmart Spot:** `ticker`, `kline_1m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_4h`, `kline_1d`, `kline_1w`, `kline_1M`, `depth5`, `depth20`, `trade`
 - **Bitmart Contract:** all spot channels above plus `funding_rate`, `futures/depthIncrease5`, `futures/depthIncrease20`
 - **CoinEx Spot & Perpetual:** `depth.subscribe`, `deals.subscribe`, `state.subscribe`, `kline.subscribe`
-- **Gate.io Spot/Futures:** `order_book_update`, `trades`, `tickers`
+- **Gate.io Spot/Futures:** `order_book_update`, `trades`, `tickers`, `kline.subscribe`
 - **KuCoin Spot:** global `/market/ticker:all`, `/market/snapshot:all`; per-symbol `/market/ticker`, `/market/snapshot`, `/market/level2`, `/market/level2Depth5`, `/market/level2Depth50`, `/market/match`
 - **KuCoin Futures:** global `/contractMarket/ticker:all`; per-symbol `/contractMarket/ticker`, `/contractMarket/level2`, `/contractMarket/level2Depth5`, `/contractMarket/level2Depth50`, `/contractMarket/execution`, `/contractMarket/indexPrice`, `/contractMarket/markPrice`, `/contractMarket/fundingRate`, `/contractMarket/candles:*`
 - **Latoken:** `trades`, `ticker`, `orderbook`
