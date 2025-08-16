@@ -114,7 +114,6 @@
     "markPriceKline_5m",
     "markPriceKline_6h",
     "markPriceKline_8h",
-    "miniTicker",
     "openInterest",
     "takerBuySellVolume",
     "ticker",

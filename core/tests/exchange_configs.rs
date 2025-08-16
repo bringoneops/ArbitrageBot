@@ -32,6 +32,14 @@ fn futures_config_includes_futures_streams() {
     assert!(cfg
         .per_symbol
         .iter()
+        .all(|s| !s.contains("topLongShortPositionRatio")));
+    assert!(cfg
+        .per_symbol
+        .iter()
+        .all(|s| !s.contains("topLongShortAccountRatio")));
+    assert!(cfg
+        .per_symbol
+        .iter()
         .any(|s| s.contains("takerBuySellVolume")));
     assert!(cfg.per_symbol.iter().any(|s| s.contains("depth5@100ms")));
     assert!(cfg.per_symbol.iter().any(|s| s.contains("depth10@100ms")));
