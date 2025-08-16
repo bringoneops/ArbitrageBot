@@ -1,8 +1,5 @@
 use arb_core as core;
-use core::{
-    events::StreamMessage,
-    handle_stream_event,
-};
+use core::{events::StreamMessage, handle_stream_event};
 use tracing_test::traced_test;
 
 #[traced_test]

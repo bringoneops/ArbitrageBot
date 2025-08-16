@@ -61,7 +61,9 @@ fn is_missing_required_symbols(enabled: bool, list_is_empty: bool, all_flag: boo
 }
 
 fn rate_limits_present(http_burst: u32, http_refill: u32, ws_burst: u32, ws_refill: u32) -> bool {
-    [http_burst, http_refill, ws_burst, ws_refill].iter().all(|&v| v > 0)
+    [http_burst, http_refill, ws_burst, ws_refill]
+        .iter()
+        .all(|&v| v > 0)
 }
 
 /* -------------------- helpers to avoid nested conditionals -------------------- */
@@ -69,7 +71,10 @@ fn rate_limits_present(http_burst: u32, http_refill: u32, ws_burst: u32, ws_refi
 fn creds_from_env() -> Option<Credentials> {
     let api_key = env::var("API_KEY").ok()?;
     let api_secret = env::var("API_SECRET").ok()?;
-    let c = Credentials { api_key, api_secret };
+    let c = Credentials {
+        api_key,
+        api_secret,
+    };
     has_valid_credentials(&c).then_some(c)
 }
 
@@ -217,11 +222,8 @@ impl Config {
             .unwrap_or_default()
             .eq_ignore_ascii_case("ALL");
 
-        let missing_spot = is_missing_required_symbols(
-            self.enable_spot,
-            self.spot_symbols.is_empty(),
-            spot_all,
-        );
+        let missing_spot =
+            is_missing_required_symbols(self.enable_spot, self.spot_symbols.is_empty(), spot_all);
         let missing_futures = is_missing_required_symbols(
             self.enable_futures,
             self.futures_symbols.is_empty(),

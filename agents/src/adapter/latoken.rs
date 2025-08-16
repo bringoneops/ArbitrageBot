@@ -1,19 +1,19 @@
+use super::ExchangeAdapter;
+use crate::{registry, ChannelRegistry, TaskSet};
 use anyhow::Result;
 use arb_core as core;
 use async_trait::async_trait;
+use core::rate_limit::TokenBucket;
 use core::{chunk_streams_with_config, stream_config_for_exchange};
+use dashmap::DashMap;
+use futures::future::BoxFuture;
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::Arc;
-use tokio::sync::mpsc;
-use std::sync::Once;
-use crate::{registry, ChannelRegistry, TaskSet};
-use super::ExchangeAdapter;
-use futures::future::BoxFuture;
-use dashmap::DashMap;
-use core::rate_limit::TokenBucket;
-use tokio::task::JoinHandle;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::Once;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing::error;
 
 /// Configuration for a single LATOKEN exchange endpoint.
@@ -34,12 +34,20 @@ pub const LATOKEN_EXCHANGES: &[LatokenConfig] = &[LatokenConfig {
 
 /// Retrieve all trading symbols for LATOKEN using its ticker endpoint.
 pub async fn fetch_symbols(info_url: &str) -> Result<Vec<String>> {
-    let resp = Client::new().get(info_url).send().await?.error_for_status()?;
+    let resp = Client::new()
+        .get(info_url)
+        .send()
+        .await?
+        .error_for_status()?;
     let data: Value = resp.json().await?;
     let arr = data.as_array().unwrap_or(&Vec::new()).clone();
     let mut result: Vec<String> = arr
         .iter()
-        .filter_map(|s| s.get("symbol").and_then(|v| v.as_str()).map(|v| v.to_string()))
+        .filter_map(|s| {
+            s.get("symbol")
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string())
+        })
         .collect();
     result.sort();
     result.dedup();
@@ -61,7 +69,10 @@ pub fn register() {
                           task_set: TaskSet,
                           channels: ChannelRegistry,
                           _tls_config: Arc<rustls::ClientConfig>|
-                          -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>> {
+                          -> BoxFuture<
+                        'static,
+                        Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>,
+                    > {
                         let cfg = cfg_ref;
                         let initial_symbols = exchange_cfg.symbols.clone();
                         Box::pin(async move {
@@ -79,7 +90,12 @@ pub fn register() {
                                 }
                             }
 
-                            let adapter = LatokenAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
+                            let adapter = LatokenAdapter::new(
+                                cfg,
+                                client.clone(),
+                                global_cfg.chunk_size,
+                                symbols,
+                            );
 
                             {
                                 let mut set = task_set.lock().await;
@@ -93,7 +109,8 @@ pub fn register() {
 
                             Ok(receivers)
                         })
-                    })
+                    },
+                ),
             );
         }
     });
@@ -169,4 +186,3 @@ impl ExchangeAdapter for LatokenAdapter {
         Ok(())
     }
 }
-

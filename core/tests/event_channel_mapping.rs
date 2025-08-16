@@ -1,11 +1,15 @@
 use arb_core::events::Channel;
 use canonical::{
-    AvgPrice, BookKind, BookTicker, DepthL2Update, DepthSnapshot, FundingRate, Kline,
-    Level, Liquidation, MarkPrice, MdEvent, MiniTicker, OpenInterest, Trade, IndexPrice,
+    AvgPrice, BookKind, BookTicker, DepthL2Update, DepthSnapshot, FundingRate, IndexPrice, Kline,
+    Level, Liquidation, MarkPrice, MdEvent, MiniTicker, OpenInterest, Trade,
 };
 
 fn sample_level(kind: BookKind) -> Level {
-    Level { price: 0.0, quantity: 0.0, kind }
+    Level {
+        price: 0.0,
+        quantity: 0.0,
+        kind,
+    }
 }
 
 #[test]
@@ -81,22 +85,53 @@ fn channel_enum_matches_events() {
     };
     assert_eq!(depth_snapshot.channel(), Channel::Depth);
 
-    let avg_price = AvgPrice { exchange: "ex".into(), symbol: "sym".into(), ts: 0, price: 0.0 };
+    let avg_price = AvgPrice {
+        exchange: "ex".into(),
+        symbol: "sym".into(),
+        ts: 0,
+        price: 0.0,
+    };
     assert_eq!(avg_price.channel(), Channel::AvgPrice);
 
-    let mark_price = MarkPrice { exchange: "ex".into(), symbol: "sym".into(), ts: 0, price: 0.0 };
+    let mark_price = MarkPrice {
+        exchange: "ex".into(),
+        symbol: "sym".into(),
+        ts: 0,
+        price: 0.0,
+    };
     assert_eq!(mark_price.channel(), Channel::MarkPrice);
 
-    let index_price = IndexPrice { exchange: "ex".into(), symbol: "sym".into(), ts: 0, price: 0.0 };
+    let index_price = IndexPrice {
+        exchange: "ex".into(),
+        symbol: "sym".into(),
+        ts: 0,
+        price: 0.0,
+    };
     assert_eq!(index_price.channel(), Channel::IndexPrice);
 
-    let funding = FundingRate { exchange: "ex".into(), symbol: "sym".into(), ts: 0, rate: 0.0 };
+    let funding = FundingRate {
+        exchange: "ex".into(),
+        symbol: "sym".into(),
+        ts: 0,
+        rate: 0.0,
+    };
     assert_eq!(funding.channel(), Channel::FundingRate);
 
-    let oi = OpenInterest { exchange: "ex".into(), symbol: "sym".into(), ts: 0, open_interest: 0.0 };
+    let oi = OpenInterest {
+        exchange: "ex".into(),
+        symbol: "sym".into(),
+        ts: 0,
+        open_interest: 0.0,
+    };
     assert_eq!(oi.channel(), Channel::OpenInterest);
 
-    let liq = Liquidation { exchange: "ex".into(), symbol: "sym".into(), ts: 0, price: 0.0, quantity: 0.0 };
+    let liq = Liquidation {
+        exchange: "ex".into(),
+        symbol: "sym".into(),
+        ts: 0,
+        price: 0.0,
+        quantity: 0.0,
+    };
     assert_eq!(liq.channel(), Channel::Liquidation);
 
     let md: MdEvent = MdEvent::Trade(trade);

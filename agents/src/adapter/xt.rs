@@ -1,4 +1,4 @@
-use anyhow::{Result};
+use anyhow::Result;
 use arb_core as core;
 use async_trait::async_trait;
 use core::rate_limit::TokenBucket;
@@ -97,13 +97,16 @@ pub fn register() {
             registry::register_adapter(
                 cfg_ref.id,
                 Arc::new(
-                    move |
-                          global_cfg: &'static core::config::Config,
+                    move |global_cfg: &'static core::config::Config,
                           exchange_cfg: &core::config::ExchangeConfig,
                           client: Client,
                           task_set: TaskSet,
                           channels: ChannelRegistry,
-                          _tls_config: Arc<rustls::ClientConfig>| -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>> {
+                          _tls_config: Arc<rustls::ClientConfig>|
+                          -> BoxFuture<
+                        'static,
+                        Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>,
+                    > {
                         let cfg = cfg_ref;
                         let initial_symbols = exchange_cfg.symbols.clone();
                         Box::pin(async move {
@@ -121,7 +124,8 @@ pub fn register() {
                                 }
                             }
 
-                            let adapter = XtAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
+                            let adapter =
+                                XtAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
 
                             {
                                 let mut set = task_set.lock().await;
@@ -205,33 +209,31 @@ impl ExchangeAdapter for XtAdapter {
                     }
                     ws_bucket.acquire(1).await;
                     match connect_async(&ws_url).await {
-                        Ok((mut ws, _)) => {
-                            loop {
-                                tokio::select! {
-                                    msg = ws.next() => {
-                                        match msg {
-                                            Some(Ok(Message::Ping(p))) => {
-                                                ws.send(Message::Pong(p)).await.map_err(|e| {
-                                                    tracing::error!("xt ws pong error: {}", e);
-                                                    e
-                                                })?;
-                                            },
-                                            Some(Ok(Message::Close(_))) | None => { break; },
-                                            Some(Ok(_)) => {},
-                                            Some(Err(e)) => { tracing::warn!("xt ws error: {}", e); break; },
-                                        }
-                                    }
-                                    _ = async {
-                                        while !shutdown.load(Ordering::Relaxed) {
-                                            sleep(Duration::from_secs(1)).await;
-                                        }
-                                    } => {
-                                        let _ = ws.close(None).await;
-                                        return Ok(());
+                        Ok((mut ws, _)) => loop {
+                            tokio::select! {
+                                msg = ws.next() => {
+                                    match msg {
+                                        Some(Ok(Message::Ping(p))) => {
+                                            ws.send(Message::Pong(p)).await.map_err(|e| {
+                                                tracing::error!("xt ws pong error: {}", e);
+                                                e
+                                            })?;
+                                        },
+                                        Some(Ok(Message::Close(_))) | None => { break; },
+                                        Some(Ok(_)) => {},
+                                        Some(Err(e)) => { tracing::warn!("xt ws error: {}", e); break; },
                                     }
                                 }
+                                _ = async {
+                                    while !shutdown.load(Ordering::Relaxed) {
+                                        sleep(Duration::from_secs(1)).await;
+                                    }
+                                } => {
+                                    let _ = ws.close(None).await;
+                                    return Ok(());
+                                }
                             }
-                        }
+                        },
                         Err(e) => {
                             tracing::warn!("xt connect error: {}", e);
                         }
@@ -273,4 +275,3 @@ impl ExchangeAdapter for XtAdapter {
         Ok(())
     }
 }
-

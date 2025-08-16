@@ -15,13 +15,15 @@ pub mod registry;
 pub use adapter::binance::{
     fetch_symbols as fetch_binance_symbols, BinanceAdapter, BINANCE_EXCHANGES,
 };
-pub use adapter::kucoin::{fetch_symbols as fetch_kucoin_symbols, KucoinAdapter, KUCOIN_EXCHANGES};
-pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
-pub use adapter::xt::{fetch_symbols as fetch_xt_symbols, XtAdapter, XT_EXCHANGES};
 pub use adapter::bitmart::{
     fetch_symbols as fetch_bitmart_symbols, BitmartAdapter, BITMART_EXCHANGES,
 };
-pub use adapter::latoken::{fetch_symbols as fetch_latoken_symbols, LatokenAdapter, LATOKEN_EXCHANGES};
+pub use adapter::kucoin::{fetch_symbols as fetch_kucoin_symbols, KucoinAdapter, KUCOIN_EXCHANGES};
+pub use adapter::latoken::{
+    fetch_symbols as fetch_latoken_symbols, LatokenAdapter, LATOKEN_EXCHANGES,
+};
+pub use adapter::mexc::{fetch_symbols, MexcAdapter, MEXC_EXCHANGES};
+pub use adapter::xt::{fetch_symbols as fetch_xt_symbols, XtAdapter, XT_EXCHANGES};
 pub use adapter::ExchangeAdapter;
 
 /// Shared task set type for spawning and tracking asynchronous tasks.
@@ -119,7 +121,7 @@ pub async fn spawn_adapters(
     adapter::coinex::register();
     adapter::latoken::register();
     adapter::bitget::register();
-  
+
     let mut receivers = Vec::new();
 
     for exch in &cfg.exchanges {

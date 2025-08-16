@@ -67,7 +67,6 @@ static GATEIO_FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     from_slice(&mut data).expect("invalid gateio futures stream configuration")
 });
 
-
 static LATOKEN_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     let mut data = include_bytes!("../../streams_latoken.json").to_vec();
     from_slice(&mut data).expect("invalid latoken stream configuration")

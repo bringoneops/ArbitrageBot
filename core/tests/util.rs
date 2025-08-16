@@ -1,8 +1,8 @@
 #![allow(unused_imports, dead_code, unused_macros)]
 
-pub use typenum::*;
-pub use core::ops::*;
 pub use core::cmp::Ordering;
+pub use core::ops::*;
+pub use typenum::*;
 
 pub type U0 = UTerm;
 pub type U1 = UInt<U0, B1>;
@@ -16,7 +16,10 @@ macro_rules! assert_binary_op {
         #[test]
         fn $name() {
             type Result = <<$a as $trait<$b>>::Output as Same<$expected>>::Output;
-            assert_eq!(<Result as Unsigned>::to_u64(), <$expected as Unsigned>::to_u64());
+            assert_eq!(
+                <Result as Unsigned>::to_u64(),
+                <$expected as Unsigned>::to_u64()
+            );
         }
     };
 }

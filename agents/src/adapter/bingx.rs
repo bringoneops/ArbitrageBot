@@ -44,7 +44,11 @@ pub const BINGX_EXCHANGES: &[BingxConfig] = &[
 ];
 
 async fn fetch_spot_symbols(info_url: &str) -> Result<Vec<String>> {
-    let resp = Client::new().get(info_url).send().await?.error_for_status()?;
+    let resp = Client::new()
+        .get(info_url)
+        .send()
+        .await?
+        .error_for_status()?;
     let data: Value = resp.json().await?;
     let symbols = data
         .get("data")
@@ -55,7 +59,9 @@ async fn fetch_spot_symbols(info_url: &str) -> Result<Vec<String>> {
         .iter()
         .filter_map(|s| {
             if s.get("status").and_then(|v| v.as_i64()).unwrap_or(0) == 0 {
-                s.get("symbol").and_then(|v| v.as_str()).map(|v| v.to_string())
+                s.get("symbol")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
             } else {
                 None
             }
@@ -117,8 +123,10 @@ pub fn register() {
                           task_set: TaskSet,
                           channels: ChannelRegistry,
                           _tls: Arc<rustls::ClientConfig>|
-                          -> BoxFuture<'static, Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>>
-                    {
+                          -> BoxFuture<
+                        'static,
+                        Result<Vec<mpsc::Receiver<core::events::StreamMessage<'static>>>>,
+                    > {
                         let cfg = cfg_ref;
                         let initial_symbols = exchange_cfg.symbols.clone();
                         Box::pin(async move {
@@ -130,9 +138,16 @@ pub fn register() {
                             for symbol in &symbols {
                                 let key = format!("{}:{}", cfg.name, symbol);
                                 let (_, rx) = channels.get_or_create(&key);
-                                if let Some(rx) = rx { receivers.push(rx); }
+                                if let Some(rx) = rx {
+                                    receivers.push(rx);
+                                }
                             }
-                            let adapter = BingxAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
+                            let adapter = BingxAdapter::new(
+                                cfg,
+                                client.clone(),
+                                global_cfg.chunk_size,
+                                symbols,
+                            );
                             {
                                 let mut set = task_set.lock().await;
                                 set.spawn(async move {
@@ -144,7 +159,7 @@ pub fn register() {
                             }
                             Ok(receivers)
                         })
-                    }
+                    },
                 ),
             );
         }
@@ -159,8 +174,18 @@ pub struct BingxAdapter {
 }
 
 impl BingxAdapter {
-    pub fn new(cfg: &'static BingxConfig, client: Client, chunk_size: usize, symbols: Vec<String>) -> Self {
-        Self { cfg, _client: client, chunk_size, symbols }
+    pub fn new(
+        cfg: &'static BingxConfig,
+        client: Client,
+        chunk_size: usize,
+        symbols: Vec<String>,
+    ) -> Self {
+        Self {
+            cfg,
+            _client: client,
+            chunk_size,
+            symbols,
+        }
     }
 }
 
@@ -177,8 +202,13 @@ impl ExchangeAdapter for BingxAdapter {
         self.subscribe().await
     }
 
-    async fn heartbeat(&mut self) -> Result<()> { Ok(()) }
-    async fn auth(&mut self) -> Result<()> { Ok(()) }
-    async fn backfill(&mut self) -> Result<()> { Ok(()) }
+    async fn heartbeat(&mut self) -> Result<()> {
+        Ok(())
+    }
+    async fn auth(&mut self) -> Result<()> {
+        Ok(())
+    }
+    async fn backfill(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
-

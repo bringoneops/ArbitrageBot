@@ -11,7 +11,9 @@ struct MockAdapter {
 
 #[async_trait::async_trait]
 impl ExchangeAdapter for MockAdapter {
-    async fn subscribe(&mut self) -> anyhow::Result<()> { Ok(()) }
+    async fn subscribe(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
     async fn run(&mut self) -> anyhow::Result<()> {
         let trade = TradeEvent {
             event_time: 1,
@@ -25,13 +27,22 @@ impl ExchangeAdapter for MockAdapter {
             buyer_is_maker: false,
             best_match: true,
         };
-        let msg = StreamMessage { stream: "btcusd@trade".into(), data: Event::Trade(trade) };
+        let msg = StreamMessage {
+            stream: "btcusd@trade".into(),
+            data: Event::Trade(trade),
+        };
         self.tx.send(msg).await.unwrap();
         Ok(())
     }
-    async fn heartbeat(&mut self) -> anyhow::Result<()> { Ok(()) }
-    async fn auth(&mut self) -> anyhow::Result<()> { Ok(()) }
-    async fn backfill(&mut self) -> anyhow::Result<()> { Ok(()) }
+    async fn heartbeat(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn auth(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn backfill(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 #[tokio::test]

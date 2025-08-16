@@ -1,8 +1,8 @@
 use arb_core as core;
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use core::events::StreamMessage;
-use simd_json::serde::from_slice as simd_from_slice;
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use serde_json;
+use simd_json::serde::from_slice as simd_from_slice;
 
 const RAW: &str = r#"{"stream":"btcusdt@trade","data":{"e":"trade","E":123,"s":"BTCUSDT","t":1,"p":"0.001","q":"100","b":1,"a":2,"T":123,"m":true,"M":true}}"#;
 
