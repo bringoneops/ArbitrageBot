@@ -1,5 +1,6 @@
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use serde_json::Value;
 use std::borrow::Cow;
 use std::str::FromStr;
 
@@ -625,6 +626,51 @@ pub struct BingxDepthEvent<'a> {
     pub bids: Vec<[Cow<'a, str>; 2]>,
     #[serde(rename = "a", default)]
     pub asks: Vec<[Cow<'a, str>; 2]>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KucoinStreamMessage {
+    #[serde(rename = "type")]
+    pub r#type: String,
+    pub topic: String,
+    pub subject: String,
+    pub data: Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KucoinTrade<'a> {
+    pub sequence: u64,
+    pub symbol: String,
+    pub side: Cow<'a, str>,
+    pub size: Cow<'a, str>,
+    pub price: Cow<'a, str>,
+    #[serde(rename = "time")]
+    pub trade_time: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KucoinLevel2<'a> {
+    #[serde(rename = "sequenceStart")]
+    pub sequence_start: u64,
+    #[serde(rename = "sequenceEnd")]
+    pub sequence_end: u64,
+    pub symbol: String,
+    pub changes: KucoinLevel2Changes<'a>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KucoinLevel2Changes<'a> {
+    #[serde(default)]
+    pub bids: Vec<[Cow<'a, str>; 3]>,
+    #[serde(default)]
+    pub asks: Vec<[Cow<'a, str>; 3]>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KucoinKline<'a> {
+    pub candles: [Cow<'a, str>; 7],
+    pub symbol: String,
+    pub time: u64,
 }
 
 impl<'a> TradeEvent<'a> {

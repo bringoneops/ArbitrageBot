@@ -5,13 +5,14 @@ use std::convert::TryFrom;
 pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
-    BingxStreamMessage, BookTickerEvent, Event, GateioStreamMessage, KlineEvent, MexcEvent,
-    MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent,
+    BingxStreamMessage, BookTickerEvent, Event, GateioStreamMessage, KlineEvent,
+    KucoinStreamMessage, MexcEvent, MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
     DepthUpdateEvent, ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline, GateioTrade,
-    IndexPriceEvent, MarkPriceEvent, OpenInterestEvent, TradeEvent,
+    IndexPriceEvent, KucoinKline, KucoinLevel2, KucoinTrade, MarkPriceEvent, OpenInterestEvent,
+    TradeEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -727,6 +728,95 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     high: k.high.parse().ok().ok_or(())?,
                     low: k.low.parse().ok().ok_or(())?,
                     volume: k.volume.parse().ok().ok_or(())?,
+                }))
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<KucoinStreamMessage> for MdEvent {
+    type Error = ();
+    fn try_from(msg: KucoinStreamMessage) -> Result<Self, Self::Error> {
+        match msg.subject.as_str() {
+            "trade.l3match" => {
+                let data: KucoinTrade = serde_json::from_value(msg.data).map_err(|_| ())?;
+                let price: f64 = data.price.parse().ok().ok_or(())?;
+                let quantity: f64 = data.size.parse().ok().ok_or(())?;
+                let side = match data.side.as_ref() {
+                    "buy" => Some(Side::Buy),
+                    "sell" => Some(Side::Sell),
+                    _ => None,
+                };
+                Ok(MdEvent::Trade(Trade {
+                    exchange: "kucoin".to_string(),
+                    symbol: data.symbol,
+                    price,
+                    quantity,
+                    trade_id: Some(data.sequence),
+                    buyer_order_id: None,
+                    seller_order_id: None,
+                    timestamp: data.trade_time,
+                    side,
+                }))
+            }
+            "trade.l2update" => {
+                let data: KucoinLevel2 = serde_json::from_value(msg.data).map_err(|_| ())?;
+                let bids = data
+                    .changes
+                    .bids
+                    .into_iter()
+                    .filter_map(|lvl| {
+                        let price: f64 = lvl[0].parse().ok()?;
+                        let quantity: f64 = lvl[1].parse().ok()?;
+                        Some(Level {
+                            price,
+                            quantity,
+                            kind: BookKind::Bid,
+                        })
+                    })
+                    .collect();
+                let asks = data
+                    .changes
+                    .asks
+                    .into_iter()
+                    .filter_map(|lvl| {
+                        let price: f64 = lvl[0].parse().ok()?;
+                        let quantity: f64 = lvl[1].parse().ok()?;
+                        Some(Level {
+                            price,
+                            quantity,
+                            kind: BookKind::Ask,
+                        })
+                    })
+                    .collect();
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "kucoin".to_string(),
+                    symbol: data.symbol,
+                    ts: data.sequence_end,
+                    bids,
+                    asks,
+                    first_update_id: Some(data.sequence_start),
+                    final_update_id: Some(data.sequence_end),
+                    previous_final_update_id: None,
+                }))
+            }
+            "trade.candles.update" => {
+                let data: KucoinKline = serde_json::from_value(msg.data).map_err(|_| ())?;
+                let open: f64 = data.candles[1].parse().ok().ok_or(())?;
+                let close: f64 = data.candles[2].parse().ok().ok_or(())?;
+                let high: f64 = data.candles[3].parse().ok().ok_or(())?;
+                let low: f64 = data.candles[4].parse().ok().ok_or(())?;
+                let volume: f64 = data.candles[5].parse().ok().ok_or(())?;
+                Ok(MdEvent::Kline(Kline {
+                    exchange: "kucoin".to_string(),
+                    symbol: data.symbol,
+                    ts: data.time,
+                    open,
+                    close,
+                    high,
+                    low,
+                    volume,
                 }))
             }
             _ => Err(()),
