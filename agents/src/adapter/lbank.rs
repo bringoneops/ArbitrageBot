@@ -7,9 +7,9 @@ use serde_json::{json, Value};
 use std::borrow::Cow;
 use std::sync::{Arc, Once};
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, Duration, Instant};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use tracing::error;
+use tracing::{error, info};
 use uuid::Uuid;
 
 use super::ExchangeAdapter;
@@ -160,79 +160,86 @@ impl LbankAdapter {
         symbol: String,
         tx: mpsc::Sender<core::events::StreamMessage<'static>>,
     ) -> Result<()> {
-        let (ws_stream, _) = connect_async(&url).await?;
-        let (mut write, mut read) = ws_stream.split();
+        loop {
+            let (ws_stream, _) = connect_async(&url).await?;
+            let (mut write, mut read) = ws_stream.split();
 
-        // subscribe to topics
-        let sub_trade = json!({
-            "action": "subscribe",
-            "subscribe": "trade",
-            "pair": symbol
-        });
-        write.send(Message::Text(sub_trade.to_string())).await?;
-        let sub_depth = json!({
-            "action": "subscribe",
-            "subscribe": "depth",
-            "depth": "100",
-            "pair": symbol
-        });
-        write.send(Message::Text(sub_depth.to_string())).await?;
-        let sub_kbar = json!({
-            "action": "subscribe",
-            "subscribe": "kbar",
-            "kbar": "1min",
-            "pair": symbol
-        });
-        write.send(Message::Text(sub_kbar.to_string())).await?;
+            // subscribe to topics
+            let sub_trade = json!({
+                "action": "subscribe",
+                "subscribe": "trade",
+                "pair": symbol.clone()
+            });
+            write.send(Message::Text(sub_trade.to_string())).await?;
+            let sub_depth = json!({
+                "action": "subscribe",
+                "subscribe": "depth",
+                "depth": "100",
+                "pair": symbol.clone()
+            });
+            write.send(Message::Text(sub_depth.to_string())).await?;
+            let sub_kbar = json!({
+                "action": "subscribe",
+                "subscribe": "kbar",
+                "kbar": "1min",
+                "pair": symbol.clone()
+            });
+            write.send(Message::Text(sub_kbar.to_string())).await?;
+            info!("subscribed 3 topics to {}", url);
 
-        let write = Arc::new(Mutex::new(write));
-        let ping_writer = write.clone();
-        tokio::spawn(async move {
-            let mut intv = interval(Duration::from_secs(30));
-            loop {
-                intv.tick().await;
-                let ping = json!({"action":"ping","ping": Uuid::new_v4().to_string()});
-                if ping_writer
-                    .lock()
-                    .await
-                    .send(Message::Text(ping.to_string()))
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
-
-        while let Some(msg) = read.next().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    if let Some(event) = parse_message(&text) {
-                        if tx.send(event).await.is_err() {
+            let write = Arc::new(Mutex::new(write));
+            let ping_writer = write.clone();
+            let last_pong = Arc::new(Mutex::new(Instant::now()));
+            let pong_check = last_pong.clone();
+            tokio::spawn(async move {
+                let mut intv = interval(Duration::from_secs(30));
+                loop {
+                    intv.tick().await;
+                    let ping = json!({"action":"ping","ping": Uuid::new_v4().to_string()});
+                    {
+                        let mut w = ping_writer.lock().await;
+                        if w.send(Message::Text(ping.to_string())).await.is_err() {
                             break;
                         }
-                    } else if let Ok(v) = serde_json::from_str::<Value>(&text) {
-                        if v.get("action").and_then(|a| a.as_str()) == Some("ping") {
-                            if let Some(id) = v.get("ping").and_then(|p| p.as_str()) {
-                                let pong = json!({"action":"pong","pong":id});
-                                let _ = write
-                                    .lock()
-                                    .await
-                                    .send(Message::Text(pong.to_string()))
-                                    .await;
-                            }
+                        if pong_check.lock().await.elapsed() > Duration::from_secs(60) {
+                            let _ = w.close().await;
+                            break;
                         }
                     }
                 }
-                Ok(Message::Ping(data)) => {
-                    let _ = write.lock().await.send(Message::Pong(data)).await;
+            });
+
+            let pong_updater = last_pong.clone();
+            while let Some(msg) = read.next().await {
+                match msg {
+                    Ok(Message::Text(text)) => {
+                        if let Some(event) = parse_message(&text) {
+                            if tx.send(event).await.is_err() {
+                                return Ok(());
+                            }
+                        } else if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                            if v.get("action").and_then(|a| a.as_str()) == Some("ping") {
+                                if let Some(id) = v.get("ping").and_then(|p| p.as_str()) {
+                                    let pong = json!({"action":"pong","pong":id});
+                                    let _ = write
+                                        .lock()
+                                        .await
+                                        .send(Message::Text(pong.to_string()))
+                                        .await;
+                                }
+                            } else if v.get("action").and_then(|a| a.as_str()) == Some("pong") {
+                                *pong_updater.lock().await = Instant::now();
+                            }
+                        }
+                    }
+                    Ok(Message::Ping(data)) => {
+                        let _ = write.lock().await.send(Message::Pong(data)).await;
+                    }
+                    Err(_) => break,
+                    _ => {}
                 }
-                Err(_) => break,
-                _ => {}
             }
         }
-
-        Ok(())
     }
 }
 
