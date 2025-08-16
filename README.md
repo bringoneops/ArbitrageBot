@@ -37,7 +37,7 @@ This project connects to the Binance.US, Binance.com (global), Binance Futures, 
 - **LBank:** `ticker`, `trade`, `depth`, `kline_1m`, `kline_3m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_2h`, `kline_4h`, `kline_6h`, `kline_12h`, `kline_1d`, `kline_1w`, `kline_1M`
 - **XT:** `depth`, `trade`, `kline`
 - **Binance Spot:** global `!bookTicker@arr`, `!miniTicker@arr`, `!ticker@arr`, `!ticker_1M@arr`, `!ticker_1d@arr`, `!ticker_1h@arr`, `!ticker_1w@arr`, `!ticker_4h@arr`; per-symbol `aggTrade`, `bookTicker`, `depth@100ms`, `kline_1m`, `kline_3m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_2h`, `kline_4h`, `kline_6h`, `kline_8h`, `kline_12h`, `kline_1d`, `kline_3d`, `kline_1w`, `kline_1M`, `miniTicker`, `ticker`, `ticker_1h`, `ticker_4h`, `ticker_1d`, `ticker_1w`, `ticker_1M`, `trade`
-- **Binance Futures:** global `!bookTicker@arr`, `!markPrice@arr`, `!markPrice@arr@1s`, `!miniTicker@arr`, `!ticker@arr`, `!ticker_1M@arr`, `!ticker_1d@arr`, `!ticker_1h@arr`, `!ticker_1w@arr`, `!ticker_4h@arr`, `forceOrder@arr`; per-symbol all `continuousKline_*`, `depth*`, `forceOrder`, `indexPrice*`, `kline_*`, `markPrice*`, `miniTicker`, `openInterest`, `takerBuySellVolume`, `ticker_*`, `topLongShortAccountRatio`, `topLongShortPositionRatio`, `trade`
+- **Binance Futures:** global `!bookTicker@arr`, `!markPrice@arr`, `!markPrice@arr@1s`, `!miniTicker@arr`, `!ticker@arr`, `!ticker_1M@arr`, `!ticker_1d@arr`, `!ticker_1h@arr`, `!ticker_1w@arr`, `!ticker_4h@arr`, `forceOrder@arr`; per-symbol all `continuousKline_*`, `depth*`, `forceOrder`, `indexPrice*`, `kline_*`, `markPrice*`, `miniTicker`, `openInterest`, `takerBuySellVolume`, `ticker_*`, `trade`
 - **Binance Options:** global `!bookTicker@arr`, `!miniTicker@arr`, `!ticker@arr`; per-symbol `bookTicker`, `miniTicker`, `ticker`, `trade`, `kline_1m`, `kline_5m`, `kline_15m`, `kline_30m`, `kline_1h`, `kline_2h`, `kline_4h`, `kline_1d`, `kline_1w`, `greeks`, `openInterest`, `impliedVolatility`
 
 ## Contributing
@@ -291,8 +291,6 @@ as defined in [`streams.json`](streams.json):
 - `ticker_1h`
 - `ticker_1w`
 - `ticker_4h`
-- `topLongShortAccountRatio`
-- `topLongShortPositionRatio`
 - `trade`
 
 ### Options Streams

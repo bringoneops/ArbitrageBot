@@ -123,8 +123,6 @@
     "ticker_1h",
     "ticker_1w",
     "ticker_4h",
-    "topLongShortAccountRatio",
-    "topLongShortPositionRatio",
     "trade"
   ]
 }
