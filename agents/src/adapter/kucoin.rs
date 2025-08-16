@@ -162,6 +162,25 @@ impl KucoinAdapter {
             for interval in CANDLE_INTERVALS {
                 topics.push(format!("/market/candles:{}:{}", interval, symbol));
             }
+            let topics: Vec<String> = if self.cfg.id.contains("futures") {
+                vec![
+                    format!("/contractMarket/ticker:{}", symbol),
+                    format!("/contractMarket/level2:{}", symbol),
+                    format!("/contractMarket/level2Depth5:{}", symbol),
+                    format!("/contractMarket/level2Depth50:{}", symbol),
+                    format!("/contractMarket/execution:{}", symbol),
+                    format!("/contractMarket/indexPrice:{}", symbol),
+                    format!("/contractMarket/markPrice:{}", symbol),
+                    format!("/contractMarket/fundingRate:{}", symbol),
+                    format!("/contractMarket/candles:1min:{}", symbol),
+                ]
+            } else {
+                vec![
+                    format!("/market/match:{}", symbol),
+                    format!("/market/level2:{}", symbol),
+                    format!("/market/candles:1min:{}", symbol),
+                ]
+            };
             for topic in topics {
                 let msg = json!({
                     "id": Uuid::new_v4().to_string(),
