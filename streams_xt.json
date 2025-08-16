@@ -1,4 +1,4 @@
 {
   "global": [],
-  "per_symbol": ["depth", "trade", "kline"]
+  "per_symbol": ["depth", "trade", "kline", "ticker"]
 }
