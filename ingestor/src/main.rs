@@ -6,7 +6,7 @@ use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 use agents::{spawn_adapters, TaskSet};
@@ -37,14 +37,40 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
     client_builder.build().context("building HTTP client")
 }
 
+fn forward_event(ev: &MdEvent) -> Result<()> {
+    let json = serde_json::to_string(ev).context("serializing MdEvent")?;
+    info!(event = %json, "forwarded md event");
+    Ok(())
+}
+
 fn process_stream_event(msg: StreamMessage<'static>, metrics_enabled: bool) {
     match MdEvent::try_from(msg.data) {
-        Ok(_ev) => {
+        Ok(ev) => {
             if metrics_enabled {
                 metrics::counter!("md_events_total").increment(1);
             }
             #[cfg(feature = "debug-logs")]
-            debug!(?_ev, stream = %msg.stream, "normalized event");
+            debug!(?ev, stream = %msg.stream, "normalized event");
+
+            let mut attempts = 0;
+            let max_retries = 3;
+            loop {
+                match forward_event(&ev) {
+                    Ok(()) => break,
+                    Err(e) if attempts < max_retries => {
+                        attempts += 1;
+                        error!(
+                            error = %e,
+                            attempt = attempts,
+                            "failed to forward event, retrying"
+                        );
+                    }
+                    Err(e) => {
+                        error!(error = %e, "failed to forward event, giving up");
+                        break;
+                    }
+                }
+            }
         }
         Err(_) => {
             error!(stream = %msg.stream, "failed to normalize event");

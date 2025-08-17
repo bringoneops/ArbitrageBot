@@ -32,6 +32,7 @@ rust_decimal      = "1"
 arb_core = { path = "../core" }
 agents = { path = "../agents" }
 canonical = { path = "../canonical" }
+serde_json = "1"
 
 [features]
 default = []
