@@ -78,7 +78,7 @@ async fn process_stream_event<F, Fut>(
                             "failed to forward event, retrying",
                         );
                         sleep(delay).await;
-                        delay = std::cmp::min(delay * 2, max_delay);
+                        delay = std::cmp::min(delay.saturating_mul(2), max_delay);
                     }
                     Err(e) => {
                         error!(error = %e, "failed to forward event, giving up");

@@ -500,7 +500,7 @@ async fn reconnect_loop<F, Fut, S>(
         if connected {
             backoff = next_backoff(backoff, elapsed, ok, max_backoff, min_stable);
         } else {
-            backoff = std::cmp::min(backoff * 2, max_backoff);
+            backoff = std::cmp::min(backoff.saturating_mul(2), max_backoff);
         }
 
         let jitter: f32 = rand::thread_rng().gen_range(0.8..1.2);
@@ -527,7 +527,7 @@ async fn rate_limited_get(
                 if resp.status() == StatusCode::TOO_MANY_REQUESTS {
                     tracing::warn!("HTTP 429 for {}", url);
                     sleep(backoff).await;
-                    backoff = std::cmp::min(backoff * 2, max_backoff);
+                    backoff = std::cmp::min(backoff.saturating_mul(2), max_backoff);
                     continue;
                 }
                 return resp.error_for_status().map_err(|e| e.into());
@@ -535,7 +535,7 @@ async fn rate_limited_get(
             Err(e) => {
                 tracing::warn!("Request error for {}: {}", url, e);
                 sleep(backoff).await;
-                backoff = std::cmp::min(backoff * 2, max_backoff);
+                backoff = std::cmp::min(backoff.saturating_mul(2), max_backoff);
                 continue;
             }
         }
