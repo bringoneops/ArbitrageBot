@@ -201,7 +201,7 @@ pub fn next_backoff(
     if was_successful && run_duration >= min_stable {
         Duration::from_secs(1)
     } else {
-        std::cmp::min(previous * 2, max_backoff)
+        std::cmp::min(previous.saturating_mul(2), max_backoff)
     }
 }
 
