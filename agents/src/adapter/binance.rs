@@ -25,7 +25,7 @@ use tokio_tungstenite::{
     client_async_tls_with_config, connect_async_tls_with_config, tungstenite::protocol::Message,
     Connector, MaybeTlsStream, WebSocketStream,
 };
-use tracing::Span;
+use tracing::{error, warn, Span};
 use url::Url;
 
 use core::events::{DepthUpdateEvent, Event, StreamMessage};
@@ -35,8 +35,6 @@ use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
 use futures::future::BoxFuture;
 use std::sync::Once;
-use tracing::error;
-
 /// Configuration for a single Binance exchange endpoint.
 pub struct BinanceConfig {
     pub id: &'static str,
@@ -583,6 +581,18 @@ where
     Ok(())
 }
 
+fn lag_ns_from_event_time(ev_time: u64, now: std::time::SystemTime) -> u128 {
+    match now.duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => duration
+            .as_nanos()
+            .saturating_sub(ev_time as u128 * 1_000_000),
+        Err(err) => {
+            warn!("failed to compute lag: {}", err);
+            0
+        }
+    }
+}
+
 fn log_and_metric_event(
     event: &StreamMessage<'static>,
     bytes: &[u8],
@@ -600,11 +610,7 @@ fn log_and_metric_event(
         if core::config::metrics_enabled() {
             metrics::counter!("md_ws_events_total").increment(1);
             if let Some(ev_time) = event_time {
-                let now_ns = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos();
-                let lag_ns = now_ns.saturating_sub(ev_time as u128 * 1_000_000);
+                let lag_ns = lag_ns_from_event_time(ev_time, std::time::SystemTime::now());
                 metrics::gauge!("md_ws_lag_ns").set(lag_ns as f64);
             }
         }
@@ -755,4 +761,17 @@ where
 
     let _ = write.close().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lag_ns_from_event_time;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn lag_defaults_to_zero_on_error() {
+        let past = UNIX_EPOCH - Duration::from_secs(1);
+        let lag = lag_ns_from_event_time(0, past);
+        assert_eq!(lag, 0);
+    }
 }
