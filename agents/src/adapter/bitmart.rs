@@ -335,18 +335,10 @@ impl ExchangeAdapter for BitmartAdapter {
             } else {
                 "futures"
             };
-            let topics: Vec<String> = symbols
             let chunk_symbols: Vec<String> = symbols.to_vec();
             let topics: Vec<String> = chunk_symbols
                 .iter()
                 .flat_map(|s| {
-                    [
-                        format!("spot/trade:{}", s),
-                        format!("spot/depth5:{}", s),
-                        format!("spot/depth50:{}", s),
-                        format!("spot/depth/increase100:{}", s),
-                        format!("spot/kline1m:{}", s),
-                    ]
                     let mut t = vec![
                         format!("{}/trade:{}", prefix, s),
                         format!("{}/ticker:{}", prefix, s),
@@ -366,9 +358,15 @@ impl ExchangeAdapter for BitmartAdapter {
                     t
                 })
                 .collect();
-            let snapshot_topics: Vec<String> = symbols
+            let snapshot_topics: Vec<String> = chunk_symbols
                 .iter()
-                .map(|s| format!("spot/depth50:{}", s))
+                .map(|s| {
+                    if prefix == "spot" {
+                        format!("{}/depth50:{}", prefix, s)
+                    } else {
+                        format!("{}/depth20:{}", prefix, s)
+                    }
+                })
                 .collect();
             let topic_count = topics.len();
             let ws_url = self.cfg.ws_base.to_string();
