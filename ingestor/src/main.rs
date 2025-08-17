@@ -8,7 +8,7 @@ use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, Level};
 use tracing_subscriber::EnvFilter;
 
 use agents::{spawn_adapters, TaskSet};
@@ -40,8 +40,10 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
 }
 
 async fn forward_event(ev: MdEvent) -> Result<()> {
-    let json = serde_json::to_string(&ev).context("serializing MdEvent")?;
-    info!(event = %json, "forwarded md event");
+    if tracing::enabled!(Level::INFO) {
+        let json = serde_json::to_string(&ev).context("serializing MdEvent")?;
+        info!(event = %json, "forwarded md event");
+    }
     Ok(())
 }
 
