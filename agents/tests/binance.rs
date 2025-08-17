@@ -2,14 +2,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agents::adapter::binance::{connect_via_socks5, process_text_message};
+use agents::adapter::binance::{connect_via_socks5, fetch_symbols, process_text_message};
 use agents::ChannelRegistry;
 use arb_core as core;
 use arb_core::rate_limit::TokenBucket;
 use dashmap::DashMap;
+use httpmock::prelude::*;
 use metrics_util::debugging::DebuggingRecorder;
-use reqwest::Client;
+use reqwest::{
+    header::{HeaderMap, HeaderValue},
+    Client,
+};
 use rustls::{ClientConfig, RootCertStore};
+use serde_json::json;
 use url::Url;
 
 #[tokio::test]
@@ -81,4 +86,29 @@ async fn process_text_message_updates_book_and_metrics() {
     assert!(metrics
         .iter()
         .any(|(k, _, _, _)| k.key().name() == "md_pipeline_p99_us"));
+}
+
+#[tokio::test]
+async fn fetch_symbols_uses_provided_client() {
+    let server = MockServer::start();
+
+    let mock = server.mock(|when, then| {
+        when.method(GET).path("/exchangeInfo").header("x-test", "1");
+        then.status(200).json_body(json!({
+            "symbols": [
+                {"symbol": "BTCUSDT", "status": "TRADING"},
+                {"symbol": "ETHUSDT", "status": "BREAK"}
+            ]
+        }));
+    });
+
+    let mut headers = HeaderMap::new();
+    headers.insert("x-test", HeaderValue::from_static("1"));
+    let client = Client::builder().default_headers(headers).build().unwrap();
+
+    let url = format!("{}/exchangeInfo", server.base_url());
+    let symbols = fetch_symbols(&client, &url).await.unwrap();
+
+    assert_eq!(symbols, vec!["BTCUSDT".to_string()]);
+    mock.assert();
 }

@@ -31,6 +31,7 @@ debug-logs = []
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false, features = ["async_tokio"] }
 metrics-util = "0.20"
+httpmock = "0.6"
 
 [[bench]]
 name = "orderbook_update"
