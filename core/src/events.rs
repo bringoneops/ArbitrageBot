@@ -1183,14 +1183,14 @@ impl<'a> Event<'a> {
     }
 }
 
-fn parse_decimal(s: &str) -> Decimal {
-    Decimal::from_str(s).unwrap_or_default()
+fn parse_decimal(s: &str) -> Result<Decimal, rust_decimal::Error> {
+    Decimal::from_str(s)
 }
 
 macro_rules! decimal_accessors {
     ($ty:ident { $($field:ident => $name:ident),* $(,)? }) => {
         impl<'a> $ty<'a> {
-            $(pub fn $name(&self) -> Decimal { parse_decimal(&self.$field) })*
+            $(pub fn $name(&self) -> Result<Decimal, rust_decimal::Error> { parse_decimal(&self.$field) })*
         }
     };
 }
@@ -1198,7 +1198,7 @@ macro_rules! decimal_accessors {
 macro_rules! decimal_option_accessors {
     ($ty:ident { $($field:ident => $name:ident),* $(,)? }) => {
         impl<'a> $ty<'a> {
-            $(pub fn $name(&self) -> Option<Decimal> {
+            $(pub fn $name(&self) -> Option<Result<Decimal, rust_decimal::Error>> {
                 self.$field.as_ref().map(|s| parse_decimal(s))
             })*
         }

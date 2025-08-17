@@ -182,8 +182,8 @@ impl<'a> From<TradeEvent<'a>> for Trade {
         } else {
             Side::Buy
         };
-        let price = ev.price_decimal().to_f64().unwrap_or_default();
-        let quantity = ev.quantity_decimal().to_f64().unwrap_or_default();
+        let price = ev.price_decimal().unwrap_or_default().to_f64().unwrap_or_default();
+        let quantity = ev.quantity_decimal().unwrap_or_default().to_f64().unwrap_or_default();
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
@@ -259,10 +259,26 @@ impl<'a> From<DepthUpdateEvent<'a>> for MdEvent {
 
 impl<'a> From<BookTickerEvent<'a>> for BookTicker {
     fn from(ev: BookTickerEvent<'a>) -> Self {
-        let bid_price = ev.best_bid_price_decimal().to_f64().unwrap_or_default();
-        let bid_quantity = ev.best_bid_qty_decimal().to_f64().unwrap_or_default();
-        let ask_price = ev.best_ask_price_decimal().to_f64().unwrap_or_default();
-        let ask_quantity = ev.best_ask_qty_decimal().to_f64().unwrap_or_default();
+        let bid_price = ev
+            .best_bid_price_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
+        let bid_quantity = ev
+            .best_bid_qty_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
+        let ask_price = ev
+            .best_ask_price_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
+        let ask_quantity = ev
+            .best_ask_qty_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
@@ -283,12 +299,16 @@ impl<'a> From<BookTickerEvent<'a>> for MdEvent {
 
 impl<'a> From<MiniTickerEvent<'a>> for MiniTicker {
     fn from(ev: MiniTickerEvent<'a>) -> Self {
-        let open = ev.open_price_decimal().to_f64().unwrap_or_default();
-        let high = ev.high_price_decimal().to_f64().unwrap_or_default();
-        let low = ev.low_price_decimal().to_f64().unwrap_or_default();
-        let close = ev.close_price_decimal().to_f64().unwrap_or_default();
-        let volume = ev.volume_decimal().to_f64().unwrap_or_default();
-        let quote_volume = ev.quote_volume_decimal().to_f64().unwrap_or_default();
+        let open = ev.open_price_decimal().unwrap_or_default().to_f64().unwrap_or_default();
+        let high = ev.high_price_decimal().unwrap_or_default().to_f64().unwrap_or_default();
+        let low = ev.low_price_decimal().unwrap_or_default().to_f64().unwrap_or_default();
+        let close = ev.close_price_decimal().unwrap_or_default().to_f64().unwrap_or_default();
+        let volume = ev.volume_decimal().unwrap_or_default().to_f64().unwrap_or_default();
+        let quote_volume = ev
+            .quote_volume_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         let symbol = ev.symbol;
         Self {
             exchange: "binance".to_string(),
@@ -317,11 +337,11 @@ impl<'a> From<KlineEvent<'a>> for Kline {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
             ts: ev.event_time,
-            open: k.open_decimal().to_f64().unwrap_or_default(),
-            close: k.close_decimal().to_f64().unwrap_or_default(),
-            high: k.high_decimal().to_f64().unwrap_or_default(),
-            low: k.low_decimal().to_f64().unwrap_or_default(),
-            volume: k.volume_decimal().to_f64().unwrap_or_default(),
+            open: k.open_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
+            close: k.close_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
+            high: k.high_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
+            low: k.low_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
+            volume: k.volume_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
         }
     }
 }
@@ -375,7 +395,11 @@ impl From<CoreDepthSnapshot> for MdEvent {
 
 impl<'a> From<TickerEvent<'a>> for AvgPrice {
     fn from(ev: TickerEvent<'a>) -> Self {
-        let price = ev.weighted_avg_price_decimal().to_f64().unwrap_or_default();
+        let price = ev
+            .weighted_avg_price_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         let symbol = ev.symbol;
         Self {
             exchange: "binance".to_string(),
@@ -394,7 +418,11 @@ impl<'a> From<TickerEvent<'a>> for MdEvent {
 
 impl<'a> From<MarkPriceEvent<'a>> for MarkPrice {
     fn from(ev: MarkPriceEvent<'a>) -> Self {
-        let price = ev.mark_price_decimal().to_f64().unwrap_or_default();
+        let price = ev
+            .mark_price_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
@@ -412,7 +440,11 @@ impl<'a> From<MarkPriceEvent<'a>> for MdEvent {
 
 impl<'a> From<IndexPriceEvent<'a>> for IndexPrice {
     fn from(ev: IndexPriceEvent<'a>) -> Self {
-        let price = ev.index_price_decimal().to_f64().unwrap_or_default();
+        let price = ev
+            .index_price_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
@@ -430,7 +462,11 @@ impl<'a> From<IndexPriceEvent<'a>> for MdEvent {
 
 impl<'a> From<FundingRateEvent<'a>> for FundingRate {
     fn from(ev: FundingRateEvent<'a>) -> Self {
-        let rate = ev.funding_rate_decimal().to_f64().unwrap_or_default();
+        let rate = ev
+            .funding_rate_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
@@ -448,7 +484,11 @@ impl<'a> From<FundingRateEvent<'a>> for MdEvent {
 
 impl<'a> From<OpenInterestEvent<'a>> for OpenInterest {
     fn from(ev: OpenInterestEvent<'a>) -> Self {
-        let open_interest = ev.open_interest_decimal().to_f64().unwrap_or_default();
+        let open_interest = ev
+            .open_interest_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         Self {
             exchange: "binance".to_string(),
             symbol: ev.symbol,
@@ -466,10 +506,16 @@ impl<'a> From<OpenInterestEvent<'a>> for MdEvent {
 
 impl<'a> From<ForceOrderEvent<'a>> for Liquidation {
     fn from(ev: ForceOrderEvent<'a>) -> Self {
-        let price = ev.order.price_decimal().to_f64().unwrap_or_default();
+        let price = ev
+            .order
+            .price_decimal()
+            .unwrap_or_default()
+            .to_f64()
+            .unwrap_or_default();
         let quantity = ev
             .order
             .original_quantity_decimal()
+            .unwrap_or_default()
             .to_f64()
             .unwrap_or_default();
         Self {
