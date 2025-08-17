@@ -221,7 +221,7 @@ impl LatokenAdapter {
 
             let ping_writer = write.clone();
             let ping_shutdown = shutdown.clone();
-            tokio::spawn(async move {
+            let ping_handle = tokio::spawn(async move {
                 let mut intv = interval(Duration::from_secs(30));
                 while !ping_shutdown.load(std::sync::atomic::Ordering::Relaxed) {
                     intv.tick().await;
@@ -266,6 +266,9 @@ impl LatokenAdapter {
                     break;
                 }
             }
+
+            ping_handle.abort();
+            let _ = ping_handle.await;
 
             info!("latoken disconnected: {}", symbol);
 
