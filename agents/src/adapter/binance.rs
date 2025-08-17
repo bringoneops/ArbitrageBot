@@ -585,7 +585,7 @@ where
 fn current_time() -> std::time::SystemTime {
     #[cfg(test)]
     {
-        let f = *NOW_FN.lock().unwrap();
+        let f = *NOW_FN.lock().expect("now function mutex poisoned");
         f()
     }
     #[cfg(not(test))]
@@ -602,7 +602,7 @@ static NOW_FN: Lazy<Mutex<NowFn>> = Lazy::new(|| Mutex::new(std::time::SystemTim
 
 #[cfg(test)]
 pub(crate) fn set_now_fn(f: NowFn) {
-    *NOW_FN.lock().unwrap() = f;
+    *NOW_FN.lock().expect("now function mutex poisoned") = f;
 }
 
 fn lag_ns_from_event_time(ev_time: u64, now: std::time::SystemTime) -> u128 {
