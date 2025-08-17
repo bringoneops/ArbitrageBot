@@ -5,7 +5,6 @@ use arb_core as core;
 use async_trait::async_trait;
 use core::rate_limit::TokenBucket;
 use core::{chunk_streams_with_config, stream_config_for_exchange};
-use dashmap::DashMap;
 use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -124,7 +123,6 @@ pub struct LatokenAdapter {
     _client: Client,
     chunk_size: usize,
     symbols: Vec<String>,
-    _books: Arc<DashMap<String, core::OrderBook>>,
     http_bucket: Arc<TokenBucket>,
     ws_bucket: Arc<TokenBucket>,
     tasks: Vec<JoinHandle<Result<()>>>,
@@ -144,7 +142,6 @@ impl LatokenAdapter {
             _client: client,
             chunk_size,
             symbols,
-            _books: Arc::new(DashMap::new()),
             http_bucket: Arc::new(TokenBucket::new(
                 global_cfg.http_burst,
                 global_cfg.http_refill_per_sec,
