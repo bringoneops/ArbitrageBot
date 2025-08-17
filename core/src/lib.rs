@@ -311,8 +311,21 @@ pub fn apply_depth_update(book: &mut OrderBook, update: &DepthUpdateEvent<'_>) -
 }
 
 /// Fast-forwards an order book by applying a sequence of buffered depth updates.
-pub fn fast_forward(book: &mut OrderBook, updates: &[DepthUpdateEvent<'_>]) {
+///
+/// Returns the first non-`Applied` [`ApplyResult`] encountered. If any update
+/// is outdated, the function continues processing remaining updates but the
+/// final result will be [`ApplyResult::Outdated`].
+///
+/// If a gap is detected, processing stops immediately and [`ApplyResult::Gap`]
+/// is returned.
+pub fn fast_forward(book: &mut OrderBook, updates: &[DepthUpdateEvent<'_>]) -> ApplyResult {
+    let mut result = ApplyResult::Applied;
     for update in updates {
-        apply_depth_update(book, update);
+        match apply_depth_update(book, update) {
+            ApplyResult::Applied => {}
+            ApplyResult::Outdated => result = ApplyResult::Outdated,
+            ApplyResult::Gap => return ApplyResult::Gap,
+        }
     }
+    result
 }

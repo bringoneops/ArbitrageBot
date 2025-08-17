@@ -673,8 +673,18 @@ async fn update_order_book(
                 if let Some(mut new_book) =
                     fetch_depth_snapshot(client, depth_base, &symbol, http_bucket).await
                 {
-                    fast_forward(&mut new_book, &buffer);
-                    books.insert(symbol, new_book);
+                    match fast_forward(&mut new_book, &buffer) {
+                        ApplyResult::Applied => {
+                            books.insert(symbol, new_book);
+                        }
+                        ApplyResult::Gap | ApplyResult::Outdated => {
+                            if let Some(resynced) =
+                                fetch_depth_snapshot(client, depth_base, &symbol, http_bucket).await
+                            {
+                                books.insert(symbol, resynced);
+                            }
+                        }
+                    }
                 }
             }
         }

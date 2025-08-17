@@ -74,8 +74,38 @@ fn resyncs_after_gap() {
     let snap2_json = r#"{"lastUpdateId":3,"bids":[["1.0","1.0"],["1.1","1.0"]],"asks":[]}"#;
     let snap2: DepthSnapshot = serde_json::from_str(snap2_json).unwrap();
     let mut new_book: OrderBook = snap2.into();
-    fast_forward(&mut new_book, &[gap_diff]);
+    assert_eq!(
+        fast_forward(&mut new_book, &[gap_diff]),
+        ApplyResult::Applied
+    );
 
     assert_eq!(new_book.last_update_id, 4);
     assert!(new_book.bids.contains_key("1.2"));
+}
+
+#[test]
+fn fast_forward_stops_on_gap() {
+    let snapshot_json = r#"{"lastUpdateId":1,"bids":[],"asks":[]}"#;
+    let snapshot: DepthSnapshot = serde_json::from_str(snapshot_json).unwrap();
+    let mut book: OrderBook = snapshot.into();
+
+    // Contiguous update to 2
+    let diff1_json = r#"{"E":0,"s":"BTCUSDT","U":2,"u":2,"pu":1,"b":[["1.0","1.0"]],"a":[]}"#;
+    let diff1: DepthUpdateEvent<'_> = serde_json::from_str(diff1_json).unwrap();
+
+    // Gap update skipping expected id 3
+    let gap_json = r#"{"E":0,"s":"BTCUSDT","U":4,"u":4,"pu":3,"b":[["1.1","1.0"]],"a":[]}"#;
+    let gap_diff: DepthUpdateEvent<'_> = serde_json::from_str(gap_json).unwrap();
+
+    // Update after the gap that should not be applied
+    let after_gap_json = r#"{"E":0,"s":"BTCUSDT","U":5,"u":5,"pu":4,"b":[["1.2","1.0"]],"a":[]}"#;
+    let after_gap: DepthUpdateEvent<'_> = serde_json::from_str(after_gap_json).unwrap();
+
+    let updates = [diff1, gap_diff, after_gap];
+    assert_eq!(fast_forward(&mut book, &updates), ApplyResult::Gap);
+
+    // Only the first update should have been applied
+    assert_eq!(book.last_update_id, 2);
+    assert!(book.bids.contains_key("1.0"));
+    assert!(!book.bids.contains_key("1.2"));
 }
