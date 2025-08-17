@@ -30,6 +30,7 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
     let user_agent = env::var("USER_AGENT")
         .unwrap_or_else(|_| format!("ArbitrageBot/{}", env!("CARGO_PKG_VERSION")));
     let mut client_builder = Client::builder()
+        .timeout(Duration::from_secs(cfg.http_timeout_secs))
         .user_agent(user_agent)
         .use_preconfigured_tls(tls_config);
     if let Some(proxy) = cfg.proxy_url.as_ref().filter(|p| !p.is_empty()) {

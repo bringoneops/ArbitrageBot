@@ -40,6 +40,7 @@ pub struct Config {
     pub mexc_symbols: Symbols,
     pub chunk_size: usize,
     pub event_buffer_size: usize,
+    pub http_timeout_secs: u64,
     pub http_burst: u32,
     pub http_refill_per_sec: u32,
     pub ws_burst: u32,
@@ -134,6 +135,13 @@ fn parse_u32_env(var: &str, default: u32) -> u32 {
         .unwrap_or(default)
 }
 
+fn parse_u64_env(var: &str, default: u64) -> u64 {
+    env::var(var)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
 fn parse_bool_env(var: &str, default: bool) -> bool {
     env::var(var)
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -160,6 +168,7 @@ impl Config {
         let mexc_symbols = parse_symbols_env("MEXC_SYMBOLS");
         let chunk_size = parse_usize_env("CHUNK_SIZE", 100);
         let event_buffer_size = parse_usize_env("EVENT_BUFFER_SIZE", 1024);
+        let http_timeout_secs = parse_u64_env("HTTP_TIMEOUT_SECS", 30);
         let http_burst = parse_u32_env("HTTP_BURST", 10);
         let http_refill_per_sec = parse_u32_env("HTTP_REFILL_PER_SEC", 10);
         let ws_burst = parse_u32_env("WS_BURST", 5);
@@ -193,6 +202,7 @@ impl Config {
             mexc_symbols,
             chunk_size,
             event_buffer_size,
+            http_timeout_secs,
             http_burst,
             http_refill_per_sec,
             ws_burst,
@@ -249,6 +259,7 @@ impl Config {
     fn validate_sizes(&self) -> Result<()> {
         self.ensure_in_range("chunk_size", self.chunk_size, 1, 1024)?;
         self.ensure_in_range("event_buffer_size", self.event_buffer_size, 1, 65_536)?;
+        self.ensure_in_range("http_timeout_secs", self.http_timeout_secs as usize, 1, 300)?;
         Ok(())
     }
 
