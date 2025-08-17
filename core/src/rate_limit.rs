@@ -86,3 +86,31 @@ impl Drop for TokenBucket {
         self.refill_handle.abort();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::{task, time::timeout};
+
+    #[tokio::test]
+    async fn acquire_returns_error_when_bucket_dropped() {
+        let bucket = TokenBucket::new(1, 0, Duration::from_secs(60));
+        // Exhaust available tokens so the next acquire waits.
+        bucket.acquire(1).await.unwrap();
+
+        let semaphore = bucket.semaphore.clone();
+        let waiter = tokio::spawn(async move {
+            semaphore.acquire_many(1).await.map(|p| p.forget())
+        });
+
+        // Ensure the task is pending on the semaphore before dropping the bucket.
+        task::yield_now().await;
+        drop(bucket);
+
+        let res = timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("acquire future timed out")
+            .expect("task panicked");
+        assert!(res.is_err());
+    }
+}
