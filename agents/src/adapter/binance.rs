@@ -28,6 +28,11 @@ use tokio_tungstenite::{
 use tracing::{error, warn, Span};
 use url::Url;
 
+#[cfg(test)]
+use once_cell::sync::Lazy;
+#[cfg(test)]
+use std::sync::Mutex;
+
 use core::events::{DepthUpdateEvent, Event, StreamMessage};
 use core::rate_limit::TokenBucket;
 
@@ -577,6 +582,29 @@ where
     Ok(())
 }
 
+fn current_time() -> std::time::SystemTime {
+    #[cfg(test)]
+    {
+        let f = *NOW_FN.lock().unwrap();
+        f()
+    }
+    #[cfg(not(test))]
+    {
+        std::time::SystemTime::now()
+    }
+}
+
+#[cfg(test)]
+type NowFn = fn() -> std::time::SystemTime;
+
+#[cfg(test)]
+static NOW_FN: Lazy<Mutex<NowFn>> = Lazy::new(|| Mutex::new(std::time::SystemTime::now));
+
+#[cfg(test)]
+pub(crate) fn set_now_fn(f: NowFn) {
+    *NOW_FN.lock().unwrap() = f;
+}
+
 fn lag_ns_from_event_time(ev_time: u64, now: std::time::SystemTime) -> u128 {
     match now.duration_since(std::time::UNIX_EPOCH) {
         Ok(duration) => duration
@@ -603,10 +631,10 @@ fn log_and_metric_event(
     let span = tracing::info_span!("ws_event", exchange = %exchange, symbol = %symbol);
     let pipeline_start = Instant::now();
     span.in_scope(|| {
+        let lag_ns = event_time.map(|ev_time| lag_ns_from_event_time(ev_time, current_time()));
         if core::config::metrics_enabled() {
             metrics::counter!("md_ws_events_total").increment(1);
-            if let Some(ev_time) = event_time {
-                let lag_ns = lag_ns_from_event_time(ev_time, std::time::SystemTime::now());
+            if let Some(lag_ns) = lag_ns {
                 metrics::gauge!("md_ws_lag_ns").set(lag_ns as f64);
             }
         }
@@ -761,13 +789,38 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::lag_ns_from_event_time;
-    use std::time::{Duration, UNIX_EPOCH};
+    use super::{lag_ns_from_event_time, log_and_metric_event, set_now_fn};
+    use arb_core::events::{Event, IndexPriceEvent, StreamMessage};
+    use std::{
+        borrow::Cow,
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
+    use tracing_test::traced_test;
 
     #[test]
     fn lag_defaults_to_zero_on_error() {
         let past = UNIX_EPOCH - Duration::from_secs(1);
         let lag = lag_ns_from_event_time(0, past);
         assert_eq!(lag, 0);
+    }
+
+    #[traced_test]
+    #[test]
+    fn log_warning_on_pre_epoch_time() {
+        fn before_epoch() -> SystemTime {
+            UNIX_EPOCH - Duration::from_secs(1)
+        }
+        set_now_fn(before_epoch);
+        let msg = StreamMessage {
+            stream: "test@index".to_string(),
+            data: Event::IndexPrice(IndexPriceEvent {
+                event_time: 0,
+                symbol: "TEST".to_string(),
+                index_price: Cow::Borrowed("0"),
+            }),
+        };
+        let _ = log_and_metric_event(&msg, b"{}", "binance");
+        assert!(logs_contain("failed to compute lag"));
+        set_now_fn(SystemTime::now);
     }
 }
