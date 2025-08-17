@@ -37,6 +37,31 @@ fn handles_unknown_event() {
     assert!(matches!(msg.data, Event::Unknown));
 }
 
+#[test]
+fn invalid_trade_decimal_returns_error() {
+    let json = r#"{"stream":"btcusdt@trade","data":{"e":"trade","E":1,"s":"BTCUSDT","t":1,"p":"oops","q":"1","b":1,"a":1,"T":1,"m":true,"M":true}}"#;
+    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::Trade(ev) => {
+            assert!(ev.price_decimal().is_err());
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn invalid_optional_decimal_returns_error() {
+    let json = r#"{"stream":"btcusdt@markPrice","data":{"e":"markPriceUpdate","E":1,"s":"BTCUSDT","p":"1.0","i":"1.1","r":"0.001","T":2,"P":"bad"}}"#;
+    let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
+    match msg.data {
+        Event::MarkPrice(ev) => match ev.estimated_settle_price_decimal() {
+            Some(Err(_)) => {}
+            _ => panic!("expected error"),
+        },
+        _ => panic!("unexpected event"),
+    }
+}
+
 parses_event!(
     parses_agg_trade_event,
     r#"{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","E":1,"s":"BTCUSDT","a":2,"p":"0.1","q":"2","f":1,"l":2,"T":3,"m":true,"M":true}}"#,
