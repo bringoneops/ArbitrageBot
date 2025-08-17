@@ -34,12 +34,8 @@ pub const LATOKEN_EXCHANGES: &[LatokenConfig] = &[LatokenConfig {
 }];
 
 /// Retrieve all trading symbols for LATOKEN using its ticker endpoint.
-pub async fn fetch_symbols(info_url: &str) -> Result<Vec<String>> {
-    let resp = Client::new()
-        .get(info_url)
-        .send()
-        .await?
-        .error_for_status()?;
+pub async fn fetch_symbols(client: &Client, info_url: &str) -> Result<Vec<String>> {
+    let resp = client.get(info_url).send().await?.error_for_status()?;
     let data: Value = resp.json().await?;
     let arr = data.as_array().unwrap_or(&Vec::new()).clone();
     let mut result: Vec<String> = arr
@@ -79,7 +75,7 @@ pub fn register() {
                         Box::pin(async move {
                             let mut symbols = initial_symbols;
                             if symbols.is_empty() {
-                                symbols = fetch_symbols(cfg.info_url).await?;
+                                symbols = fetch_symbols(&client, cfg.info_url).await?;
                             }
 
                             let mut receivers = Vec::new();
