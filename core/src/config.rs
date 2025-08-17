@@ -144,14 +144,9 @@ fn parse_list_env(var: &str) -> Vec<String> {
     env::var(var)
         .unwrap_or_default()
         .split(',')
-        .filter_map(|s| {
-            let trimmed = s.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        })
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
         .collect()
 }
 
