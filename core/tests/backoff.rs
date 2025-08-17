@@ -43,3 +43,20 @@ fn backoff_handles_large_previous_without_overflow() {
 
     assert_eq!(backoff, max_backoff);
 }
+
+#[test]
+fn backoff_handles_previous_near_overflow() {
+    let max_backoff = Duration::from_secs(64);
+    let min_stable = Duration::from_secs(5);
+
+    let large_previous = Duration::from_secs(u64::MAX / 2 + 1);
+    let backoff = next_backoff(
+        large_previous,
+        Duration::from_secs(0),
+        false,
+        max_backoff,
+        min_stable,
+    );
+
+    assert_eq!(backoff, max_backoff);
+}
