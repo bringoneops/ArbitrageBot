@@ -33,6 +33,7 @@ criterion = { version = "0.5", default-features = false, features = ["async_toki
 metrics-util = "0.20"
 httpmock = "0.6"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
+hyper = { version = "0.14", features = ["server", "http1"] }
 
 [[bench]]
 name = "orderbook_update"

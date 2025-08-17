@@ -8,6 +8,10 @@ use arb_core as core;
 use arb_core::rate_limit::TokenBucket;
 use dashmap::DashMap;
 use httpmock::prelude::*;
+use hyper::{
+    service::{make_service_fn, service_fn},
+    Body, Response, Server,
+};
 use metrics_util::debugging::DebuggingRecorder;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
@@ -15,6 +19,8 @@ use reqwest::{
 };
 use rustls::{ClientConfig, RootCertStore};
 use serde_json::json;
+use std::net::TcpListener;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use url::Url;
 
 #[tokio::test]
@@ -111,4 +117,51 @@ async fn fetch_symbols_uses_provided_client() {
 
     assert_eq!(symbols, vec!["BTCUSDT".to_string()]);
     mock.assert();
+}
+
+#[tokio::test]
+async fn fetch_symbols_reuses_client_connections() {
+    use std::convert::Infallible;
+
+    let connection_count = Arc::new(AtomicUsize::new(0));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let conn_counter = connection_count.clone();
+
+    let make_svc = make_service_fn(move |_conn| {
+        conn_counter.fetch_add(1, Ordering::SeqCst);
+        async move {
+            Ok::<_, Infallible>(service_fn(|_req| async {
+                let body = json!({
+                    "symbols": [
+                        { "symbol": "BTCUSDT", "status": "TRADING" }
+                    ]
+                })
+                .to_string();
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(200)
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+            }))
+        }
+    });
+
+    let server = Server::from_tcp(listener).unwrap().serve(make_svc);
+    let server_handle = tokio::spawn(server);
+
+    let client = Client::new();
+    let url = format!("http://{}/exchangeInfo", addr);
+
+    let s1 = fetch_symbols(&client, &url).await.unwrap();
+    let s2 = fetch_symbols(&client, &url).await.unwrap();
+
+    assert_eq!(s1, vec!["BTCUSDT".to_string()]);
+    assert_eq!(s2, vec!["BTCUSDT".to_string()]);
+    assert_eq!(connection_count.load(Ordering::SeqCst), 1);
+
+    server_handle.abort();
 }
