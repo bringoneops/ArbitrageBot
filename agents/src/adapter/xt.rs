@@ -211,7 +211,9 @@ impl ExchangeAdapter for XtAdapter {
                     if shutdown.load(Ordering::Relaxed) {
                         break;
                     }
-                    ws_bucket.acquire(1).await;
+                    if ws_bucket.acquire(1).await.is_err() {
+                        break;
+                    }
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             let sub = serde_json::json!({
@@ -291,7 +293,7 @@ impl ExchangeAdapter for XtAdapter {
     }
 
     async fn backfill(&mut self) -> Result<()> {
-        self.http_bucket.acquire(1).await;
+        self.http_bucket.acquire(1).await?;
         Ok(())
     }
 }

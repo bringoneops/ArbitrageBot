@@ -6,6 +6,7 @@ async fn acquire_clamps_to_capacity() {
     let bucket = TokenBucket::new(5, 0, Duration::from_secs(1));
     tokio::time::timeout(Duration::from_secs(1), bucket.acquire(10))
         .await
-        .expect("acquire should not time out");
+        .expect("acquire should not time out")
+        .unwrap();
     assert_eq!(bucket.available(), 0);
 }

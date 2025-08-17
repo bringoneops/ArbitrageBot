@@ -66,15 +66,12 @@ impl TokenBucket {
     /// This method asynchronously waits for permits. Tasks are parked by the
     /// semaphore without blocking threads until the refill task adds enough
     /// tokens.
-    pub async fn acquire(&self, tokens: u32) {
+    pub async fn acquire(&self, tokens: u32) -> Result<(), tokio::sync::AcquireError> {
         let tokens = tokens.min(self.capacity as u32);
         // `acquire_many` returns a permit guard that releases permits when
         // dropped. We "forget" it to permanently consume the permits.
-        self.semaphore
-            .acquire_many(tokens)
-            .await
-            .expect("semaphore closed")
-            .forget();
+        self.semaphore.acquire_many(tokens).await?.forget();
+        Ok(())
     }
 
     /// Return the current number of available tokens.
@@ -85,6 +82,7 @@ impl TokenBucket {
 
 impl Drop for TokenBucket {
     fn drop(&mut self) {
+        self.semaphore.close();
         self.refill_handle.abort();
     }
 }

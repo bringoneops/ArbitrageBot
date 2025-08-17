@@ -230,7 +230,9 @@ impl ExchangeAdapter for CoinexAdapter {
                     if shutdown.load(Ordering::Relaxed) {
                         break;
                     }
-                    ws_bucket.acquire(1).await;
+                    if ws_bucket.acquire(1).await.is_err() {
+                        break;
+                    }
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             for symbol in &symbols {
@@ -364,7 +366,7 @@ impl ExchangeAdapter for CoinexAdapter {
     }
 
     async fn backfill(&mut self) -> Result<()> {
-        self.http_bucket.acquire(1).await;
+        self.http_bucket.acquire(1).await?;
         Ok(())
     }
 }
