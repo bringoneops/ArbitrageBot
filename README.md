@@ -94,7 +94,7 @@ The binary can be configured via environment variables:
 
 - `SOCKS5_PROXY` – optional `host:port` for routing all HTTP and WebSocket traffic through a SOCKS5 proxy.
 - `CHUNK_SIZE` – number of streams per WebSocket connection. Defaults to `100` if unset or invalid.
-- `STREAMS_CONFIG` – optional path to a JSON file specifying `global` and `per_symbol` stream lists. If omitted, a built-in `streams.json` configuration is used.
+- `STREAMS_CONFIG` – optional path to a JSON file specifying `global` and `per_symbol` stream lists. If omitted, a built-in `streams/binance_futures.json` configuration is used.
 - `SPOT_SYMBOLS` – comma-separated spot symbols to subscribe. Set to `ALL` to auto-discover all trading pairs (may subscribe to a very large number of streams).
 - `FUTURES_SYMBOLS` – comma-separated futures symbols. Set to `ALL` to fetch every trading pair, which can significantly increase the subscription load.
 - `HTTP_BURST` – maximum number of HTTP requests allowed to accumulate. Defaults to `10`.
@@ -163,7 +163,7 @@ stream latency.
 ## Default Channels
 
 By default, the aggregator subscribes to the following Binance WebSocket channels
-as defined in [`streams.json`](streams.json):
+as defined in [`streams/binance_futures.json`](streams/binance_futures.json):
 
 ### Global Streams
 
@@ -294,7 +294,7 @@ as defined in [`streams.json`](streams.json):
 
 ### Options Streams
 
-The aggregator supports Binance Options channels defined in [`streams_options.json`](streams_options.json):
+The aggregator supports Binance Options channels defined in [`streams/binance_options.json`](streams/binance_options.json):
 
 #### Global Streams
 
