@@ -532,7 +532,12 @@ async fn rate_limited_get(
                 }
                 return resp.error_for_status().map_err(|e| e.into());
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => {
+                tracing::warn!("Request error for {}: {}", url, e);
+                sleep(backoff).await;
+                backoff = std::cmp::min(backoff * 2, max_backoff);
+                continue;
+            }
         }
     }
 }
