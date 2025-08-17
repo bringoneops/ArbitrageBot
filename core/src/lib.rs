@@ -37,83 +37,83 @@ static STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
             }
         }
     }
-    let mut data = include_bytes!("../../streams.json").to_vec();
+    let mut data = include_bytes!("../../streams/binance_futures.json").to_vec();
     from_slice(&mut data).expect("invalid default stream configuration")
 });
 
 // Exchange specific configurations
 static SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_spot.json").to_vec();
+    let mut data = include_bytes!("../../streams/binance_spot.json").to_vec();
     from_slice(&mut data).expect("invalid spot stream configuration")
 });
 
 static FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_futures.json").to_vec();
+    let mut data = include_bytes!("../../streams/binance_futures.json").to_vec();
     from_slice(&mut data).expect("invalid futures stream configuration")
 });
 
 static OPTIONS_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_options.json").to_vec();
+    let mut data = include_bytes!("../../streams/binance_options.json").to_vec();
     from_slice(&mut data).expect("invalid options stream configuration")
 });
 
 static GATEIO_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_gateio_spot.json").to_vec();
+    let mut data = include_bytes!("../../streams/gateio_spot.json").to_vec();
     from_slice(&mut data).expect("invalid gateio spot stream configuration")
 });
 
 static GATEIO_FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_gateio_futures.json").to_vec();
+    let mut data = include_bytes!("../../streams/gateio_futures.json").to_vec();
     from_slice(&mut data).expect("invalid gateio futures stream configuration")
 });
 
 static LATOKEN_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_latoken.json").to_vec();
+    let mut data = include_bytes!("../../streams/latoken.json").to_vec();
     from_slice(&mut data).expect("invalid latoken stream configuration")
 });
 
 static BITGET_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_bitget.json").to_vec();
+    let mut data = include_bytes!("../../streams/bitget.json").to_vec();
     from_slice(&mut data).expect("invalid bitget stream configuration")
 });
 
 static COINEX_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_coinex_spot.json").to_vec();
+    let mut data = include_bytes!("../../streams/coinex_spot.json").to_vec();
     from_slice(&mut data).expect("invalid coinex spot stream configuration")
 });
 
 static COINEX_PERPETUAL_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_coinex_perpetual.json").to_vec();
+    let mut data = include_bytes!("../../streams/coinex_perpetual.json").to_vec();
     from_slice(&mut data).expect("invalid coinex perpetual stream configuration")
 });
 
 static BITMART_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_bitmart_spot.json").to_vec();
+    let mut data = include_bytes!("../../streams/bitmart_spot.json").to_vec();
     from_slice(&mut data).expect("invalid bitmart spot stream configuration")
 });
 
 static BITMART_CONTRACT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_bitmart_contract.json").to_vec();
+    let mut data = include_bytes!("../../streams/bitmart_contract.json").to_vec();
     from_slice(&mut data).expect("invalid bitmart contract stream configuration")
 });
 
 static XT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_xt.json").to_vec();
+    let mut data = include_bytes!("../../streams/xt.json").to_vec();
     from_slice(&mut data).expect("invalid xt stream configuration")
 });
 
 static KUCOIN_SPOT_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_kucoin_spot.json").to_vec();
+    let mut data = include_bytes!("../../streams/kucoin_spot.json").to_vec();
     from_slice(&mut data).expect("invalid kucoin spot stream configuration")
 });
 
 static KUCOIN_FUTURES_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_kucoin_futures.json").to_vec();
+    let mut data = include_bytes!("../../streams/kucoin_futures.json").to_vec();
     from_slice(&mut data).expect("invalid kucoin futures stream configuration")
 });
 
 static BINGX_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
-    let mut data = include_bytes!("../../streams_bingx.json").to_vec();
+    let mut data = include_bytes!("../../streams/bingx.json").to_vec();
     from_slice(&mut data).expect("invalid bingx stream configuration")
 });
 
