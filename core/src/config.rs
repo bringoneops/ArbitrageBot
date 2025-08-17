@@ -144,8 +144,14 @@ fn parse_list_env(var: &str) -> Vec<String> {
     env::var(var)
         .unwrap_or_default()
         .split(',')
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
+        .filter_map(|s| {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
         .collect()
 }
 
@@ -290,4 +296,25 @@ pub fn get() -> &'static Config {
 
 pub fn metrics_enabled() -> bool {
     CONFIG.get().map(|c| c.enable_metrics).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn parse_list_env_trims_and_skips_empty() {
+        env::set_var("PARSE_LIST_ENV_TEST", "foo, bar , ,baz, , ");
+        let result = parse_list_env("PARSE_LIST_ENV_TEST");
+        env::remove_var("PARSE_LIST_ENV_TEST");
+        assert_eq!(result, vec!["foo", "bar", "baz"]);
+    }
+
+    #[test]
+    fn parse_list_env_returns_empty_when_missing() {
+        env::remove_var("PARSE_LIST_ENV_TEST_MISSING");
+        let result = parse_list_env("PARSE_LIST_ENV_TEST_MISSING");
+        assert!(result.is_empty());
+    }
 }
