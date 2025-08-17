@@ -4,6 +4,7 @@ use rustls_native_certs::load_native_certs;
 use rustls_pemfile::certs;
 use sha2::{Digest, Sha256};
 use std::{fs::File, io::BufReader, sync::Arc, time::SystemTime};
+use subtle::ConstantTimeEq;
 
 struct PinnedVerifier {
     inner: WebPkiVerifier,
@@ -32,7 +33,7 @@ impl rustls::client::ServerCertVerifier for PinnedVerifier {
         if self
             .pins
             .iter()
-            .any(|p| p.as_slice() == fingerprint.as_slice())
+            .any(|p| p.as_slice().ct_eq(fingerprint.as_slice()).into())
         {
             Ok(rustls::client::ServerCertVerified::assertion())
         } else {
@@ -41,6 +42,8 @@ impl rustls::client::ServerCertVerifier for PinnedVerifier {
     }
 }
 
+/// Build a TLS configuration. `cert_pins` must be SHA-256 certificate pins
+/// encoded as hexadecimal strings.
 pub fn build_tls_config(
     ca_bundle: Option<&str>,
     cert_pins: &[String],

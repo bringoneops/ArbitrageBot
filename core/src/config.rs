@@ -50,6 +50,7 @@ pub struct Config {
     pub enable_metrics: bool,
     pub credentials: Credentials,
     pub ca_bundle: Option<String>,
+    /// SHA-256 certificate pins encoded as hexadecimal strings.
     pub cert_pins: Vec<String>,
     pub exchanges: Vec<ExchangeConfig>,
 }
