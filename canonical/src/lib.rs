@@ -5,17 +5,19 @@ use std::convert::TryFrom;
 pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
-    BingxStreamMessage, BitmartStreamMessage, BookTickerEvent, CoinexStreamMessage, Event,
-    GateioStreamMessage, KlineEvent, KucoinStreamMessage, LatokenStreamMessage, LbankStreamMessage,
-    MexcEvent, MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent, XtStreamMessage,
+    BingxStreamMessage, BitgetStreamMessage, BitmartStreamMessage, BookTickerEvent,
+    CoinexStreamMessage, Event, GateioStreamMessage, KlineEvent, KucoinStreamMessage,
+    LatokenStreamMessage, LbankStreamMessage, MexcEvent, MexcStreamMessage, MiniTickerEvent,
+    StreamMessage, TickerEvent, XtStreamMessage,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
-    BitmartDepthEvent, BitmartFundingRateEvent, BitmartKlineEvent, BitmartTickerEvent,
-    BitmartTradeEvent, CoinexBbo, CoinexDepth, CoinexKline, CoinexTrade, DepthUpdateEvent,
-    ForceOrderEvent, FundingRateEvent, GateioDepth, GateioKline, GateioTrade, IndexPriceEvent,
-    KucoinKline, KucoinLevel2, KucoinTrade, LatokenDepthEvent, LatokenKlineEvent,
-    LatokenTickerEvent, LatokenTradeEvent, MarkPriceEvent, OpenInterestEvent, TradeEvent, XtEvent,
+    BitgetDepthEvent, BitgetTickerEvent, BitgetTradeEvent, BitmartDepthEvent,
+    BitmartFundingRateEvent, BitmartKlineEvent, BitmartTickerEvent, BitmartTradeEvent, CoinexBbo,
+    CoinexDepth, CoinexKline, CoinexTrade, DepthUpdateEvent, ForceOrderEvent, FundingRateEvent,
+    GateioDepth, GateioKline, GateioTrade, IndexPriceEvent, KucoinKline, KucoinLevel2, KucoinTrade,
+    LatokenDepthEvent, LatokenKlineEvent, LatokenTickerEvent, LatokenTradeEvent, MarkPriceEvent,
+    OpenInterestEvent, TradeEvent, XtEvent,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -563,6 +565,106 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                 }))
             }
             BingxStreamMessage::Unknown => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: BitgetStreamMessage<'a>) -> Result<Self, Self::Error> {
+        let channel = msg.arg.channel.as_ref();
+        let symbol = msg.arg.inst_id;
+        let mut data_iter = msg.data.into_iter();
+        let v = data_iter.next().ok_or(())?;
+        if channel == "trade" {
+            let t: BitgetTradeEvent = serde_json::from_value(v).map_err(|_| ())?;
+            let price: f64 = t.price.parse().ok().ok_or(())?;
+            let quantity: f64 = t.volume.parse().ok().ok_or(())?;
+            let side = match t.side.as_ref() {
+                "buy" | "BUY" => Some(Side::Buy),
+                "sell" | "SELL" => Some(Side::Sell),
+                _ => None,
+            };
+            let trade_id = t.trade_id.and_then(|s| s.parse().ok());
+            Ok(MdEvent::Trade(Trade {
+                exchange: "bitget".to_string(),
+                symbol,
+                price,
+                quantity,
+                trade_id,
+                buyer_order_id: None,
+                seller_order_id: None,
+                timestamp: t.ts,
+                side,
+            }))
+        } else if channel == "depth" {
+            let d: BitgetDepthEvent = serde_json::from_value(v).map_err(|_| ())?;
+            let bids = d
+                .bids
+                .into_iter()
+                .filter_map(|[p, q]| {
+                    Some(Level {
+                        price: p.parse().ok()?,
+                        quantity: q.parse().ok()?,
+                        kind: BookKind::Bid,
+                    })
+                })
+                .collect();
+            let asks = d
+                .asks
+                .into_iter()
+                .filter_map(|[p, q]| {
+                    Some(Level {
+                        price: p.parse().ok()?,
+                        quantity: q.parse().ok()?,
+                        kind: BookKind::Ask,
+                    })
+                })
+                .collect();
+            Ok(MdEvent::DepthL2Update(DepthL2Update {
+                exchange: "bitget".to_string(),
+                symbol,
+                ts: d.ts,
+                bids,
+                asks,
+                first_update_id: None,
+                final_update_id: None,
+                previous_final_update_id: None,
+            }))
+        } else if channel == "ticker" {
+            let t: BitgetTickerEvent = serde_json::from_value(v).map_err(|_| ())?;
+            Ok(MdEvent::BookTicker(BookTicker {
+                exchange: "bitget".to_string(),
+                symbol,
+                ts: t.ts,
+                bid_price: t.bid_price.parse().ok().ok_or(())?,
+                bid_quantity: t.bid_qty.parse().ok().ok_or(())?,
+                ask_price: t.ask_price.parse().ok().ok_or(())?,
+                ask_quantity: t.ask_qty.parse().ok().ok_or(())?,
+            }))
+        } else if channel.starts_with("candle") {
+            let arr = v.as_array().ok_or(())?;
+            if arr.len() < 6 {
+                return Err(());
+            }
+            let ts: u64 = arr[0].as_str().ok_or(())?.parse().map_err(|_| ())?;
+            let open: f64 = arr[1].as_str().ok_or(())?.parse().map_err(|_| ())?;
+            let high: f64 = arr[2].as_str().ok_or(())?.parse().map_err(|_| ())?;
+            let low: f64 = arr[3].as_str().ok_or(())?.parse().map_err(|_| ())?;
+            let close: f64 = arr[4].as_str().ok_or(())?.parse().map_err(|_| ())?;
+            let volume: f64 = arr[5].as_str().ok_or(())?.parse().map_err(|_| ())?;
+            Ok(MdEvent::Kline(Kline {
+                exchange: "bitget".to_string(),
+                symbol,
+                ts,
+                open,
+                close,
+                high,
+                low,
+                volume,
+            }))
+        } else {
+            Err(())
         }
     }
 }

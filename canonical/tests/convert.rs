@@ -1,8 +1,8 @@
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use canonical::{
     events::{
-        BingxStreamMessage, BitmartStreamMessage, CoinexStreamMessage, Event, ForceOrder,
-        ForceOrderEvent, FundingRateEvent, GateioStreamMessage, IndexPriceEvent,
+        BingxStreamMessage, BitgetStreamMessage, BitmartStreamMessage, CoinexStreamMessage, Event,
+        ForceOrder, ForceOrderEvent, FundingRateEvent, GateioStreamMessage, IndexPriceEvent,
         Kline as EventKline, KlineEvent, KucoinStreamMessage, LatokenStreamMessage,
         LbankStreamMessage, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
         TickerEvent, TradeEvent, XtStreamMessage,
@@ -789,6 +789,95 @@ fn kucoin_kline_message_to_canonical() {
             assert_eq!(k.exchange, "kucoin");
             assert_eq!(k.symbol, "BTC-USDT");
             assert_eq!(k.open, 10.0);
+            let s = serde_json::to_string(&k).unwrap();
+            let de: CanonKline = serde_json::from_str(&s).unwrap();
+            assert_eq!(k, de);
+        }
+        _ => panic!("expected kline"),
+    }
+}
+
+#[test]
+fn bitget_trade_message_to_canonical() {
+    let msg: BitgetStreamMessage<'_> = serde_json::from_value(json!({
+        "arg": {"channel": "trade", "instId": "BTCUSDT"},
+        "data": [{"price": "100.0", "vol": "0.5", "side": "buy", "ts": 1u64, "tradeId": "1"}]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "bitget");
+            assert_eq!(t.symbol, "BTCUSDT");
+            assert_eq!(t.price, 100.0);
+            assert_eq!(t.side, Some(Side::Buy));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn bitget_depth_message_to_canonical() {
+    let msg: BitgetStreamMessage<'_> = serde_json::from_value(json!({
+        "arg": {"channel": "depth", "instId": "BTCUSDT"},
+        "data": [{
+            "bids": [["100.0", "1.0"]],
+            "asks": [["101.0", "2.0"]],
+            "ts": 1u64
+        }]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "bitget");
+            assert_eq!(b.symbol, "BTCUSDT");
+            assert_eq!(b.bids[0].price, 100.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn bitget_ticker_message_to_canonical() {
+    let msg: BitgetStreamMessage<'_> = serde_json::from_value(json!({
+        "arg": {"channel": "ticker", "instId": "BTCUSDT"},
+        "data": [{"bidPri": "100.0", "bidSz": "1.0", "askPri": "101.0", "askSz": "2.0", "ts": 1u64}]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::BookTicker(t) => {
+            assert_eq!(t.exchange, "bitget");
+            assert_eq!(t.symbol, "BTCUSDT");
+            assert_eq!(t.bid_price, 100.0);
+            let s = serde_json::to_string(&t).unwrap();
+            let de: BookTicker = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected ticker"),
+    }
+}
+
+#[test]
+fn bitget_kline_message_to_canonical() {
+    let msg: BitgetStreamMessage<'_> = serde_json::from_value(json!({
+        "arg": {"channel": "candle1m", "instId": "BTCUSDT"},
+        "data": [["1", "100.0", "110.0", "90.0", "105.0", "10.0"]]
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Kline(k) => {
+            assert_eq!(k.exchange, "bitget");
+            assert_eq!(k.symbol, "BTCUSDT");
+            assert_eq!(k.open, 100.0);
             let s = serde_json::to_string(&k).unwrap();
             let de: CanonKline = serde_json::from_str(&s).unwrap();
             assert_eq!(k, de);

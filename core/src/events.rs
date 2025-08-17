@@ -743,6 +743,58 @@ pub struct XtTicker<'a> {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct BitgetStreamMessage<'a> {
+    pub arg: BitgetArg<'a>,
+    #[serde(default)]
+    pub action: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub data: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BitgetArg<'a> {
+    pub channel: Cow<'a, str>,
+    #[serde(rename = "instId")]
+    pub inst_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BitgetTradeEvent<'a> {
+    pub price: Cow<'a, str>,
+    #[serde(rename = "vol", alias = "size")]
+    pub volume: Cow<'a, str>,
+    pub side: Cow<'a, str>,
+    #[serde(rename = "ts")]
+    pub ts: u64,
+    #[serde(rename = "tradeId", default)]
+    pub trade_id: Option<Cow<'a, str>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct BitgetDepthEvent<'a> {
+    #[serde(default)]
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    #[serde(default)]
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+    #[serde(rename = "ts")]
+    pub ts: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BitgetTickerEvent<'a> {
+    #[serde(rename = "bidPri", alias = "bidPx")]
+    pub bid_price: Cow<'a, str>,
+    #[serde(rename = "bidSz", alias = "bidSize")]
+    pub bid_qty: Cow<'a, str>,
+    #[serde(rename = "askPri", alias = "askPx")]
+    pub ask_price: Cow<'a, str>,
+    #[serde(rename = "askSz", alias = "askSize")]
+    pub ask_qty: Cow<'a, str>,
+    #[serde(rename = "ts")]
+    pub ts: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct BitmartStreamMessage<'a> {
     pub table: Cow<'a, str>,
     #[serde(default)]
