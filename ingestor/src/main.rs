@@ -87,8 +87,8 @@ async fn process_stream_event<F, Fut>(
                 }
             }
         }
-        Err(_) => {
-            error!(stream = %msg.stream, "failed to normalize event");
+        Err(e) => {
+            error!(error = %format!("{:?}", e), stream = %msg.stream, "failed to normalize event");
         }
     }
 }
