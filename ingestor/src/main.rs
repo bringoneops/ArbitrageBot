@@ -161,6 +161,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
+    use tokio::time as ttime;
 
     fn sample_msg() -> StreamMessage<'static> {
         let json = r#"{"stream":"btcusdt@bookTicker","data":{"e":"bookTicker","u":1,"s":"BTCUSDT","b":"0.1","B":"2","a":"0.2","A":"3"}}"#;
@@ -206,6 +207,70 @@ mod tests {
             .unwrap();
 
         assert_eq!(attempts.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn backoff_increments_and_stops_after_max_attempts() {
+        let msg = sample_msg();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let times: Arc<Mutex<Vec<ttime::Instant>>> = Arc::new(Mutex::new(Vec::new()));
+        let attempts_clone = attempts.clone();
+        let times_clone = times.clone();
+
+        let fail_times = 5;
+        let forward = move |_ev: &MdEvent| -> Result<()> {
+            times_clone.lock().unwrap().push(ttime::Instant::now());
+            let attempt = attempts_clone.fetch_add(1, Ordering::SeqCst);
+            if attempt < fail_times {
+                Err(anyhow!("fail"))
+            } else {
+                Ok(())
+            }
+        };
+
+        let task = tokio::spawn(process_stream_event(msg, false, forward));
+
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        ttime::advance(Duration::from_millis(99)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        ttime::advance(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+        ttime::advance(Duration::from_millis(199)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        ttime::advance(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+
+        ttime::advance(Duration::from_millis(399)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+        ttime::advance(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 4);
+
+        ttime::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 4);
+
+        task.await.unwrap();
+
+        let times = times.lock().unwrap();
+        assert_eq!(times.len(), 4);
+        let deltas: Vec<_> = times.windows(2).map(|w| w[1] - w[0]).collect();
+        assert_eq!(
+            deltas,
+            vec![
+                Duration::from_millis(100),
+                Duration::from_millis(200),
+                Duration::from_millis(400)
+            ]
+        );
     }
 }
 
