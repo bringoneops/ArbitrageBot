@@ -83,7 +83,7 @@ fn bench_semaphore_bucket(c: &mut Criterion) {
     c.bench_function("semaphore_bucket", |b| {
         let bucket = bucket.clone();
         b.to_async(&rt).iter(|| async {
-            bucket.acquire(1).await;
+            bucket.acquire(1).await.unwrap();
         });
     });
 }

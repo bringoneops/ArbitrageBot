@@ -102,7 +102,7 @@ async fn subscribe_handles_reconnect_failures() {
 #[tokio::test]
 async fn token_bucket_enforces_rate_limit() {
     let bucket = TokenBucket::new(1, 0, Duration::from_secs(60));
-    bucket.acquire(1).await;
+    bucket.acquire(1).await.unwrap();
     let fut = bucket.acquire(1);
     assert!(tokio::time::timeout(Duration::from_millis(50), fut)
         .await

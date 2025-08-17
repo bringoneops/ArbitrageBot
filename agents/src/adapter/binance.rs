@@ -452,7 +452,9 @@ async fn reconnect_loop<F, Fut, S>(
         .unwrap_or(10);
 
     loop {
-        ws_bucket.acquire(1).await;
+        if ws_bucket.acquire(1).await.is_err() {
+            break;
+        }
         tracing::info!(
             "\u{2192} opening WS ({}): {} ({} streams)",
             name,
@@ -520,7 +522,7 @@ async fn rate_limited_get(
     let mut backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(64);
     loop {
-        bucket.acquire(1).await;
+        bucket.acquire(1).await?;
         match client.get(url).send().await {
             Ok(resp) => {
                 if resp.status() == StatusCode::TOO_MANY_REQUESTS {

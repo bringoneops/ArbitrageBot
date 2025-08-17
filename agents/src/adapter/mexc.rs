@@ -200,7 +200,9 @@ impl ExchangeAdapter for MexcAdapter {
                     if shutdown.load(Ordering::Relaxed) {
                         break;
                     }
-                    ws_bucket.acquire(1).await;
+                    if ws_bucket.acquire(1).await.is_err() {
+                        break;
+                    }
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             let params: Vec<String> = symbols
@@ -291,7 +293,7 @@ impl ExchangeAdapter for MexcAdapter {
 
     async fn backfill(&mut self) -> Result<()> {
         // Placeholder for potential REST snapshot calls respecting HTTP rate limits
-        self.http_bucket.acquire(1).await;
+        self.http_bucket.acquire(1).await?;
         Ok(())
     }
 }
