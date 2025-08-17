@@ -101,6 +101,7 @@ The binary can be configured via environment variables:
 - `HTTP_REFILL_PER_SEC` – HTTP token refill rate per second. Defaults to `10`.
 - `WS_BURST` – maximum burst of WebSocket messages. Defaults to `5`.
 - `WS_REFILL_PER_SEC` – WebSocket token refill rate per second. Defaults to `5`.
+- `CERT_PINS` – comma-separated list of SHA-256 certificate fingerprints in hex.
 
 Example using a local proxy:
 
