@@ -1,12 +1,13 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, Proxy};
 use rustls::ClientConfig;
+use std::future::Future;
 use std::{env, sync::Arc};
+use tokio::time::{sleep, Duration};
 use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
 };
-use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -38,18 +39,19 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
     client_builder.build().context("building HTTP client")
 }
 
-fn forward_event(ev: &MdEvent) -> Result<()> {
-    let json = serde_json::to_string(ev).context("serializing MdEvent")?;
+async fn forward_event(ev: MdEvent) -> Result<()> {
+    let json = serde_json::to_string(&ev).context("serializing MdEvent")?;
     info!(event = %json, "forwarded md event");
     Ok(())
 }
 
-async fn process_stream_event<F>(
+async fn process_stream_event<F, Fut>(
     msg: StreamMessage<'static>,
     metrics_enabled: bool,
     mut forward_fn: F,
 ) where
-    F: FnMut(&MdEvent) -> Result<()>,
+    F: FnMut(&MdEvent) -> Fut,
+    Fut: Future<Output = Result<()>>,
 {
     match MdEvent::try_from(msg.data) {
         Ok(ev) => {
@@ -64,7 +66,7 @@ async fn process_stream_event<F>(
             let mut delay = Duration::from_millis(100);
             let max_delay = Duration::from_secs(1);
             loop {
-                match forward_fn(&ev) {
+                match forward_fn(&ev).await {
                     Ok(()) => break,
                     Err(e) if attempts < max_retries => {
                         attempts += 1;
@@ -99,7 +101,7 @@ async fn spawn_consumers(
         let mut set = set.lock().await;
         set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
-                process_stream_event(msg, metrics_enabled, forward_event).await;
+                process_stream_event(msg, metrics_enabled, |ev| forward_event(ev.clone())).await;
             }
         });
     }
@@ -174,9 +176,12 @@ mod tests {
         let times = Arc::new(Mutex::new(Vec::new()));
         let times_clone = times.clone();
 
-        let forward = move |_ev: &MdEvent| -> Result<()> {
-            times_clone.lock().unwrap().push(Instant::now());
-            Err(anyhow!("fail"))
+        let forward = move |_ev: &MdEvent| {
+            let times_clone = times_clone.clone();
+            async move {
+                times_clone.lock().unwrap().push(Instant::now());
+                Err(anyhow!("fail"))
+            }
         };
 
         tokio::spawn(process_stream_event(msg, false, forward))
@@ -197,9 +202,12 @@ mod tests {
         let attempts = Arc::new(AtomicUsize::new(0));
         let attempts_clone = attempts.clone();
 
-        let forward = move |_ev: &MdEvent| -> Result<()> {
-            attempts_clone.fetch_add(1, Ordering::SeqCst);
-            Err(anyhow!("fail"))
+        let forward = move |_ev: &MdEvent| {
+            let attempts_clone = attempts_clone.clone();
+            async move {
+                attempts_clone.fetch_add(1, Ordering::SeqCst);
+                Err(anyhow!("fail"))
+            }
         };
 
         tokio::spawn(process_stream_event(msg, false, forward))
@@ -218,13 +226,17 @@ mod tests {
         let times_clone = times.clone();
 
         let fail_times = 5;
-        let forward = move |_ev: &MdEvent| -> Result<()> {
-            times_clone.lock().unwrap().push(ttime::Instant::now());
-            let attempt = attempts_clone.fetch_add(1, Ordering::SeqCst);
-            if attempt < fail_times {
-                Err(anyhow!("fail"))
-            } else {
-                Ok(())
+        let forward = move |_ev: &MdEvent| {
+            let attempts_clone = attempts_clone.clone();
+            let times_clone = times_clone.clone();
+            async move {
+                times_clone.lock().unwrap().push(ttime::Instant::now());
+                let attempt = attempts_clone.fetch_add(1, Ordering::SeqCst);
+                if attempt < fail_times {
+                    Err(anyhow!("fail"))
+                } else {
+                    Ok(())
+                }
             }
         };
 
@@ -273,4 +285,3 @@ mod tests {
         );
     }
 }
-
