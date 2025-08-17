@@ -6,8 +6,8 @@ pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
     BingxStreamMessage, BitmartStreamMessage, BookTickerEvent, CoinexStreamMessage, Event,
-    GateioStreamMessage, KlineEvent, KucoinStreamMessage, LatokenStreamMessage, MexcEvent,
-    MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent, XtStreamMessage,
+    GateioStreamMessage, KlineEvent, KucoinStreamMessage, LatokenStreamMessage, LbankStreamMessage,
+    MexcEvent, MexcStreamMessage, MiniTickerEvent, StreamMessage, TickerEvent, XtStreamMessage,
 };
 use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use events::{
@@ -1126,6 +1126,79 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                 }))
             }
             _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
+    type Error = ();
+    fn try_from(msg: LbankStreamMessage<'a>) -> Result<Self, Self::Error> {
+        match msg {
+            LbankStreamMessage::Trade { pair, trade } => {
+                let price: f64 = trade.price.parse().ok().ok_or(())?;
+                let quantity: f64 = trade.volume.parse().ok().ok_or(())?;
+                let side = match trade.direction.as_ref() {
+                    "buy" | "BUY" => Some(Side::Buy),
+                    "sell" | "SELL" => Some(Side::Sell),
+                    _ => None,
+                };
+                Ok(MdEvent::Trade(Trade {
+                    exchange: "lbank".to_string(),
+                    symbol: pair,
+                    price,
+                    quantity,
+                    trade_id: None,
+                    buyer_order_id: None,
+                    seller_order_id: None,
+                    timestamp: 0,
+                    side,
+                }))
+            }
+            LbankStreamMessage::Depth { pair, depth } => {
+                let bids = depth
+                    .bids
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Bid,
+                        })
+                    })
+                    .collect();
+                let asks = depth
+                    .asks
+                    .into_iter()
+                    .filter_map(|[p, q]| {
+                        Some(Level {
+                            price: p.parse().ok()?,
+                            quantity: q.parse().ok()?,
+                            kind: BookKind::Ask,
+                        })
+                    })
+                    .collect();
+                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                    exchange: "lbank".to_string(),
+                    symbol: pair,
+                    ts: 0,
+                    bids,
+                    asks,
+                    first_update_id: None,
+                    final_update_id: None,
+                    previous_final_update_id: None,
+                }))
+            }
+            LbankStreamMessage::Kbar { pair, kbar } => Ok(MdEvent::Kline(Kline {
+                exchange: "lbank".to_string(),
+                symbol: pair,
+                ts: 0,
+                open: kbar.open.parse().ok().ok_or(())?,
+                close: kbar.close.parse().ok().ok_or(())?,
+                high: kbar.high.parse().ok().ok_or(())?,
+                low: kbar.low.parse().ok().ok_or(())?,
+                volume: kbar.volume.parse().ok().ok_or(())?,
+            })),
+            LbankStreamMessage::Unknown => Err(()),
         }
     }
 }
