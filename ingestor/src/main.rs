@@ -6,6 +6,7 @@ use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
 };
+use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -43,7 +44,13 @@ fn forward_event(ev: &MdEvent) -> Result<()> {
     Ok(())
 }
 
-fn process_stream_event(msg: StreamMessage<'static>, metrics_enabled: bool) {
+async fn process_stream_event<F>(
+    msg: StreamMessage<'static>,
+    metrics_enabled: bool,
+    mut forward_fn: F,
+) where
+    F: FnMut(&MdEvent) -> Result<()>,
+{
     match MdEvent::try_from(msg.data) {
         Ok(ev) => {
             if metrics_enabled {
@@ -54,16 +61,20 @@ fn process_stream_event(msg: StreamMessage<'static>, metrics_enabled: bool) {
 
             let mut attempts = 0;
             let max_retries = 3;
+            let mut delay = Duration::from_millis(100);
+            let max_delay = Duration::from_secs(1);
             loop {
-                match forward_event(&ev) {
+                match forward_fn(&ev) {
                     Ok(()) => break,
                     Err(e) if attempts < max_retries => {
                         attempts += 1;
                         error!(
                             error = %e,
                             attempt = attempts,
-                            "failed to forward event, retrying"
+                            "failed to forward event, retrying",
                         );
+                        sleep(delay).await;
+                        delay = std::cmp::min(delay * 2, max_delay);
                     }
                     Err(e) => {
                         error!(error = %e, "failed to forward event, giving up");
@@ -88,7 +99,7 @@ async fn spawn_consumers(
         let mut set = set.lock().await;
         set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
-                process_stream_event(msg, metrics_enabled);
+                process_stream_event(msg, metrics_enabled, forward_event).await;
             }
         });
     }
@@ -142,3 +153,59 @@ pub async fn run() -> Result<()> {
 async fn main() -> Result<()> {
     run().await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::anyhow;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    fn sample_msg() -> StreamMessage<'static> {
+        let json = r#"{"stream":"btcusdt@bookTicker","data":{"e":"bookTicker","u":1,"s":"BTCUSDT","b":"0.1","B":"2","a":"0.2","A":"3"}}"#;
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[tokio::test]
+    async fn backoff_doubles_delay() {
+        let msg = sample_msg();
+        let times = Arc::new(Mutex::new(Vec::new()));
+        let times_clone = times.clone();
+
+        let forward = move |_ev: &MdEvent| -> Result<()> {
+            times_clone.lock().unwrap().push(Instant::now());
+            Err(anyhow!("fail"))
+        };
+
+        tokio::spawn(process_stream_event(msg, false, forward))
+            .await
+            .unwrap();
+
+        let times = times.lock().unwrap();
+        assert_eq!(times.len(), 4);
+        let deltas: Vec<_> = times.windows(2).map(|w| w[1] - w[0]).collect();
+        assert!(deltas[0] >= Duration::from_millis(100) && deltas[0] < Duration::from_millis(150));
+        assert!(deltas[1] >= Duration::from_millis(200) && deltas[1] < Duration::from_millis(300));
+        assert!(deltas[2] >= Duration::from_millis(400) && deltas[2] < Duration::from_millis(500));
+    }
+
+    #[tokio::test]
+    async fn stops_after_max_retries() {
+        let msg = sample_msg();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_clone = attempts.clone();
+
+        let forward = move |_ev: &MdEvent| -> Result<()> {
+            attempts_clone.fetch_add(1, Ordering::SeqCst);
+            Err(anyhow!("fail"))
+        };
+
+        tokio::spawn(process_stream_event(msg, false, forward))
+            .await
+            .unwrap();
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 4);
+    }
+}
+
