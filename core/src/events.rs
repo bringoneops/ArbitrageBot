@@ -965,6 +965,60 @@ pub struct LatokenTickerEvent<'a> {
     pub ask_qty: Cow<'a, str>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+pub enum LbankStreamMessage<'a> {
+    #[serde(rename = "trade")]
+    Trade {
+        pair: String,
+        trade: LbankTradeEvent<'a>,
+    },
+    #[serde(rename = "depth")]
+    Depth {
+        pair: String,
+        depth: LbankDepthEvent<'a>,
+    },
+    #[serde(rename = "kbar")]
+    Kbar {
+        pair: String,
+        kbar: LbankKbarEvent<'a>,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LbankTradeEvent<'a> {
+    pub price: Cow<'a, str>,
+    pub volume: Cow<'a, str>,
+    #[serde(default)]
+    pub direction: Cow<'a, str>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LbankDepthEvent<'a> {
+    #[serde(default)]
+    pub bids: Vec<[Cow<'a, str>; 2]>,
+    #[serde(default)]
+    pub asks: Vec<[Cow<'a, str>; 2]>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LbankKbarEvent<'a> {
+    #[serde(rename = "o")]
+    pub open: Cow<'a, str>,
+    #[serde(rename = "h")]
+    pub high: Cow<'a, str>,
+    #[serde(rename = "l")]
+    pub low: Cow<'a, str>,
+    #[serde(rename = "c")]
+    pub close: Cow<'a, str>,
+    #[serde(rename = "v")]
+    pub volume: Cow<'a, str>,
+    #[serde(rename = "n", default)]
+    pub trades: Option<u64>,
+}
+
 impl<'a> TradeEvent<'a> {
     pub fn channel(&self) -> Channel {
         Channel::Trade

@@ -4,8 +4,8 @@ use canonical::{
         BingxStreamMessage, BitmartStreamMessage, CoinexStreamMessage, Event, ForceOrder,
         ForceOrderEvent, FundingRateEvent, GateioStreamMessage, IndexPriceEvent,
         Kline as EventKline, KlineEvent, KucoinStreamMessage, LatokenStreamMessage,
-        MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent, TickerEvent,
-        TradeEvent, XtStreamMessage,
+        LbankStreamMessage, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
+        TickerEvent, TradeEvent, XtStreamMessage,
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
@@ -1026,5 +1026,83 @@ fn coinex_index_event_to_canonical() {
             assert_eq!(p, de);
         }
         _ => panic!("expected index price"),
+    }
+}
+
+#[test]
+fn lbank_trade_message_to_canonical() {
+    let msg: LbankStreamMessage<'_> = serde_json::from_value(json!({
+        "type": "trade",
+        "pair": "btc_usdt",
+        "trade": {"price": "93200.0", "volume": "0.5", "direction": "buy"}
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Trade(t) => {
+            assert_eq!(t.exchange, "lbank");
+            assert_eq!(t.symbol, "btc_usdt");
+            assert_eq!(t.price, 93200.0);
+            assert_eq!(t.quantity, 0.5);
+            assert_eq!(t.side, Some(Side::Buy));
+            let s = serde_json::to_string(&t).unwrap();
+            let de: Trade = serde_json::from_str(&s).unwrap();
+            assert_eq!(t, de);
+        }
+        _ => panic!("expected trade"),
+    }
+}
+
+#[test]
+fn lbank_depth_message_to_canonical() {
+    let msg: LbankStreamMessage<'_> = serde_json::from_value(json!({
+        "type": "depth",
+        "pair": "btc_usdt",
+        "depth": {
+            "bids": [["93200.0", "1.0"]],
+            "asks": [["93300.0", "2.0"]]
+        }
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::DepthL2Update(b) => {
+            assert_eq!(b.exchange, "lbank");
+            assert_eq!(b.symbol, "btc_usdt");
+            assert_eq!(b.bids[0].price, 93200.0);
+            let s = serde_json::to_string(&b).unwrap();
+            let de: DepthL2Update = serde_json::from_str(&s).unwrap();
+            assert_eq!(b, de);
+        }
+        _ => panic!("expected depth"),
+    }
+}
+
+#[test]
+fn lbank_kbar_message_to_canonical() {
+    let msg: LbankStreamMessage<'_> = serde_json::from_value(json!({
+        "type": "kbar",
+        "pair": "btc_usdt",
+        "kbar": {
+            "o": "93000.0",
+            "h": "93300.0",
+            "l": "92900.0",
+            "c": "93200.0",
+            "v": "10.0",
+            "n": 100
+        }
+    }))
+    .unwrap();
+    let md = MdEvent::try_from(msg).unwrap();
+    match md {
+        MdEvent::Kline(k) => {
+            assert_eq!(k.exchange, "lbank");
+            assert_eq!(k.symbol, "btc_usdt");
+            assert_eq!(k.open, 93000.0);
+            let s = serde_json::to_string(&k).unwrap();
+            let de: CanonKline = serde_json::from_str(&s).unwrap();
+            assert_eq!(k, de);
+        }
+        _ => panic!("expected kline"),
     }
 }
