@@ -25,6 +25,8 @@ exchange produces data in a common format.
 
 This project connects to the Binance.US, Binance.com (global), Binance Futures, Binance Delivery, and Binance Options WebSocket APIs, forwarding a wide range of spot and derivative market data streams.
 
+For known operational risks and mitigations, see the [risk register](RISK_REGISTER.md).
+
 ## Supported Exchanges & Channels
 
 - **BingX:** `depth`, `trades`, `ticker`, `kline`
