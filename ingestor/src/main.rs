@@ -2,10 +2,11 @@ use anyhow::{Context, Result};
 use reqwest::{Client, Proxy};
 use rustls::ClientConfig;
 use std::future::Future;
-use std::{env, sync::Arc};
+use std::{env, num::NonZeroUsize, sync::Arc};
 use tokio::time::{sleep, Duration};
 use once_cell::sync::Lazy;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use lru::LruCache;
 use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
@@ -55,6 +56,29 @@ async fn forward_event(ev: MdEvent) -> Result<()> {
 
 static START: Lazy<Instant> = Lazy::new(Instant::now);
 
+type DedupeKey = (String, u8, String, u64);
+static DEDUPE_CACHE: Lazy<Mutex<LruCache<DedupeKey, ()>>> = Lazy::new(|| {
+    Mutex::new(LruCache::new(NonZeroUsize::new(1024).unwrap()))
+});
+
+fn dedupe_key(ev: &MdEvent) -> Option<DedupeKey> {
+    match ev {
+        MdEvent::Trade(e) => e
+            .trade_id
+            .map(|id| (e.exchange.clone(), ev.channel() as u8, e.symbol.clone(), id)),
+        MdEvent::DepthL2Update(e) => e.final_update_id.map(|id| {
+            (e.exchange.clone(), ev.channel() as u8, e.symbol.clone(), id)
+        }),
+        MdEvent::DepthSnapshot(e) => Some((
+            e.exchange.clone(),
+            ev.channel() as u8,
+            e.symbol.clone(),
+            e.last_update_id,
+        )),
+        _ => None,
+    }
+}
+
 async fn process_stream_event<F, Fut>(
     msg: StreamMessage<'static>,
     metrics_enabled: bool,
@@ -66,6 +90,18 @@ async fn process_stream_event<F, Fut>(
 {
     match MdEvent::try_from(msg.data) {
         Ok(mut ev) => {
+            if let Some(key) = dedupe_key(&ev) {
+                let mut cache = DEDUPE_CACHE.lock().await;
+                if cache.put(key, ()).is_some() {
+                    if metrics_enabled {
+                        metrics::counter!("md_dedupe_total").increment(1);
+                    }
+                    #[cfg(feature = "debug-logs")]
+                    debug!(stream = %msg.stream, "duplicate event dropped");
+                    return;
+                }
+            }
+
             if metrics_enabled {
                 metrics::counter!("md_events_total").increment(1);
             }

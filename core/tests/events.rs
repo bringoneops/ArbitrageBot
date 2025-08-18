@@ -89,15 +89,15 @@ parses_event!(
 
 #[test]
 fn parses_depth_update_event() {
-    let json = r#"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1,"s":"BTCUSDT","U":2,"u":3,"pu":1,"b":[["1.0","2.0"],["1.5","3.0"]],"a":[["2.0","1.0"],["2.5","4.0"]]}}"#;
+    let json = r#"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1,"s":"BTCUSDT","U":2,"u":3,"pu":1,"b":[["1.5","3.0"],["1.0","2.0"]],"a":[["2.0","1.0"],["2.5","4.0"]]}}"#;
     let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
     let md = MdEvent::try_from(msg.data).expect("failed to convert");
     match md {
         MdEvent::DepthL2Update(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
             assert_eq!(ev.ts, 1_000_000);
-            assert_eq!(ev.bids[0].price, 1.0);
-            assert_eq!(ev.bids[0].quantity, 2.0);
+            assert_eq!(ev.bids[0].price, 1.5);
+            assert_eq!(ev.bids[0].quantity, 3.0);
             assert_eq!(ev.bids[0].kind, BookKind::Bid);
             assert_eq!(ev.asks[0].price, 2.0);
             assert_eq!(ev.asks[0].quantity, 1.0);
