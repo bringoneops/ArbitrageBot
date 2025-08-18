@@ -30,21 +30,52 @@ pub use adapter::ExchangeAdapter;
 /// Shared task set type for spawning and tracking asynchronous tasks.
 pub type TaskSet = Arc<Mutex<JoinSet<()>>>;
 
+/// Channel sender wrapping separate queues for different market data channels.
+#[derive(Clone)]
+pub struct StreamSender {
+    book: mpsc::Sender<core::events::StreamMessage<'static>>,
+    trade: mpsc::Sender<core::events::StreamMessage<'static>>,
+    ticker: mpsc::Sender<core::events::StreamMessage<'static>>,
+}
+
+impl StreamSender {
+    /// Route messages to the appropriate channel queue. Messages are dropped
+    /// if the corresponding queue is full.
+    pub fn send(
+        &self,
+        msg: core::events::StreamMessage<'static>,
+    ) -> Result<(), mpsc::error::TrySendError<core::events::StreamMessage<'static>>> {
+        use core::events::Event;
+        match msg.data {
+            Event::DepthUpdate(_) | Event::BookTicker(_) => self.book.try_send(msg),
+            Event::Trade(_) | Event::AggTrade(_) => self.trade.try_send(msg),
+            Event::Ticker(_) | Event::MiniTicker(_) => self.ticker.try_send(msg),
+            _ => self.trade.try_send(msg),
+        }
+    }
+}
+
 /// Registry for event channels, creating them lazily on first use.
 #[derive(Clone)]
 pub struct ChannelRegistry {
-    senders: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
+    senders: Arc<DashMap<String, StreamSender>>,
     seq_counters: Arc<DashMap<String, AtomicU64>>,
-    buffer: usize,
+    book_buffer: usize,
+    trade_buffer: usize,
+    ticker_buffer: usize,
 }
 
 impl ChannelRegistry {
     /// Create a new registry using the provided channel buffer size.
     pub fn new(buffer: usize) -> Self {
+        let trade = std::cmp::max(1, buffer / 2);
+        let ticker = std::cmp::max(1, buffer / 4);
         Self {
             senders: Arc::new(DashMap::new()),
             seq_counters: Arc::new(DashMap::new()),
-            buffer,
+            book_buffer: buffer,
+            trade_buffer: trade,
+            ticker_buffer: ticker,
         }
     }
 
@@ -55,7 +86,7 @@ impl ChannelRegistry {
         &self,
         key: &str,
     ) -> (
-        mpsc::Sender<core::events::StreamMessage<'static>>,
+        StreamSender,
         Option<mpsc::Receiver<core::events::StreamMessage<'static>>>,
     ) {
         use dashmap::mapref::entry::Entry;
@@ -63,15 +94,35 @@ impl ChannelRegistry {
         match self.senders.entry(key.to_string()) {
             Entry::Occupied(entry) => (entry.get().clone(), None),
             Entry::Vacant(entry) => {
-                let (tx, rx) = mpsc::channel(self.buffer);
+                let (book_tx, book_rx) = mpsc::channel(self.book_buffer);
+                let (trade_tx, trade_rx) = mpsc::channel(self.trade_buffer);
+                let (ticker_tx, ticker_rx) = mpsc::channel(self.ticker_buffer);
+                let (out_tx, out_rx) =
+                    mpsc::channel(self.book_buffer + self.trade_buffer + self.ticker_buffer);
+
+                dispatcher(
+                    book_rx,
+                    trade_rx,
+                    ticker_rx,
+                    out_tx.clone(),
+                    self.book_buffer,
+                    self.trade_buffer,
+                    self.ticker_buffer,
+                );
+
+                let tx = StreamSender {
+                    book: book_tx,
+                    trade: trade_tx,
+                    ticker: ticker_tx,
+                };
                 entry.insert(tx.clone());
-                (tx, Some(rx))
+                (tx, Some(out_rx))
             }
         }
     }
 
     /// Retrieve the sender for an existing channel without creating one.
-    pub fn get(&self, key: &str) -> Option<mpsc::Sender<core::events::StreamMessage<'static>>> {
+    pub fn get(&self, key: &str) -> Option<StreamSender> {
         self.senders.get(key).map(|tx| tx.clone())
     }
 
@@ -91,6 +142,57 @@ impl ChannelRegistry {
             }
         }
     }
+}
+
+fn dispatcher(
+    mut book_rx: mpsc::Receiver<core::events::StreamMessage<'static>>,
+    mut trade_rx: mpsc::Receiver<core::events::StreamMessage<'static>>,
+    mut ticker_rx: mpsc::Receiver<core::events::StreamMessage<'static>>,
+    mut out_tx: mpsc::Sender<core::events::StreamMessage<'static>>,
+    book_cap: usize,
+    trade_cap: usize,
+    ticker_cap: usize,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                biased;
+                Some(msg) = book_rx.recv() => {
+                    if out_tx.send(msg).await.is_err() { break; }
+                }
+                Some(msg) = trade_rx.recv() => {
+                    if out_tx.send(msg).await.is_err() { break; }
+                }
+                Some(msg) = ticker_rx.recv() => {
+                    if out_tx.send(msg).await.is_err() { break; }
+                }
+                else => break,
+            }
+
+            if core::config::metrics_enabled() {
+                metrics::gauge!("md_queue_depth", "channel" => "book")
+                    .set(book_rx.len() as f64);
+                metrics::gauge!("md_queue_depth", "channel" => "trade")
+                    .set(trade_rx.len() as f64);
+                metrics::gauge!("md_queue_depth", "channel" => "ticker")
+                    .set(ticker_rx.len() as f64);
+            }
+
+            if ticker_rx.len() >= ticker_cap {
+                let _ = ticker_rx.try_recv();
+            }
+            if trade_rx.len() >= trade_cap {
+                if ticker_rx.try_recv().is_err() {
+                    let _ = trade_rx.try_recv();
+                }
+            }
+            if book_rx.len() >= book_cap {
+                if ticker_rx.try_recv().is_err() && trade_rx.try_recv().is_err() {
+                    let _ = book_rx.try_recv();
+                }
+            }
+        }
+    });
 }
 
 /// Run a collection of exchange adapters to completion.

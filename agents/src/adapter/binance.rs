@@ -759,7 +759,7 @@ pub async fn process_text_message(
 
     let key = format!("{}:{}", exchange, symbol);
     if let Some(tx) = channels.get(&key) {
-        if let Err(e) = tx.send(event).await {
+        if let Err(e) = tx.send(event) {
             tracing::warn!("failed to send event: {}", e);
         }
     } else {

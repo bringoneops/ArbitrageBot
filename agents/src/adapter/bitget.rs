@@ -23,7 +23,7 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tracing::{error, info, warn};
 
 use super::ExchangeAdapter;
-use crate::{registry, ChannelRegistry, TaskSet};
+use crate::{registry, ChannelRegistry, StreamSender, TaskSet};
 
 /// Configuration for the Bitget exchange.
 pub struct BitgetConfig {
@@ -210,7 +210,7 @@ impl super::ExchangeAdapter for BitgetAdapter {
                     match connect_async(&ws_url).await {
                         Ok((mut ws, _)) => {
                             let mut args = Vec::new();
-                            let mut senders: HashMap<String, mpsc::Sender<StreamMessage<'static>>> = HashMap::new();
+                            let mut senders: HashMap<String, StreamSender> = HashMap::new();
                             for s in &symbol_list {
                                 args.push(serde_json::json!({"channel":"trade","instId":s}));
                                 args.push(serde_json::json!({"channel":"depth","instId":s}));
@@ -235,7 +235,7 @@ impl super::ExchangeAdapter for BitgetAdapter {
                                                     if let Some(event) = parse_candle_message(&v) {
                                                         if let Some(sym) = event.data.symbol() {
                                                             if let Some(tx) = senders.get(sym) {
-                                                                if tx.send(event).await.is_err() { break; }
+                                                                if tx.send(event).is_err() { break; }
                                                             }
                                                         }
                                                     }
