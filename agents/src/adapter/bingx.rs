@@ -1,11 +1,12 @@
 use anyhow::{anyhow, Result};
 use arb_core as core;
 use async_trait::async_trait;
-use core::{chunk_streams_with_config, stream_config_for_exchange};
 use core::events::BingxStreamMessage;
+use core::{chunk_streams_with_config, stream_config_for_exchange};
 use futures::{future, future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::sync::{Arc, Once};
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep, Duration};
@@ -150,6 +151,7 @@ pub fn register() {
                                 client.clone(),
                                 global_cfg.chunk_size,
                                 symbols,
+                                channels.clone(),
                             );
                             {
                                 let mut set = task_set.lock().await;
@@ -174,6 +176,7 @@ pub struct BingxAdapter {
     _client: Client,
     chunk_size: usize,
     symbols: Vec<String>,
+    channels: ChannelRegistry,
 }
 
 impl BingxAdapter {
@@ -182,13 +185,67 @@ impl BingxAdapter {
         client: Client,
         chunk_size: usize,
         symbols: Vec<String>,
+        channels: ChannelRegistry,
     ) -> Self {
         Self {
             cfg,
             _client: client,
             chunk_size,
             symbols,
+            channels,
         }
+    }
+}
+
+fn map_message(msg: BingxStreamMessage<'_>) -> Option<core::events::StreamMessage<'static>> {
+    match msg {
+        BingxStreamMessage::Trade(t) => {
+            let stream = format!("{}@trade", t.symbol);
+            let ev = core::events::TradeEvent {
+                event_time: t.event_time,
+                symbol: t.symbol,
+                trade_id: t.trade_id.unwrap_or_default(),
+                price: Cow::Owned(t.price.into_owned()),
+                quantity: Cow::Owned(t.quantity.into_owned()),
+                buyer_order_id: t.buyer_order_id.unwrap_or_default(),
+                seller_order_id: t.seller_order_id.unwrap_or_default(),
+                trade_time: t.trade_time,
+                buyer_is_maker: t.buyer_is_maker.unwrap_or(false),
+                best_match: true,
+            };
+            Some(core::events::StreamMessage {
+                stream,
+                data: core::events::Event::Trade(ev),
+            })
+        }
+        BingxStreamMessage::DepthUpdate(d) => {
+            let symbol = d.symbol;
+            let stream = format!("{}@depth", symbol.clone());
+            let bids = d
+                .bids
+                .into_iter()
+                .map(|[p, q]| [Cow::Owned(p.into_owned()), Cow::Owned(q.into_owned())])
+                .collect();
+            let asks = d
+                .asks
+                .into_iter()
+                .map(|[p, q]| [Cow::Owned(p.into_owned()), Cow::Owned(q.into_owned())])
+                .collect();
+            let ev = core::events::DepthUpdateEvent {
+                event_time: d.event_time,
+                symbol,
+                first_update_id: d.first_update_id.unwrap_or_default(),
+                final_update_id: d.final_update_id.unwrap_or_default(),
+                previous_final_update_id: 0,
+                bids,
+                asks,
+            };
+            Some(core::events::StreamMessage {
+                stream,
+                data: core::events::Event::DepthUpdate(ev),
+            })
+        }
+        BingxStreamMessage::Unknown => None,
     }
 }
 
@@ -201,6 +258,8 @@ impl ExchangeAdapter for BingxAdapter {
 
         for chunk in chunks {
             let ws_url = self.cfg.ws_base.to_string();
+            let channels = self.channels.clone();
+            let exch_name = self.cfg.name;
             tokio::spawn(async move {
                 loop {
                     match connect_async(&ws_url).await {
@@ -226,14 +285,17 @@ impl ExchangeAdapter for BingxAdapter {
                                             Some(Ok(Message::Pong(_))) => {}
                                             Some(Ok(Message::Text(text))) => {
                                                 if let Ok(msg) = serde_json::from_str::<BingxStreamMessage>(&text) {
-                                                    match msg {
-                                                        BingxStreamMessage::Trade(_) => {
-                                                            info!("bingx trade event: {}", text);
+                                                    if let Some(event) = map_message(msg) {
+                                                        let symbol_key = match &event.data {
+                                                            core::events::Event::Trade(ev) => &ev.symbol,
+                                                            core::events::Event::DepthUpdate(ev) => &ev.symbol,
+                                                            _ => unreachable!(),
+                                                        };
+                                                        let key = format!("{}:{}", exch_name, symbol_key);
+                                                        let (tx, _) = channels.get_or_create(&key);
+                                                        if tx.send(event).is_err() {
+                                                            break;
                                                         }
-                                                        BingxStreamMessage::DepthUpdate(_) => {
-                                                            info!("bingx depth event: {}", text);
-                                                        }
-                                                        BingxStreamMessage::Unknown => {}
                                                     }
                                                 } else if let Ok(v) = serde_json::from_str::<Value>(&text) {
                                                     if let Some(ping) = v.get("ping").cloned() {
