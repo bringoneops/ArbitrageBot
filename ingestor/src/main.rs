@@ -1,9 +1,8 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, Proxy};
 use rustls::ClientConfig;
-use std::future::Future;
 use std::{env, num::NonZeroUsize, sync::Arc};
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
 use once_cell::sync::Lazy;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use lru::LruCache;
@@ -11,7 +10,7 @@ use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
 };
-use tracing::{debug, error, info, Level};
+use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
 
 use agents::{spawn_adapters, TaskSet};
@@ -21,6 +20,8 @@ use core::config;
 use core::events::StreamMessage;
 use core::tls;
 use agents::ChannelRegistry;
+mod sink;
+use sink::Sink;
 
 mod ops;
 
@@ -44,14 +45,6 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
             .proxy(Proxy::all(format!("socks5h://{}", proxy)).context("invalid proxy URL")?);
     }
     client_builder.build().context("building HTTP client")
-}
-
-async fn forward_event(ev: MdEvent) -> Result<()> {
-    if tracing::enabled!(Level::INFO) {
-        let json = serde_json::to_string(&ev).context("serializing MdEvent")?;
-        info!(event = %json, "forwarded md event");
-    }
-    Ok(())
 }
 
 static START: Lazy<Instant> = Lazy::new(Instant::now);
@@ -79,15 +72,12 @@ fn dedupe_key(ev: &MdEvent) -> Option<DedupeKey> {
     }
 }
 
-async fn process_stream_event<F, Fut>(
+async fn process_stream_event(
     msg: StreamMessage<'static>,
     metrics_enabled: bool,
     channels: ChannelRegistry,
-    mut forward_fn: F,
-) where
-    F: FnMut(&MdEvent) -> Fut,
-    Fut: Future<Output = Result<()>>,
-{
+    sink: Arc<dyn Sink>,
+) {
     match MdEvent::try_from(msg.data) {
         Ok(mut ev) => {
             if let Some(key) = dedupe_key(&ev) {
@@ -108,10 +98,6 @@ async fn process_stream_event<F, Fut>(
             #[cfg(feature = "debug-logs")]
             debug!(?ev, stream = %msg.stream, "normalized event");
 
-            let mut attempts = 0;
-            let max_retries = 3;
-            let mut delay = Duration::from_millis(100);
-            let max_delay = Duration::from_secs(1);
             let monotonic = START.elapsed().as_nanos() as u64;
             let utc = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -181,24 +167,8 @@ async fn process_stream_event<F, Fut>(
                 }
             }
 
-            loop {
-                match forward_fn(&ev).await {
-                    Ok(()) => break,
-                    Err(e) if attempts < max_retries => {
-                        attempts += 1;
-                        error!(
-                            error = %e,
-                            attempt = attempts,
-                            "failed to forward event, retrying",
-                        );
-                        sleep(delay).await;
-                        delay = std::cmp::min(delay.saturating_mul(2), max_delay);
-                    }
-                    Err(e) => {
-                        error!(error = %e, "failed to forward event, giving up");
-                        break;
-                    }
-                }
+            if let Err(e) = sink.publish_batch(&[ev]).await {
+                error!(error = %e, "failed to publish event batch");
             }
         }
         Err(e) => {
@@ -212,14 +182,16 @@ async fn spawn_consumers(
     join_set: TaskSet,
     metrics_enabled: bool,
     channels: ChannelRegistry,
+    sink: Arc<dyn Sink>,
 ) {
     for mut event_rx in receivers {
         let set = join_set.clone();
         let channels = channels.clone();
+        let sink_cl = sink.clone();
         let mut set = set.lock().await;
         set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
-                process_stream_event(msg, metrics_enabled, channels.clone(), |ev| forward_event(ev.clone())).await;
+                process_stream_event(msg, metrics_enabled, channels.clone(), sink_cl.clone()).await;
             }
         });
     }
@@ -252,8 +224,18 @@ pub async fn run() -> Result<()> {
     )
     .await?;
 
+    // Initialize sink from environment.
+    let sink = sink::init_from_env().await?;
+
     // Spawn a consumer task per partition to normalize events.
-    spawn_consumers(receivers, join_set.clone(), metrics_enabled, channels.clone()).await;
+    spawn_consumers(
+        receivers,
+        join_set.clone(),
+        metrics_enabled,
+        channels.clone(),
+        sink,
+    )
+    .await;
 
     // Drop the original senders so receivers can terminate once all adapters finish.
     drop(channels);
@@ -282,6 +264,7 @@ async fn main() -> Result<()> {
 mod tests {
     use super::*;
     use anyhow::anyhow;
+    use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
@@ -294,22 +277,29 @@ mod tests {
 
     #[tokio::test]
     async fn backoff_doubles_delay() {
-        let msg = sample_msg();
-        let channels = ChannelRegistry::new(1);
-        let times = Arc::new(Mutex::new(Vec::new()));
-        let times_clone = times.clone();
+        struct FailSink {
+            times: Arc<Mutex<Vec<Instant>>>,
+        }
 
-        let forward = move |_ev: &MdEvent| {
-            let times_clone = times_clone.clone();
-            async move {
-                times_clone.lock().unwrap().push(Instant::now());
+        #[async_trait]
+        impl Sink for FailSink {
+            async fn publish_batch(&self, _events: &[MdEvent]) -> Result<()> {
+                self.times.lock().unwrap().push(Instant::now());
                 Err(anyhow!("fail"))
             }
-        };
+        }
 
-        tokio::spawn(process_stream_event(msg, false, channels, forward))
-            .await
-            .unwrap();
+        let times = Arc::new(Mutex::new(Vec::new()));
+        let sink = sink::AtLeastOnceSink::new(
+            FailSink {
+                times: times.clone(),
+            },
+            None,
+            None,
+            3,
+        );
+
+        let _ = sink.publish_batch(&[]).await;
 
         let times = times.lock().unwrap();
         assert_eq!(times.len(), 4);
@@ -321,82 +311,70 @@ mod tests {
 
     #[tokio::test]
     async fn stops_after_max_retries() {
-        let msg = sample_msg();
-        let channels = ChannelRegistry::new(1);
-        let attempts = Arc::new(AtomicUsize::new(0));
-        let attempts_clone = attempts.clone();
+        struct FailSink {
+            attempts: Arc<AtomicUsize>,
+        }
 
-        let forward = move |_ev: &MdEvent| {
-            let attempts_clone = attempts_clone.clone();
-            async move {
-                attempts_clone.fetch_add(1, Ordering::SeqCst);
+        #[async_trait]
+        impl Sink for FailSink {
+            async fn publish_batch(&self, _events: &[MdEvent]) -> Result<()> {
+                self.attempts.fetch_add(1, Ordering::SeqCst);
                 Err(anyhow!("fail"))
             }
-        };
+        }
 
-        tokio::spawn(process_stream_event(msg, false, channels, forward))
-            .await
-            .unwrap();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let sink = sink::AtLeastOnceSink::new(
+            FailSink {
+                attempts: attempts.clone(),
+            },
+            None,
+            None,
+            3,
+        );
+
+        let _ = sink.publish_batch(&[]).await;
 
         assert_eq!(attempts.load(Ordering::SeqCst), 4);
     }
 
     #[tokio::test(start_paused = true)]
     async fn backoff_increments_and_stops_after_max_attempts() {
-        let msg = sample_msg();
-        let channels = ChannelRegistry::new(1);
-        let attempts = Arc::new(AtomicUsize::new(0));
-        let times: Arc<Mutex<Vec<ttime::Instant>>> = Arc::new(Mutex::new(Vec::new()));
-        let attempts_clone = attempts.clone();
-        let times_clone = times.clone();
+        struct FailThenSucceed {
+            attempts: Arc<AtomicUsize>,
+            times: Arc<Mutex<Vec<ttime::Instant>>>,
+            fail_times: usize,
+        }
 
-        let fail_times = 5;
-        let forward = move |_ev: &MdEvent| {
-            let attempts_clone = attempts_clone.clone();
-            let times_clone = times_clone.clone();
-            async move {
-                times_clone.lock().unwrap().push(ttime::Instant::now());
-                let attempt = attempts_clone.fetch_add(1, Ordering::SeqCst);
-                if attempt < fail_times {
+        #[async_trait]
+        impl Sink for FailThenSucceed {
+            async fn publish_batch(&self, _events: &[MdEvent]) -> Result<()> {
+                self.times.lock().unwrap().push(ttime::Instant::now());
+                let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+                if attempt < self.fail_times {
                     Err(anyhow!("fail"))
                 } else {
                     Ok(())
                 }
             }
-        };
+        }
 
-        let task = tokio::spawn(process_stream_event(msg, false, channels, forward));
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let times: Arc<Mutex<Vec<ttime::Instant>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = sink::AtLeastOnceSink::new(
+            FailThenSucceed {
+                attempts: attempts.clone(),
+                times: times.clone(),
+                fail_times: 5,
+            },
+            None,
+            None,
+            3,
+        );
 
-        tokio::task::yield_now().await;
-        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        let _ = sink.publish_batch(&[]).await;
 
-        ttime::advance(Duration::from_millis(99)).await;
-        tokio::task::yield_now().await;
-        assert_eq!(attempts.load(Ordering::SeqCst), 1);
-        ttime::advance(Duration::from_millis(1)).await;
-        tokio::task::yield_now().await;
-        assert_eq!(attempts.load(Ordering::SeqCst), 2);
-
-        ttime::advance(Duration::from_millis(199)).await;
-        tokio::task::yield_now().await;
-        assert_eq!(attempts.load(Ordering::SeqCst), 2);
-        ttime::advance(Duration::from_millis(1)).await;
-        tokio::task::yield_now().await;
-        assert_eq!(attempts.load(Ordering::SeqCst), 3);
-
-        ttime::advance(Duration::from_millis(399)).await;
-        tokio::task::yield_now().await;
-        assert_eq!(attempts.load(Ordering::SeqCst), 3);
-        ttime::advance(Duration::from_millis(1)).await;
-        tokio::task::yield_now().await;
         assert_eq!(attempts.load(Ordering::SeqCst), 4);
-
-        ttime::advance(Duration::from_secs(1)).await;
-        tokio::task::yield_now().await;
-        assert_eq!(attempts.load(Ordering::SeqCst), 4);
-
-        task.await.unwrap();
-
         let times = times.lock().unwrap();
         assert_eq!(times.len(), 4);
         let deltas: Vec<_> = times.windows(2).map(|w| w[1] - w[0]).collect();
@@ -412,21 +390,27 @@ mod tests {
 
     #[tokio::test]
     async fn stamps_ingest_fields_and_seq() {
-        let msg = sample_msg();
-        let channels = ChannelRegistry::new(1);
-        let first = Arc::new(Mutex::new(None));
-        let first_cl = first.clone();
-        let forward = move |ev: &MdEvent| {
-            let first_cl = first_cl.clone();
-            let ev_clone = ev.clone();
-            async move {
-                *first_cl.lock().unwrap() = Some(ev_clone);
+        struct CaptureSink(Arc<Mutex<Vec<MdEvent>>>);
+
+        #[async_trait]
+        impl Sink for CaptureSink {
+            async fn publish_batch(&self, events: &[MdEvent]) -> Result<()> {
+                self.0.lock().unwrap().extend_from_slice(events);
                 Ok(())
             }
-        };
-        process_stream_event(msg, false, channels.clone(), forward).await;
-        let ev1 = first.lock().unwrap().clone().unwrap();
-        match ev1 {
+        }
+
+        let msg = sample_msg();
+        let msg2 = sample_msg();
+        let channels = ChannelRegistry::new(1);
+        let store = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::new(CaptureSink(store.clone()));
+
+        process_stream_event(msg, false, channels.clone(), sink.clone()).await;
+        process_stream_event(msg2, false, channels.clone(), sink).await;
+
+        let events = store.lock().unwrap();
+        match &events[0] {
             MdEvent::BookTicker(bt) => {
                 assert!(bt.ingest_ts_monotonic > 0);
                 assert!(bt.ingest_ts_utc > 0);
@@ -434,21 +418,7 @@ mod tests {
             }
             _ => panic!("expected book ticker"),
         }
-
-        let second = Arc::new(Mutex::new(None));
-        let second_cl = second.clone();
-        let forward2 = move |ev: &MdEvent| {
-            let second_cl = second_cl.clone();
-            let ev_clone = ev.clone();
-            async move {
-                *second_cl.lock().unwrap() = Some(ev_clone);
-                Ok(())
-            }
-        };
-        let msg2 = sample_msg();
-        process_stream_event(msg2, false, channels.clone(), forward2).await;
-        let ev2 = second.lock().unwrap().clone().unwrap();
-        match ev2 {
+        match &events[1] {
             MdEvent::BookTicker(bt) => {
                 assert_eq!(bt.seq_no, 1);
             }
