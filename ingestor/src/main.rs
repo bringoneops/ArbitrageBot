@@ -11,7 +11,7 @@ use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
 };
-use tracing::{debug, error, info, Level};
+use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
 
 use agents::ChannelRegistry;
@@ -21,8 +21,10 @@ use canonical::{MdEvent, MdEventKind};
 use core::config;
 use core::events::StreamMessage;
 use core::tls;
+use sink::{FileSink, Sink};
 
 mod ops;
+mod sink;
 
 fn init_tracing() {
     tracing_subscriber::fmt()
@@ -44,14 +46,6 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
             .proxy(Proxy::all(format!("socks5h://{}", proxy)).context("invalid proxy URL")?);
     }
     client_builder.build().context("building HTTP client")
-}
-
-async fn forward_event(ev: MdEvent) -> Result<()> {
-    if tracing::enabled!(Level::INFO) {
-        let json = serde_json::to_string(&ev).context("serializing MdEvent")?;
-        info!(event = %json, "forwarded md event");
-    }
-    Ok(())
 }
 
 static START: Lazy<Instant> = Lazy::new(Instant::now);
@@ -217,20 +211,28 @@ async fn spawn_consumers(
     join_set: TaskSet,
     metrics_enabled: bool,
     channels: ChannelRegistry,
+    sink: Arc<dyn Sink>,
 ) {
     for mut event_rx in receivers {
         let set = join_set.clone();
         let channels = channels.clone();
+        let sink = sink.clone();
         let mut set = set.lock().await;
         set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
                 if metrics_enabled {
                     metrics::gauge!("consumer_queue_depth").set(event_rx.len() as f64);
                 }
-                process_stream_event(msg, metrics_enabled, channels.clone(), |ev| {
-                    forward_event(ev.clone())
+                let sink_cl = sink.clone();
+                process_stream_event(msg, metrics_enabled, channels.clone(), move |ev| {
+                    let sink_cl = sink_cl.clone();
+                    let ev = ev.clone();
+                    async move { sink_cl.publish(&ev).await }
                 })
                 .await;
+            }
+            if let Err(e) = sink.flush().await {
+                error!(error = %e, "failed to flush sink");
             }
         });
     }
@@ -247,6 +249,9 @@ pub async fn run() -> Result<()> {
 
     let metrics_enabled = core::config::metrics_enabled();
     ops::serve_all(metrics_enabled)?;
+
+    let sink_path = env::var("MD_SINK_FILE").context("MD_SINK_FILE is not set")?;
+    let sink: Arc<dyn Sink> = Arc::new(FileSink::new(sink_path).await?);
 
     let join_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
     // Install signal-based shutdown handling before starting intake tasks.
@@ -271,6 +276,7 @@ pub async fn run() -> Result<()> {
         join_set.clone(),
         metrics_enabled,
         channels.clone(),
+        sink.clone(),
     )
     .await;
 
@@ -286,6 +292,8 @@ pub async fn run() -> Result<()> {
             }
         }
     }
+
+    sink.flush().await?;
 
     ops::set_ready(false);
 
