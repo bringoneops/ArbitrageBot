@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
+use lru::LruCache;
+use once_cell::sync::Lazy;
 use reqwest::{Client, Proxy};
 use rustls::ClientConfig;
 use std::future::Future;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, num::NonZeroUsize, sync::Arc};
 use tokio::time::{sleep, Duration};
-use once_cell::sync::Lazy;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use lru::LruCache;
 use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
@@ -14,13 +14,13 @@ use tokio::{
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::EnvFilter;
 
+use agents::ChannelRegistry;
 use agents::{spawn_adapters, TaskSet};
 use arb_core as core;
 use canonical::MdEvent;
 use core::config;
 use core::events::StreamMessage;
 use core::tls;
-use agents::ChannelRegistry;
 
 mod ops;
 
@@ -57,18 +57,17 @@ async fn forward_event(ev: MdEvent) -> Result<()> {
 static START: Lazy<Instant> = Lazy::new(Instant::now);
 
 type DedupeKey = (String, u8, String, u64);
-static DEDUPE_CACHE: Lazy<Mutex<LruCache<DedupeKey, ()>>> = Lazy::new(|| {
-    Mutex::new(LruCache::new(NonZeroUsize::new(1024).unwrap()))
-});
+static DEDUPE_CACHE: Lazy<Mutex<LruCache<DedupeKey, ()>>> =
+    Lazy::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(1024).unwrap())));
 
 fn dedupe_key(ev: &MdEvent) -> Option<DedupeKey> {
     match ev {
         MdEvent::Trade(e) => e
             .trade_id
             .map(|id| (e.exchange.clone(), ev.channel() as u8, e.symbol.clone(), id)),
-        MdEvent::DepthL2Update(e) => e.final_update_id.map(|id| {
-            (e.exchange.clone(), ev.channel() as u8, e.symbol.clone(), id)
-        }),
+        MdEvent::DepthL2Update(e) => e
+            .final_update_id
+            .map(|id| (e.exchange.clone(), ev.channel() as u8, e.symbol.clone(), id)),
         MdEvent::DepthSnapshot(e) => Some((
             e.exchange.clone(),
             ev.channel() as u8,
@@ -182,7 +181,13 @@ async fn process_stream_event<F, Fut>(
             }
 
             loop {
-                match forward_fn(&ev).await {
+                let start = Instant::now();
+                let res = forward_fn(&ev).await;
+                if metrics_enabled {
+                    metrics::histogram!("sink_latency_us")
+                        .record(start.elapsed().as_micros() as f64);
+                }
+                match res {
                     Ok(()) => break,
                     Err(e) if attempts < max_retries => {
                         attempts += 1;
@@ -219,7 +224,13 @@ async fn spawn_consumers(
         let mut set = set.lock().await;
         set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
-                process_stream_event(msg, metrics_enabled, channels.clone(), |ev| forward_event(ev.clone())).await;
+                if metrics_enabled {
+                    metrics::gauge!("consumer_queue_depth").set(event_rx.len() as f64);
+                }
+                process_stream_event(msg, metrics_enabled, channels.clone(), |ev| {
+                    forward_event(ev.clone())
+                })
+                .await;
             }
         });
     }
@@ -253,7 +264,13 @@ pub async fn run() -> Result<()> {
     .await?;
 
     // Spawn a consumer task per partition to normalize events.
-    spawn_consumers(receivers, join_set.clone(), metrics_enabled, channels.clone()).await;
+    spawn_consumers(
+        receivers,
+        join_set.clone(),
+        metrics_enabled,
+        channels.clone(),
+    )
+    .await;
 
     // Drop the original senders so receivers can terminate once all adapters finish.
     drop(channels);
