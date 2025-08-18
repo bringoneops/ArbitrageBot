@@ -89,7 +89,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -130,8 +130,8 @@ pub struct LatokenAdapter {
     chunk_size: usize,
     symbols: Vec<String>,
     channels: ChannelRegistry,
-    http_bucket: Arc<TokenBucket>,
-    ws_bucket: Arc<TokenBucket>,
+    _http_bucket: Arc<TokenBucket>,
+    _ws_bucket: Arc<TokenBucket>,
     tasks: Vec<JoinHandle<Result<()>>>,
     shutdown: Arc<AtomicBool>,
 }
@@ -151,12 +151,12 @@ impl LatokenAdapter {
             chunk_size,
             symbols,
             channels,
-            http_bucket: Arc::new(TokenBucket::new(
+            _http_bucket: Arc::new(TokenBucket::new(
                 global_cfg.http_burst,
                 global_cfg.http_refill_per_sec,
                 std::time::Duration::from_secs(1),
             )),
-            ws_bucket: Arc::new(TokenBucket::new(
+            _ws_bucket: Arc::new(TokenBucket::new(
                 global_cfg.ws_burst,
                 global_cfg.ws_refill_per_sec,
                 std::time::Duration::from_secs(1),
@@ -228,7 +228,7 @@ fn parse_message(text: &str) -> Option<CoreStreamMessage<'static>> {
                 best_match: true,
             };
             Some(CoreStreamMessage {
-                stream: format!("{}@trade", symbol),
+                stream: format!("{symbol}@trade"),
                 data: events::Event::Trade(event),
             })
         }
@@ -254,7 +254,7 @@ fn parse_message(text: &str) -> Option<CoreStreamMessage<'static>> {
                 asks,
             };
             Some(CoreStreamMessage {
-                stream: format!("{}@depth", symbol),
+                stream: format!("{symbol}@depth"),
                 data: events::Event::DepthUpdate(event),
             })
         }
@@ -280,7 +280,7 @@ fn parse_message(text: &str) -> Option<CoreStreamMessage<'static>> {
                 },
             };
             Some(CoreStreamMessage {
-                stream: format!("{}@kline", symbol),
+                stream: format!("{symbol}@kline"),
                 data: events::Event::Kline(event),
             })
         }
@@ -296,7 +296,7 @@ impl LatokenAdapter {
         channels: ChannelRegistry,
         shutdown: Arc<AtomicBool>,
     ) -> Result<()> {
-        let key = format!("{}:{}", name, symbol);
+        let key = format!("{name}:{symbol}");
         loop {
             let (ws_stream, _) = connect_async(&url).await?;
             info!("latoken connected: {}", symbol);

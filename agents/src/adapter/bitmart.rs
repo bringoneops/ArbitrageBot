@@ -156,13 +156,11 @@ async fn fetch_depth_snapshot(
 ) -> Result<core::OrderBook> {
     let url = if is_contract {
         format!(
-            "https://api-cloud.bitmart.com/contract/public/depth?symbol={}",
-            symbol
+            "https://api-cloud.bitmart.com/contract/public/depth?symbol={symbol}",
         )
     } else {
         format!(
-            "https://api-cloud.bitmart.com/spot/v1/symbols/book?symbol={}",
-            symbol
+            "https://api-cloud.bitmart.com/spot/v1/symbols/book?symbol={symbol}",
         )
     };
 
@@ -263,7 +261,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -344,20 +342,20 @@ impl ExchangeAdapter for BitmartAdapter {
                 .iter()
                 .flat_map(|s| {
                     let mut t = vec![
-                        format!("{}/trade:{}", prefix, s),
-                        format!("{}/ticker:{}", prefix, s),
+                        format!("{prefix}/trade:{s}"),
+                        format!("{prefix}/ticker:{s}"),
                     ];
                     if prefix == "spot" {
-                        t.push(format!("{}/kline1m:{}", prefix, s));
-                        t.push(format!("{}/depth5:{}", prefix, s));
-                        t.push(format!("{}/depth20:{}", prefix, s));
+                        t.push(format!("{prefix}/kline1m:{s}"));
+                        t.push(format!("{prefix}/depth5:{s}"));
+                        t.push(format!("{prefix}/depth20:{s}"));
                     } else {
-                        t.push(format!("{}/klineBin1m:{}", prefix, s));
-                        t.push(format!("{}/depth5:{}", prefix, s));
-                        t.push(format!("{}/depth20:{}", prefix, s));
-                        t.push(format!("{}/depthIncrease5:{}", prefix, s));
-                        t.push(format!("{}/depthIncrease20:{}", prefix, s));
-                        t.push(format!("{}/fundingRate:{}", prefix, s));
+                        t.push(format!("{prefix}/klineBin1m:{s}"));
+                        t.push(format!("{prefix}/depth5:{s}"));
+                        t.push(format!("{prefix}/depth20:{s}"));
+                        t.push(format!("{prefix}/depthIncrease5:{s}"));
+                        t.push(format!("{prefix}/depthIncrease20:{s}"));
+                        t.push(format!("{prefix}/fundingRate:{s}"));
                     }
                     t
                 })
@@ -366,9 +364,9 @@ impl ExchangeAdapter for BitmartAdapter {
                 .iter()
                 .map(|s| {
                     if prefix == "spot" {
-                        format!("{}/depth50:{}", prefix, s)
+                        format!("{prefix}/depth50:{s}")
                     } else {
-                        format!("{}/depth20:{}", prefix, s)
+                        format!("{prefix}/depth20:{s}")
                     }
                 })
                 .collect();
@@ -456,12 +454,12 @@ impl ExchangeAdapter for BitmartAdapter {
                                                                                 books.insert(sym.clone(), snap.into());
                                                                             }
 
-                                                                            let stream = format!("{}@depth", sym.clone());
+                                                                            let stream = format!("{sym}@depth", sym = sym.clone());
                                                                             let msg = StreamMessage {
                                                                                 stream,
                                                                                 data: Event::DepthUpdate(update),
                                                                             };
-                                                                            let key = format!("{}:{}", cfg.name, sym);
+                                                                            let key = format!("{name}:{sym}", name = cfg.name, sym = sym);
                                                                             if let Some(tx) = channels.get(&key) {
                                                                                 if let Err(e) = tx.send(msg) {
                                                                                     warn!(channel = %key, "failed to send depth update: {}", e);

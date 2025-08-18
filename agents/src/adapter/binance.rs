@@ -141,7 +141,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -234,7 +234,7 @@ impl BinanceAdapter {
     async fn spawn_chunk_reader(&self, chunk: Vec<String>, depth_base: &str) -> Result<()> {
         let chunk_len = chunk.len();
         let param = chunk.join("/");
-        let url = Url::parse(&format!("{}{}", self.cfg.ws_base, param))
+        let url = Url::parse(&format!("{base}{param}", base = self.cfg.ws_base, param = param))
             .context("parsing WebSocket URL")?;
 
         let proxy = self.proxy_url.clone();
@@ -312,7 +312,7 @@ impl BinanceAdapter {
 impl ExchangeAdapter for BinanceAdapter {
     async fn subscribe(&mut self) -> Result<()> {
         for symbol in &self.symbols {
-            let key = format!("{}:{}", self.cfg.name, symbol);
+            let key = format!("{name}:{symbol}", name = self.cfg.name, symbol = symbol);
             // Ensure a channel exists for each subscribed symbol
             self.channels.get_or_create(&key);
         }
@@ -388,7 +388,7 @@ impl ExchangeAdapter for BinanceAdapter {
         let bucket = self.http_bucket.clone();
         let fetches = stream::iter(symbols.clone())
             .map(|sym| {
-                let depth_url = format!("{}depth?symbol={}", depth_base, sym);
+                let depth_url = format!("{depth_base}depth?symbol={sym}");
                 let client = self.client.clone();
                 let bucket = bucket.clone();
                 async move {
@@ -436,7 +436,7 @@ pub async fn connect_via_socks5(
 ) -> Result<WebSocketStream<MaybeTlsStream<Socks5Stream<TcpStream>>>> {
     let host = url.host_str().context("URL missing host")?;
     let port = url.port_or_known_default().context("URL missing port")?;
-    let target = format!("{}:{}", host, port);
+    let target = format!("{host}:{port}");
 
     let stream = Socks5Stream::connect(proxy_addr, target)
         .await
@@ -450,6 +450,7 @@ pub async fn connect_via_socks5(
     Ok(ws_stream)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn reconnect_loop<F, Fut, S>(
     mut connect: F,
     name: String,
@@ -577,7 +578,7 @@ async fn fetch_depth_snapshot(
     symbol: &str,
     bucket: &TokenBucket,
 ) -> Option<OrderBook> {
-    let depth_url = format!("{}depth?symbol={}", depth_base, symbol);
+    let depth_url = format!("{depth_base}depth?symbol={symbol}");
     let resp = rate_limited_get(client, &depth_url, bucket).await.ok()?;
     resp.json::<DepthSnapshot>().await.ok().map(|s| s.into())
 }
@@ -757,7 +758,7 @@ pub async fn process_text_message(
         update_order_book(books, client, http_bucket, depth_base, update).await;
     }
 
-    let key = format!("{}:{}", exchange, symbol);
+    let key = format!("{exchange}:{symbol}");
     if let Some(tx) = channels.get(&key) {
         if let Err(e) = tx.send(event) {
             tracing::warn!("failed to send event: {}", e);

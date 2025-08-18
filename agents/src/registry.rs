@@ -26,7 +26,7 @@ pub type AdapterFactory = Arc<
 
 use once_cell::sync::Lazy;
 
-static REGISTRY: Lazy<DashMap<&'static str, AdapterFactory>> = Lazy::new(|| DashMap::new());
+static REGISTRY: Lazy<DashMap<&'static str, AdapterFactory>> = Lazy::new(DashMap::new);
 
 pub fn register_adapter(id: &'static str, factory: AdapterFactory) {
     REGISTRY.insert(id, factory);

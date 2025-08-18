@@ -126,7 +126,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -230,7 +230,7 @@ impl ExchangeAdapter for XtAdapter {
                 let mut senders: HashMap<String, StreamSender> = HashMap::new();
                 for t in &topics {
                     if let Some((sym, _)) = t.split_once('@') {
-                        let key = format!("{}:{}", exchange, sym);
+                        let key = format!("{exchange}:{sym}");
                         if let Some(tx) = channels.get(&key) {
                             senders.insert(sym.to_string(), tx);
                         }
@@ -362,7 +362,7 @@ fn parse_message(text: &str) -> Option<Vec<(String, StreamMessage<'static>)>> {
                 out.push((
                     symbol_string.clone(),
                     StreamMessage {
-                        stream: format!("{}@trade", symbol),
+                        stream: format!("{symbol}@trade"),
                         data: Event::Trade(event),
                     },
                 ));
@@ -390,7 +390,7 @@ fn parse_message(text: &str) -> Option<Vec<(String, StreamMessage<'static>)>> {
             Some(vec![(
                 symbol_string.clone(),
                 StreamMessage {
-                    stream: format!("{}@depth", symbol),
+                    stream: format!("{symbol}@depth"),
                     data: Event::DepthUpdate(update),
                 },
             )])
@@ -418,7 +418,7 @@ fn parse_message(text: &str) -> Option<Vec<(String, StreamMessage<'static>)>> {
             Some(vec![(
                 symbol_string.clone(),
                 StreamMessage {
-                    stream: format!("{}@kline", symbol),
+                    stream: format!("{symbol}@kline"),
                     data: Event::Kline(ev),
                 },
             )])
@@ -435,7 +435,7 @@ fn parse_message(text: &str) -> Option<Vec<(String, StreamMessage<'static>)>> {
             Some(vec![(
                 symbol_string.clone(),
                 StreamMessage {
-                    stream: format!("{}@ticker", symbol),
+                    stream: format!("{symbol}@ticker"),
                     data: Event::BookTicker(ev),
                 },
             )])

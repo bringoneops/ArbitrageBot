@@ -127,7 +127,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -215,7 +215,7 @@ impl super::ExchangeAdapter for BitgetAdapter {
                                 args.push(serde_json::json!({"channel":"trade","instId":s}));
                                 args.push(serde_json::json!({"channel":"depth","instId":s}));
                                 args.push(serde_json::json!({"channel":"candle1m","instId":s}));
-                                let key = format!("{}:{}", cfg.name, s);
+                                let key = format!("{name}:{sym}", name = cfg.name, sym = s);
                                 if let Some(tx) = channels.get(&key) {
                                     senders.insert(s.clone(), tx);
                                 }
@@ -303,7 +303,7 @@ fn parse_trade_message(val: &Value) -> Option<StreamMessage<'static>> {
         return None;
     }
     let inst_id = arg.get("instId")?.as_str()?.to_string();
-    let data = val.get("data")?.as_array()?.get(0)?.as_object()?;
+    let data = val.get("data")?.as_array()?.first()?.as_object()?;
     let ts = data
         .get("ts")
         .and_then(|v| v.as_str())
@@ -340,7 +340,7 @@ fn parse_trade_message(val: &Value) -> Option<StreamMessage<'static>> {
     };
 
     Some(StreamMessage {
-        stream: Box::leak(format!("{}@trade", inst_id).into_boxed_str()).into(),
+        stream: Box::leak(format!("{inst_id}@trade").into_boxed_str()).into(),
         data: core::events::Event::Trade(event),
     })
 }
@@ -351,7 +351,7 @@ fn parse_depth_message(val: &Value) -> Option<StreamMessage<'static>> {
         return None;
     }
     let inst_id = arg.get("instId")?.as_str()?.to_string();
-    let data = val.get("data")?.as_array()?.get(0)?.as_object()?;
+    let data = val.get("data")?.as_array()?.first()?.as_object()?;
     let ts = data
         .get("ts")
         .and_then(|v| v.as_str())
@@ -389,7 +389,7 @@ fn parse_depth_message(val: &Value) -> Option<StreamMessage<'static>> {
     };
 
     Some(StreamMessage {
-        stream: Box::leak(format!("{}@depth", inst_id).into_boxed_str()).into(),
+        stream: Box::leak(format!("{inst_id}@depth").into_boxed_str()).into(),
         data: core::events::Event::DepthUpdate(event),
     })
 }
@@ -402,8 +402,8 @@ fn parse_candle_message(val: &Value) -> Option<StreamMessage<'static>> {
     }
     let inst_id = arg.get("instId")?.as_str()?.to_string();
     let interval = channel.strip_prefix("candle").unwrap_or("");
-    let data = val.get("data")?.as_array()?.get(0)?.as_array()?;
-    let ts = data.get(0)?.as_str()?.parse::<u64>().unwrap_or(0);
+    let data = val.get("data")?.as_array()?.first()?.as_array()?;
+    let ts = data.first()?.as_str()?.parse::<u64>().unwrap_or(0);
     let open = data.get(1).and_then(|v| v.as_str()).unwrap_or("0");
     let high = data.get(2).and_then(|v| v.as_str()).unwrap_or("0");
     let low = data.get(3).and_then(|v| v.as_str()).unwrap_or("0");
@@ -431,7 +431,7 @@ fn parse_candle_message(val: &Value) -> Option<StreamMessage<'static>> {
     };
 
     Some(StreamMessage {
-        stream: Box::leak(format!("{}@{}", inst_id, channel).into_boxed_str()).into(),
+        stream: Box::leak(format!("{inst_id}@{channel}").into_boxed_str()).into(),
         data: core::events::Event::Kline(event),
     })
 }

@@ -156,7 +156,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -230,7 +230,7 @@ fn map_message(msg: GateioStreamMessage<'_>) -> Option<StreamMessage<'static>> {
 fn parse_trade_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'static>> {
     let symbol = msg
         .params
-        .get(0)
+        .first()
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("missing symbol"))?;
     let trades: Vec<GateioTrade> = serde_json::from_value(
@@ -253,7 +253,7 @@ fn parse_trade_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'sta
         best_match: true,
     };
     Ok(StreamMessage {
-        stream: format!("{}@trade", symbol),
+        stream: format!("{symbol}@trade"),
         data: Event::Trade(ev),
     })
 }
@@ -261,7 +261,7 @@ fn parse_trade_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'sta
 fn parse_depth_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'static>> {
     let symbol = msg
         .params
-        .get(0)
+        .first()
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("missing symbol"))?;
     let depth: GateioDepth = serde_json::from_value(
@@ -291,7 +291,7 @@ fn parse_depth_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'sta
         asks,
     };
     Ok(StreamMessage {
-        stream: format!("{}@depth", symbol),
+        stream: format!("{symbol}@depth"),
         data: Event::DepthUpdate(ev),
     })
 }
@@ -299,7 +299,7 @@ fn parse_depth_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'sta
 fn parse_kline_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'static>> {
     let symbol = msg
         .params
-        .get(0)
+        .first()
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("missing symbol"))?;
     let klines: Vec<GateioKline> = serde_json::from_value(
@@ -332,7 +332,7 @@ fn parse_kline_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'sta
         },
     };
     Ok(StreamMessage {
-        stream: format!("{}@kline_{}", symbol, interval),
+        stream: format!("{symbol}@kline_{interval}"),
         data: Event::Kline(ev),
     })
 }
@@ -427,7 +427,7 @@ impl ExchangeAdapter for GateioAdapter {
                                             Event::Kline(ev) => &ev.symbol,
                                             _ => unreachable!(),
                                         };
-                                        let key = format!("{}:{}", self.cfg.name, symbol_key);
+                                        let key = format!("{name}:{symbol}", name = self.cfg.name, symbol = symbol_key);
                                         let (tx, _) = self.channels.get_or_create(&key);
                                         if tx.send(event).is_err() {
                                             break;

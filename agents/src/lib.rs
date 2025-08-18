@@ -41,6 +41,7 @@ pub struct StreamSender {
 impl StreamSender {
     /// Route messages to the appropriate channel queue. Messages are dropped
     /// if the corresponding queue is full.
+    #[allow(clippy::result_large_err)]
     pub fn send(
         &self,
         msg: core::events::StreamMessage<'static>,
@@ -163,6 +164,11 @@ impl ChannelRegistry {
         self.senders.len()
     }
 
+    /// Returns true if there are no registered channels.
+    pub fn is_empty(&self) -> bool {
+        self.senders.is_empty()
+    }
+
     /// Get the next sequence number for the given stream.
     pub fn next_seq_no(&self, key: &str) -> u64 {
         use dashmap::mapref::entry::Entry;
@@ -180,7 +186,7 @@ fn dispatcher(
     mut book_rx: mpsc::Receiver<core::events::StreamMessage<'static>>,
     mut trade_rx: mpsc::Receiver<core::events::StreamMessage<'static>>,
     mut ticker_rx: mpsc::Receiver<core::events::StreamMessage<'static>>,
-    mut out_tx: mpsc::Sender<core::events::StreamMessage<'static>>,
+    out_tx: mpsc::Sender<core::events::StreamMessage<'static>>,
     book_cap: usize,
     trade_cap: usize,
     ticker_cap: usize,
@@ -215,22 +221,21 @@ fn dispatcher(
                         .increment(1);
                 }
             }
-            if trade_rx.len() >= trade_cap {
-                if ticker_rx.try_recv().is_err() {
-                    let _ = trade_rx.try_recv();
-                    if core::config::metrics_enabled() {
-                        metrics::counter!("md_backpressure_drops_total", "channel" => "trade")
-                            .increment(1);
-                    }
+            if trade_rx.len() >= trade_cap && ticker_rx.try_recv().is_err() {
+                let _ = trade_rx.try_recv();
+                if core::config::metrics_enabled() {
+                    metrics::counter!("md_backpressure_drops_total", "channel" => "trade")
+                        .increment(1);
                 }
             }
-            if book_rx.len() >= book_cap {
-                if ticker_rx.try_recv().is_err() && trade_rx.try_recv().is_err() {
-                    let _ = book_rx.try_recv();
-                    if core::config::metrics_enabled() {
-                        metrics::counter!("md_backpressure_drops_total", "channel" => "book")
-                            .increment(1);
-                    }
+            if book_rx.len() >= book_cap
+                && ticker_rx.try_recv().is_err()
+                && trade_rx.try_recv().is_err()
+            {
+                let _ = book_rx.try_recv();
+                if core::config::metrics_enabled() {
+                    metrics::counter!("md_backpressure_drops_total", "channel" => "book")
+                        .increment(1);
                 }
             }
         }
