@@ -191,6 +191,7 @@ pub struct BinanceAdapter {
     tls_config: Arc<ClientConfig>,
     http_bucket: Arc<TokenBucket>,
     ws_bucket: Arc<TokenBucket>,
+    book_refresh_interval: Duration,
 }
 
 impl BinanceAdapter {
@@ -226,6 +227,7 @@ impl BinanceAdapter {
                 global_cfg.ws_refill_per_sec,
                 Duration::from_secs(1),
             )),
+            book_refresh_interval: Duration::from_secs(global_cfg.book_refresh_secs),
         }
     }
 
@@ -329,6 +331,33 @@ impl ExchangeAdapter for BinanceAdapter {
             .info_url
             .trim_end_matches("exchangeInfo")
             .to_string();
+
+        // spawn periodic depth snapshot refresh tasks
+        for symbol in self.symbols.clone() {
+            let books = self.orderbooks.clone();
+            let client = self.client.clone();
+            let http_bucket = self.http_bucket.clone();
+            let depth_base = depth_base.clone();
+            let refresh_interval = self.book_refresh_interval;
+            let task_set = self.task_set.clone();
+            let symbol = symbol.clone();
+            let mut set = task_set.lock().await;
+            set.spawn(async move {
+                let mut ticker = interval(refresh_interval);
+                ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+                loop {
+                    ticker.tick().await;
+                    if let Some(book) =
+                        fetch_depth_snapshot(&client, &depth_base, &symbol, &http_bucket).await
+                    {
+                        if core::config::metrics_enabled() {
+                            metrics::counter!("md_ws_resnapshot_total").increment(1);
+                        }
+                        books.insert(symbol.clone(), book);
+                    }
+                }
+            });
+        }
 
         for chunk in chunks {
             self.spawn_chunk_reader(chunk, &depth_base).await?;
@@ -678,6 +707,9 @@ async fn update_order_book(
                 if let Some(mut new_book) =
                     fetch_depth_snapshot(client, depth_base, &symbol, http_bucket).await
                 {
+                    if core::config::metrics_enabled() {
+                        metrics::counter!("md_ws_resnapshot_total").increment(1);
+                    }
                     match fast_forward(&mut new_book, &buffer) {
                         ApplyResult::Applied => {
                             books.insert(symbol, new_book);
@@ -686,6 +718,9 @@ async fn update_order_book(
                             if let Some(resynced) =
                                 fetch_depth_snapshot(client, depth_base, &symbol, http_bucket).await
                             {
+                                if core::config::metrics_enabled() {
+                                    metrics::counter!("md_ws_resnapshot_total").increment(1);
+                                }
                                 books.insert(symbol, resynced);
                             }
                         }
