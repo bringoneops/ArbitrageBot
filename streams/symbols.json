@@ -1,0 +1,16 @@
+[
+  {
+    "id": "BTCUSDT",
+    "spec": {
+      "venue": "spot",
+      "base": "BTC",
+      "quote": "USDT",
+      "lot_step": 0.001,
+      "price_step": 0.01
+    },
+    "aliases": {
+      "binance": ["BTCUSDT"]
+    }
+  }
+]
+
