@@ -1,9 +1,9 @@
+use anyhow::Result;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use anyhow::Result;
 
 pub type SymbolId = String;
 
@@ -27,6 +27,10 @@ pub struct ContractSpec {
     pub venue: VenueType,
     pub base: String,
     pub quote: String,
+    #[serde(default)]
+    pub lot_step: Option<f64>,
+    #[serde(default)]
+    pub price_step: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,4 +95,3 @@ pub fn normalize_symbol(exchange: &str, raw: &str) -> SymbolId {
 pub fn get_spec(id: &str) -> Option<ContractSpec> {
     table().specs.get(id).cloned()
 }
-
