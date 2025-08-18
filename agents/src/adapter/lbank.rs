@@ -13,7 +13,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use super::ExchangeAdapter;
-use crate::{registry, ChannelRegistry, TaskSet};
+use crate::{registry, ChannelRegistry, StreamSender, TaskSet};
 
 /// Configuration for a single LBank exchange endpoint.
 pub struct LbankConfig {
@@ -158,7 +158,7 @@ impl LbankAdapter {
     async fn run_symbol(
         url: String,
         symbol: String,
-        tx: mpsc::Sender<core::events::StreamMessage<'static>>,
+        tx: StreamSender,
     ) -> Result<()> {
         loop {
             let (ws_stream, _) = connect_async(&url).await?;
@@ -214,7 +214,7 @@ impl LbankAdapter {
                 match msg {
                     Ok(Message::Text(text)) => {
                         if let Some(event) = parse_message(&text) {
-                            if tx.send(event).await.is_err() {
+                            if tx.send(event).is_err() {
                                 return Ok(());
                             }
                         } else if let Ok(v) = serde_json::from_str::<Value>(&text) {
