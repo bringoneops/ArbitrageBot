@@ -7,9 +7,13 @@ use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use tokio::{
     signal,
@@ -19,11 +23,16 @@ use tokio::{
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use super::ExchangeAdapter;
-use crate::{registry, ChannelRegistry, TaskSet};
+use crate::{registry, ChannelRegistry, StreamSender, TaskSet};
 use futures::future::BoxFuture;
 use std::sync::Once;
 use tokio::sync::mpsc;
 use tracing::error;
+
+use core::events::{
+    BookTickerEvent, DepthUpdateEvent, Event, Kline, KlineEvent, StreamMessage, TradeEvent,
+    XtEvent, XtStreamMessage,
+};
 
 pub const SPOT_SYMBOL_URL: &str = "https://api.xt.com/data/api/v4/public/symbol";
 pub const FUTURES_SYMBOL_URL: &str = "https://futures.xt.com/api/v4/public/symbol";
@@ -124,8 +133,13 @@ pub fn register() {
                                 }
                             }
 
-                            let adapter =
-                                XtAdapter::new(cfg, client.clone(), global_cfg.chunk_size, symbols);
+                            let adapter = XtAdapter::new(
+                                cfg,
+                                client.clone(),
+                                global_cfg.chunk_size,
+                                symbols,
+                                channels.clone(),
+                            );
 
                             {
                                 let mut set = task_set.lock().await;
@@ -157,6 +171,7 @@ pub struct XtAdapter {
     ws_bucket: Arc<TokenBucket>,
     tasks: Vec<JoinHandle<Result<()>>>,
     shutdown: Arc<AtomicBool>,
+    channels: ChannelRegistry,
 }
 
 impl XtAdapter {
@@ -165,6 +180,7 @@ impl XtAdapter {
         client: Client,
         chunk_size: usize,
         symbols: Vec<String>,
+        channels: ChannelRegistry,
     ) -> Self {
         let global_cfg = core::config::get();
         Self {
@@ -185,6 +201,7 @@ impl XtAdapter {
             )),
             tasks: Vec::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
+            channels,
         }
     }
 }
@@ -203,10 +220,22 @@ impl ExchangeAdapter for XtAdapter {
             let ws_url = self.cfg.ws_base.to_string();
             let ws_bucket = self.ws_bucket.clone();
             let shutdown = self.shutdown.clone();
+            let channels = self.channels.clone();
+            let exchange = self.cfg.name.to_string();
 
             let handle = tokio::spawn(async move {
                 let topics = topics;
                 let ws_url = ws_url;
+                // build symbol -> sender map
+                let mut senders: HashMap<String, StreamSender> = HashMap::new();
+                for t in &topics {
+                    if let Some((sym, _)) = t.split_once('@') {
+                        let key = format!("{}:{}", exchange, sym);
+                        if let Some(tx) = channels.get(&key) {
+                            senders.insert(sym.to_string(), tx);
+                        }
+                    }
+                }
                 loop {
                     if shutdown.load(Ordering::Relaxed) {
                         break;
@@ -240,6 +269,15 @@ impl ExchangeAdapter for XtAdapter {
                                                     e
                                                 })?;
                                             },
+                                            Some(Ok(Message::Text(text))) => {
+                                                if let Some(events) = parse_message(&text) {
+                                                    for (sym, event) in events {
+                                                        if let Some(tx) = senders.get(&sym) {
+                                                            let _ = tx.send(event);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             Some(Ok(Message::Close(_))) | None => { break; },
                                             Some(Ok(_)) => {},
                                             Some(Err(e)) => { tracing::warn!("xt ws error: {}", e); break; },
@@ -295,5 +333,112 @@ impl ExchangeAdapter for XtAdapter {
     async fn backfill(&mut self) -> Result<()> {
         self.http_bucket.acquire(1).await?;
         Ok(())
+    }
+}
+
+/// Parse raw XT websocket text into one or more canonical stream messages.
+fn parse_message(text: &str) -> Option<Vec<(String, StreamMessage<'static>)>> {
+    let msg: XtStreamMessage<'_> = serde_json::from_str(text).ok()?;
+    let topic = msg.topic.as_ref();
+    let (symbol, _channel) = topic.split_once('@')?;
+    let symbol_string = symbol.to_string();
+
+    match msg.data {
+        XtEvent::Trade(trades) => {
+            let mut out = Vec::new();
+            for t in trades {
+                let event = TradeEvent {
+                    event_time: t.trade_time,
+                    symbol: symbol_string.clone(),
+                    trade_id: t.i.unwrap_or(0),
+                    price: Cow::Owned(t.price.into_owned()),
+                    quantity: Cow::Owned(t.quantity.into_owned()),
+                    buyer_order_id: 0,
+                    seller_order_id: 0,
+                    trade_time: t.trade_time,
+                    buyer_is_maker: t.buyer_is_maker.unwrap_or(false),
+                    best_match: true,
+                };
+                out.push((
+                    symbol_string.clone(),
+                    StreamMessage {
+                        stream: format!("{}@trade", symbol),
+                        data: Event::Trade(event),
+                    },
+                ));
+            }
+            Some(out)
+        }
+        XtEvent::Depth(d) => {
+            let update = DepthUpdateEvent {
+                event_time: d.timestamp,
+                symbol: symbol_string.clone(),
+                first_update_id: 0,
+                final_update_id: 0,
+                previous_final_update_id: 0,
+                bids: d
+                    .bids
+                    .into_iter()
+                    .map(|[p, q]| [Cow::Owned(p.into_owned()), Cow::Owned(q.into_owned())])
+                    .collect(),
+                asks: d
+                    .asks
+                    .into_iter()
+                    .map(|[p, q]| [Cow::Owned(p.into_owned()), Cow::Owned(q.into_owned())])
+                    .collect(),
+            };
+            Some(vec![(
+                symbol_string.clone(),
+                StreamMessage {
+                    stream: format!("{}@depth", symbol),
+                    data: Event::DepthUpdate(update),
+                },
+            )])
+        }
+        XtEvent::Kline(k) => {
+            let ev = KlineEvent {
+                event_time: k.timestamp,
+                symbol: symbol_string.clone(),
+                kline: Kline {
+                    start_time: k.timestamp,
+                    close_time: k.timestamp,
+                    interval: "1m".to_string(),
+                    open: Cow::Owned(k.open.into_owned()),
+                    close: Cow::Owned(k.close.into_owned()),
+                    high: Cow::Owned(k.high.into_owned()),
+                    low: Cow::Owned(k.low.into_owned()),
+                    volume: Cow::Owned(k.volume.into_owned()),
+                    trades: 0,
+                    is_closed: true,
+                    quote_volume: Cow::Owned("0".to_string()),
+                    taker_buy_base_volume: Cow::Owned("0".to_string()),
+                    taker_buy_quote_volume: Cow::Owned("0".to_string()),
+                },
+            };
+            Some(vec![(
+                symbol_string.clone(),
+                StreamMessage {
+                    stream: format!("{}@kline", symbol),
+                    data: Event::Kline(ev),
+                },
+            )])
+        }
+        XtEvent::Ticker(t) => {
+            let ev = BookTickerEvent {
+                update_id: t.timestamp,
+                symbol: symbol_string.clone(),
+                best_bid_price: Cow::Owned(t.bid_price.into_owned()),
+                best_bid_qty: Cow::Owned(t.bid_qty.into_owned()),
+                best_ask_price: Cow::Owned(t.ask_price.into_owned()),
+                best_ask_qty: Cow::Owned(t.ask_qty.into_owned()),
+            };
+            Some(vec![(
+                symbol_string.clone(),
+                StreamMessage {
+                    stream: format!("{}@ticker", symbol),
+                    data: Event::BookTicker(ev),
+                },
+            )])
+        }
     }
 }
