@@ -102,11 +102,11 @@ struct BboData {
     #[serde(rename = "b", alias = "bid")]
     b: String,
     #[serde(rename = "B", alias = "bidVolume", default)]
-    B: String,
+    bid_volume: String,
     #[serde(rename = "a", alias = "ask")]
     a: String,
     #[serde(rename = "A", alias = "askVolume", default)]
-    A: String,
+    ask_volume: String,
 }
 
 static REGISTER: Once = Once::new();
@@ -138,7 +138,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -235,7 +235,7 @@ impl ExchangeAdapter for CoinexAdapter {
             let handle = tokio::spawn(async move {
                 let mut senders: HashMap<String, StreamSender> = HashMap::new();
                 for s in &symbols {
-                    let key = format!("{}:{}", cfg.name, s);
+                    let key = format!("{name}:{sym}", name = cfg.name, sym = s);
                     if let Some(tx) = channels.get(&key) {
                         senders.insert(s.clone(), tx);
                     }
@@ -310,14 +310,14 @@ impl ExchangeAdapter for CoinexAdapter {
                                                                         let symbol = params[0].as_str().unwrap_or_default().to_string();
                                                                         if let Ok(data) = serde_json::from_value::<BboData>(params[1].clone()) {
                                                                             let event = core::events::StreamMessage {
-                                                                                stream: format!("{}@bbo", symbol),
+                                                                                stream: format!("{symbol}@bbo"),
                                                                                 data: core::events::Event::BookTicker(core::events::BookTickerEvent {
                                                                                     update_id: 0,
                                                                                     symbol: symbol.clone(),
                                                                                     best_bid_price: data.b.into(),
-                                                                                    best_bid_qty: data.B.into(),
+                                                                                    best_bid_qty: data.bid_volume.into(),
                                                                                     best_ask_price: data.a.into(),
-                                                                                    best_ask_qty: data.A.into(),
+                                                                                    best_ask_qty: data.ask_volume.into(),
                                                                                 }),
                                                                             };
                                                                             if let Some(tx) = senders.get(&symbol) {
@@ -333,7 +333,7 @@ impl ExchangeAdapter for CoinexAdapter {
                                                                         let symbol = params[0].as_str().unwrap_or_default().to_string();
                                                                         if let Some(price) = params[1].as_str() {
                                                                             let event = core::events::StreamMessage {
-                                                                                stream: format!("{}@index", symbol),
+                                                                                stream: format!("{symbol}@index"),
                                                                                 data: core::events::Event::IndexPrice(core::events::IndexPriceEvent {
                                                                                     event_time: 0,
                                                                                     symbol: symbol.clone(),

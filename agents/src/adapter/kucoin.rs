@@ -133,7 +133,7 @@ impl KucoinAdapter {
         } else {
             "https://api.kucoin.com"
         };
-        let bullet_url = format!("{}/api/v1/bullet-public", api_base);
+        let bullet_url = format!("{api_base}/api/v1/bullet-public");
         let resp: Value = self
             ._client
             .post(&bullet_url)
@@ -161,35 +161,35 @@ impl KucoinAdapter {
             .and_then(|v| v.as_u64())
             .unwrap_or(50000);
 
-        let ws_url = format!("{}?token={}", endpoint, token);
+        let ws_url = format!("{endpoint}?token={token}");
         let (ws_stream, _) = connect_async(&ws_url).await?;
         let (mut write, mut read) = ws_stream.split();
 
         for symbol in &self.symbols {
             let mut topics = vec![
-                format!("/market/match:{}", symbol),
-                format!("/market/level2:{}", symbol),
+                format!("/market/match:{symbol}"),
+                format!("/market/level2:{symbol}"),
             ];
             for interval in CANDLE_INTERVALS {
-                topics.push(format!("/market/candles:{}:{}", interval, symbol));
+                topics.push(format!("/market/candles:{interval}:{symbol}"));
             }
             let topics: Vec<String> = if self.cfg.id.contains("futures") {
                 vec![
-                    format!("/contractMarket/ticker:{}", symbol),
-                    format!("/contractMarket/level2:{}", symbol),
-                    format!("/contractMarket/level2Depth5:{}", symbol),
-                    format!("/contractMarket/level2Depth50:{}", symbol),
-                    format!("/contractMarket/execution:{}", symbol),
-                    format!("/contractMarket/indexPrice:{}", symbol),
-                    format!("/contractMarket/markPrice:{}", symbol),
-                    format!("/contractMarket/fundingRate:{}", symbol),
-                    format!("/contractMarket/candles:1min:{}", symbol),
+                    format!("/contractMarket/ticker:{symbol}"),
+                    format!("/contractMarket/level2:{symbol}"),
+                    format!("/contractMarket/level2Depth5:{symbol}"),
+                    format!("/contractMarket/level2Depth50:{symbol}"),
+                    format!("/contractMarket/execution:{symbol}"),
+                    format!("/contractMarket/indexPrice:{symbol}"),
+                    format!("/contractMarket/markPrice:{symbol}"),
+                    format!("/contractMarket/fundingRate:{symbol}"),
+                    format!("/contractMarket/candles:1min:{symbol}"),
                 ]
             } else {
                 vec![
-                    format!("/market/match:{}", symbol),
-                    format!("/market/level2:{}", symbol),
-                    format!("/market/candles:1min:{}", symbol),
+                    format!("/market/match:{symbol}"),
+                    format!("/market/level2:{symbol}"),
+                    format!("/market/candles:1min:{symbol}"),
                 ]
             };
             for topic in topics {
@@ -228,7 +228,7 @@ impl KucoinAdapter {
                                         _ => "",
                                     };
                                     if !symbol_key.is_empty() {
-                                        let key = format!("{}:{}", self.cfg.name, symbol_key);
+                                        let key = format!("{name}:{symbol}", name = self.cfg.name, symbol = symbol_key);
                                         let (tx, _) = self.channels.get_or_create(&key);
                                         if tx.send(event).is_err() {
                                             break;
@@ -261,10 +261,7 @@ fn map_message(msg: KucoinStreamMessage) -> Option<core::events::StreamMessage<'
     match msg.subject.as_str() {
         "trade.l3match" => {
             let data: KucoinTrade = serde_json::from_value(msg.data).ok()?;
-            let buyer_is_maker = match data.side.as_ref() {
-                "sell" => true,
-                _ => false,
-            };
+            let buyer_is_maker = matches!(data.side.as_ref(), "sell");
             let ev = core::events::TradeEvent {
                 event_time: data.trade_time,
                 symbol: data.symbol.clone(),
@@ -278,7 +275,7 @@ fn map_message(msg: KucoinStreamMessage) -> Option<core::events::StreamMessage<'
                 best_match: true,
             };
             Some(core::events::StreamMessage {
-                stream: format!("{}@trade", ev.symbol),
+                stream: format!("{symbol}@trade", symbol = ev.symbol),
                 data: core::events::Event::Trade(ev),
             })
         }
@@ -316,7 +313,7 @@ fn map_message(msg: KucoinStreamMessage) -> Option<core::events::StreamMessage<'
                 asks,
             };
             Some(core::events::StreamMessage {
-                stream: format!("{}@depth", ev.symbol),
+                stream: format!("{symbol}@depth", symbol = ev.symbol),
                 data: core::events::Event::DepthUpdate(ev),
             })
         }
@@ -344,7 +341,7 @@ fn map_message(msg: KucoinStreamMessage) -> Option<core::events::StreamMessage<'
                 },
             };
             Some(core::events::StreamMessage {
-                stream: format!("{}@kline_{}", ev.symbol, interval),
+                stream: format!("{symbol}@kline_{interval}", symbol = ev.symbol),
                 data: core::events::Event::Kline(ev),
             })
         }
@@ -414,7 +411,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);

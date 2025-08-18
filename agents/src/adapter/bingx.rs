@@ -81,7 +81,7 @@ async fn fetch_swap_symbols(info_url: &str) -> Result<Vec<String>> {
     let mut page = 1;
     let mut result = Vec::new();
     loop {
-        let url = format!("{}?page={}", info_url, page);
+        let url = format!("{info_url}?page={page}");
         let resp = client.get(&url).send().await?.error_for_status()?;
         let data: Value = resp.json().await?;
         let arr = data
@@ -140,7 +140,7 @@ pub fn register() {
                             }
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -200,7 +200,7 @@ impl BingxAdapter {
 fn map_message(msg: BingxStreamMessage<'_>) -> Option<core::events::StreamMessage<'static>> {
     match msg {
         BingxStreamMessage::Trade(t) => {
-            let stream = format!("{}@trade", t.symbol);
+            let stream = format!("{sym}@trade", sym = t.symbol);
             let ev = core::events::TradeEvent {
                 event_time: t.event_time,
                 symbol: t.symbol,
@@ -220,7 +220,7 @@ fn map_message(msg: BingxStreamMessage<'_>) -> Option<core::events::StreamMessag
         }
         BingxStreamMessage::DepthUpdate(d) => {
             let symbol = d.symbol;
-            let stream = format!("{}@depth", symbol.clone());
+            let stream = format!("{symbol}@depth", symbol = symbol.clone());
             let bids = d
                 .bids
                 .into_iter()
@@ -291,7 +291,7 @@ impl ExchangeAdapter for BingxAdapter {
                                                             core::events::Event::DepthUpdate(ev) => &ev.symbol,
                                                             _ => unreachable!(),
                                                         };
-                                                        let key = format!("{}:{}", exch_name, symbol_key);
+                                                        let key = format!("{exch_name}:{symbol_key}");
                                                         let (tx, _) = channels.get_or_create(&key);
                                                         if tx.send(event).is_err() {
                                                             break;

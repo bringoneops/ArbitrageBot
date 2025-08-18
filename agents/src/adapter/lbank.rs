@@ -95,7 +95,7 @@ pub fn register() {
 
                             let mut receivers = Vec::new();
                             for symbol in &symbols {
-                                let key = format!("{}:{}", cfg.name, symbol);
+                                let key = format!("{name}:{symbol}", name = cfg.name, symbol = symbol);
                                 let (_, rx) = channels.get_or_create(&key);
                                 if let Some(rx) = rx {
                                     receivers.push(rx);
@@ -293,7 +293,7 @@ fn parse_kbar_frame(val: &Value) -> Result<core::events::StreamMessage<'static>>
         },
     };
     Ok(core::events::StreamMessage {
-        stream: Box::leak(format!("{}@kbar", pair).into_boxed_str()).into(),
+        stream: Box::leak(format!("{pair}@kbar").into_boxed_str()).into(),
         data: core::events::Event::Kline(event),
     })
 }
@@ -334,7 +334,7 @@ pub fn parse_trade_frame(val: &Value) -> Result<core::events::StreamMessage<'sta
         best_match: true,
     };
     Ok(core::events::StreamMessage {
-        stream: Box::leak(format!("{}@trade", pair).into_boxed_str()).into(),
+        stream: Box::leak(format!("{pair}@trade").into_boxed_str()).into(),
         data: core::events::Event::Trade(ev),
     })
 }
@@ -382,7 +382,7 @@ pub fn parse_depth_frame(val: &Value) -> Result<core::events::StreamMessage<'sta
     };
 
     Ok(core::events::StreamMessage {
-        stream: Box::leak(format!("{}@depth", pair).into_boxed_str()).into(),
+        stream: Box::leak(format!("{pair}@depth").into_boxed_str()).into(),
         data: core::events::Event::DepthUpdate(ev),
     })
 }
@@ -391,7 +391,7 @@ pub fn parse_depth_frame(val: &Value) -> Result<core::events::StreamMessage<'sta
 impl ExchangeAdapter for LbankAdapter {
     async fn subscribe(&mut self) -> Result<()> {
         for symbol in &self._symbols {
-            if let Some(tx) = self.channels.get(&format!("{}:{}", self._cfg.name, symbol)) {
+            if let Some(tx) = self.channels.get(&format!("{name}:{symbol}", name = self._cfg.name, symbol = symbol)) {
                 let url = self._cfg.ws_base.to_string();
                 let sym = symbol.clone();
                 tokio::spawn(async move {
