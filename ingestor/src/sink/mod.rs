@@ -1,11 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use canonical::MdEvent;
+use std::io::SeekFrom;
 use std::path::Path;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt, BufWriter};
 use tokio::sync::Mutex;
-use std::io::SeekFrom;
 
 mod kafka;
 pub use kafka::KafkaSink;
@@ -97,7 +97,7 @@ impl<T: Sink> Wal<T> {
         if let Ok(existing) = tokio::fs::read_to_string(path).await {
             for line in existing.lines().filter(|l| !l.trim().is_empty()) {
                 if let Ok(ev) = serde_json::from_str::<MdEvent>(line) {
-                    if let Err(_) = inner.publish(&ev).await {
+                    if inner.publish(&ev).await.is_err() {
                         dlq.write_all(line.as_bytes()).await?;
                         dlq.write_all(b"\n").await?;
                     }
@@ -111,11 +111,11 @@ impl<T: Sink> Wal<T> {
 
         let wal_file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(path)
             .await?;
-        wal_file.set_len(0).await?;
         wal_file.sync_data().await?;
 
         Ok(Self {

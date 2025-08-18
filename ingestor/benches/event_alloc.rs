@@ -24,15 +24,18 @@ static A: CountingAlloc = CountingAlloc;
 
 #[derive(Deserialize)]
 struct StreamMessageOwned {
-    stream: String,
-    data: OwnedEvent,
+    _stream: String,
+    _data: OwnedEvent,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "e")]
 enum OwnedEvent {
     #[serde(rename = "trade")]
-    Trade(OwnedTrade),
+    Trade {
+        #[serde(flatten)]
+        _inner: OwnedTrade,
+    },
     #[serde(other)]
     Unknown,
 }
