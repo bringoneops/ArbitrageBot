@@ -7,19 +7,14 @@ use std::io::Read;
 
 pub type SymbolId = String;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum VenueType {
     Spot,
     Futures,
     Options,
+    #[default]
     Unknown,
-}
-
-impl Default for VenueType {
-    fn default() -> Self {
-        VenueType::Unknown
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -51,7 +46,7 @@ struct SymbolTable {
 static TABLE: OnceCell<SymbolTable> = OnceCell::new();
 
 fn table() -> &'static SymbolTable {
-    TABLE.get_or_init(|| SymbolTable::default())
+    TABLE.get_or_init(SymbolTable::default)
 }
 
 pub fn load_from_path(path: &str) -> Result<()> {
