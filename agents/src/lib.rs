@@ -4,6 +4,7 @@ use dashmap::DashMap;
 use reqwest::Client;
 use rustls::ClientConfig;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
@@ -33,6 +34,7 @@ pub type TaskSet = Arc<Mutex<JoinSet<()>>>;
 #[derive(Clone)]
 pub struct ChannelRegistry {
     senders: Arc<DashMap<String, mpsc::Sender<core::events::StreamMessage<'static>>>>,
+    seq_counters: Arc<DashMap<String, AtomicU64>>,
     buffer: usize,
 }
 
@@ -41,6 +43,7 @@ impl ChannelRegistry {
     pub fn new(buffer: usize) -> Self {
         Self {
             senders: Arc::new(DashMap::new()),
+            seq_counters: Arc::new(DashMap::new()),
             buffer,
         }
     }
@@ -75,6 +78,18 @@ impl ChannelRegistry {
     /// Current number of registered channels.
     pub fn len(&self) -> usize {
         self.senders.len()
+    }
+
+    /// Get the next sequence number for the given stream.
+    pub fn next_seq_no(&self, key: &str) -> u64 {
+        use dashmap::mapref::entry::Entry;
+        match self.seq_counters.entry(key.to_string()) {
+            Entry::Occupied(entry) => entry.get().fetch_add(1, Ordering::Relaxed),
+            Entry::Vacant(entry) => {
+                entry.insert(AtomicU64::new(1));
+                0
+            }
+        }
     }
 }
 

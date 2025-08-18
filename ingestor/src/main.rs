@@ -4,6 +4,8 @@ use rustls::ClientConfig;
 use std::future::Future;
 use std::{env, sync::Arc};
 use tokio::time::{sleep, Duration};
+use once_cell::sync::Lazy;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
@@ -17,6 +19,7 @@ use canonical::MdEvent;
 use core::config;
 use core::events::StreamMessage;
 use core::tls;
+use agents::ChannelRegistry;
 
 mod ops;
 
@@ -50,16 +53,19 @@ async fn forward_event(ev: MdEvent) -> Result<()> {
     Ok(())
 }
 
+static START: Lazy<Instant> = Lazy::new(Instant::now);
+
 async fn process_stream_event<F, Fut>(
     msg: StreamMessage<'static>,
     metrics_enabled: bool,
+    channels: ChannelRegistry,
     mut forward_fn: F,
 ) where
     F: FnMut(&MdEvent) -> Fut,
     Fut: Future<Output = Result<()>>,
 {
     match MdEvent::try_from(msg.data) {
-        Ok(ev) => {
+        Ok(mut ev) => {
             if metrics_enabled {
                 metrics::counter!("md_events_total").increment(1);
             }
@@ -70,6 +76,75 @@ async fn process_stream_event<F, Fut>(
             let max_retries = 3;
             let mut delay = Duration::from_millis(100);
             let max_delay = Duration::from_secs(1);
+            let monotonic = START.elapsed().as_nanos() as u64;
+            let utc = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64;
+            let seq_no = channels.next_seq_no(&msg.stream);
+            match &mut ev {
+                MdEvent::Trade(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::DepthL2Update(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::BookTicker(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::MiniTicker(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::Kline(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::DepthSnapshot(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::AvgPrice(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::MarkPrice(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::IndexPrice(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::FundingRate(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::OpenInterest(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+                MdEvent::Liquidation(e) => {
+                    e.ingest_ts_monotonic = monotonic;
+                    e.ingest_ts_utc = utc;
+                    e.seq_no = seq_no;
+                }
+            }
+
             loop {
                 match forward_fn(&ev).await {
                     Ok(()) => break,
@@ -100,13 +175,15 @@ async fn spawn_consumers(
     receivers: Vec<mpsc::Receiver<StreamMessage<'static>>>,
     join_set: TaskSet,
     metrics_enabled: bool,
+    channels: ChannelRegistry,
 ) {
     for mut event_rx in receivers {
         let set = join_set.clone();
+        let channels = channels.clone();
         let mut set = set.lock().await;
         set.spawn(async move {
             while let Some(msg) = event_rx.recv().await {
-                process_stream_event(msg, metrics_enabled, |ev| forward_event(ev.clone())).await;
+                process_stream_event(msg, metrics_enabled, channels.clone(), |ev| forward_event(ev.clone())).await;
             }
         });
     }
@@ -140,7 +217,7 @@ pub async fn run() -> Result<()> {
     .await?;
 
     // Spawn a consumer task per partition to normalize events.
-    spawn_consumers(receivers, join_set.clone(), metrics_enabled).await;
+    spawn_consumers(receivers, join_set.clone(), metrics_enabled, channels.clone()).await;
 
     // Drop the original senders so receivers can terminate once all adapters finish.
     drop(channels);
@@ -182,6 +259,7 @@ mod tests {
     #[tokio::test]
     async fn backoff_doubles_delay() {
         let msg = sample_msg();
+        let channels = ChannelRegistry::new(1);
         let times = Arc::new(Mutex::new(Vec::new()));
         let times_clone = times.clone();
 
@@ -193,7 +271,7 @@ mod tests {
             }
         };
 
-        tokio::spawn(process_stream_event(msg, false, forward))
+        tokio::spawn(process_stream_event(msg, false, channels, forward))
             .await
             .unwrap();
 
@@ -208,6 +286,7 @@ mod tests {
     #[tokio::test]
     async fn stops_after_max_retries() {
         let msg = sample_msg();
+        let channels = ChannelRegistry::new(1);
         let attempts = Arc::new(AtomicUsize::new(0));
         let attempts_clone = attempts.clone();
 
@@ -219,7 +298,7 @@ mod tests {
             }
         };
 
-        tokio::spawn(process_stream_event(msg, false, forward))
+        tokio::spawn(process_stream_event(msg, false, channels, forward))
             .await
             .unwrap();
 
@@ -229,6 +308,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn backoff_increments_and_stops_after_max_attempts() {
         let msg = sample_msg();
+        let channels = ChannelRegistry::new(1);
         let attempts = Arc::new(AtomicUsize::new(0));
         let times: Arc<Mutex<Vec<ttime::Instant>>> = Arc::new(Mutex::new(Vec::new()));
         let attempts_clone = attempts.clone();
@@ -249,7 +329,7 @@ mod tests {
             }
         };
 
-        let task = tokio::spawn(process_stream_event(msg, false, forward));
+        let task = tokio::spawn(process_stream_event(msg, false, channels, forward));
 
         tokio::task::yield_now().await;
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
@@ -292,5 +372,51 @@ mod tests {
                 Duration::from_millis(400)
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn stamps_ingest_fields_and_seq() {
+        let msg = sample_msg();
+        let channels = ChannelRegistry::new(1);
+        let first = Arc::new(Mutex::new(None));
+        let first_cl = first.clone();
+        let forward = move |ev: &MdEvent| {
+            let first_cl = first_cl.clone();
+            let ev_clone = ev.clone();
+            async move {
+                *first_cl.lock().unwrap() = Some(ev_clone);
+                Ok(())
+            }
+        };
+        process_stream_event(msg, false, channels.clone(), forward).await;
+        let ev1 = first.lock().unwrap().clone().unwrap();
+        match ev1 {
+            MdEvent::BookTicker(bt) => {
+                assert!(bt.ingest_ts_monotonic > 0);
+                assert!(bt.ingest_ts_utc > 0);
+                assert_eq!(bt.seq_no, 0);
+            }
+            _ => panic!("expected book ticker"),
+        }
+
+        let second = Arc::new(Mutex::new(None));
+        let second_cl = second.clone();
+        let forward2 = move |ev: &MdEvent| {
+            let second_cl = second_cl.clone();
+            let ev_clone = ev.clone();
+            async move {
+                *second_cl.lock().unwrap() = Some(ev_clone);
+                Ok(())
+            }
+        };
+        let msg2 = sample_msg();
+        process_stream_event(msg2, false, channels.clone(), forward2).await;
+        let ev2 = second.lock().unwrap().clone().unwrap();
+        match ev2 {
+            MdEvent::BookTicker(bt) => {
+                assert_eq!(bt.seq_no, 1);
+            }
+            _ => panic!("expected book ticker"),
+        }
     }
 }
