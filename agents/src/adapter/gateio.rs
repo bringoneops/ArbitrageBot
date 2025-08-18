@@ -4,14 +4,18 @@ use async_trait::async_trait;
 use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::{json, Value};
+use std::borrow::Cow;
 use std::sync::{Arc, Once};
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{interval, sleep, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
+use core::events::{
+    Event, GateioDepth, GateioKline, GateioStreamMessage, GateioTrade, StreamMessage,
+};
 
 /// Configuration for a single Gate.io exchange endpoint.
 pub struct GateioConfig {
@@ -164,6 +168,7 @@ pub fn register() {
                                 client.clone(),
                                 global_cfg.chunk_size,
                                 symbols,
+                                channels.clone(),
                             );
 
                             {
@@ -191,22 +196,145 @@ pub struct GateioAdapter {
     _client: Client,
     _chunk_size: usize,
     symbols: Vec<String>,
+    channels: ChannelRegistry,
 }
 
 impl GateioAdapter {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &'static GateioConfig,
         client: Client,
         chunk_size: usize,
         symbols: Vec<String>,
+        channels: ChannelRegistry,
     ) -> Self {
         Self {
             cfg,
             _client: client,
             _chunk_size: chunk_size,
             symbols,
+            channels,
         }
     }
+}
+
+fn map_message(msg: GateioStreamMessage<'_>) -> Option<StreamMessage<'static>> {
+    match msg.method {
+        "trades.update" => parse_trade_frame(&msg).ok(),
+        "depth.update" => parse_depth_frame(&msg).ok(),
+        "kline.update" => parse_kline_frame(&msg).ok(),
+        _ => None,
+    }
+}
+
+fn parse_trade_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'static>> {
+    let symbol = msg
+        .params
+        .get(0)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing symbol"))?;
+    let trades: Vec<GateioTrade> = serde_json::from_value(
+        msg.params
+            .get(1)
+            .cloned()
+            .ok_or_else(|| anyhow!("missing trades"))?,
+    )?;
+    let trade = trades.first().ok_or_else(|| anyhow!("missing trade"))?;
+    let ev = core::events::TradeEvent {
+        event_time: trade.create_time_ms,
+        symbol: symbol.to_string(),
+        trade_id: trade.id,
+        price: Cow::Owned(trade.price.clone().into_owned()),
+        quantity: Cow::Owned(trade.amount.clone().into_owned()),
+        buyer_order_id: 0,
+        seller_order_id: 0,
+        trade_time: trade.create_time_ms,
+        buyer_is_maker: trade.side.eq_ignore_ascii_case("sell"),
+        best_match: true,
+    };
+    Ok(StreamMessage {
+        stream: format!("{}@trade", symbol),
+        data: Event::Trade(ev),
+    })
+}
+
+fn parse_depth_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'static>> {
+    let symbol = msg
+        .params
+        .get(0)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing symbol"))?;
+    let depth: GateioDepth = serde_json::from_value(
+        msg.params
+            .get(1)
+            .cloned()
+            .ok_or_else(|| anyhow!("missing depth"))?,
+    )?;
+    let bids = depth
+        .bids
+        .into_iter()
+        .map(|[p, q]| [Cow::Owned(p.into_owned()), Cow::Owned(q.into_owned())])
+        .collect();
+    let asks = depth
+        .asks
+        .into_iter()
+        .map(|[p, q]| [Cow::Owned(p.into_owned()), Cow::Owned(q.into_owned())])
+        .collect();
+    let id = depth.id.unwrap_or_default();
+    let ev = core::events::DepthUpdateEvent {
+        event_time: depth.timestamp,
+        symbol: symbol.to_string(),
+        first_update_id: id,
+        final_update_id: id,
+        previous_final_update_id: 0,
+        bids,
+        asks,
+    };
+    Ok(StreamMessage {
+        stream: format!("{}@depth", symbol),
+        data: Event::DepthUpdate(ev),
+    })
+}
+
+fn parse_kline_frame(msg: &GateioStreamMessage<'_>) -> Result<StreamMessage<'static>> {
+    let symbol = msg
+        .params
+        .get(0)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing symbol"))?;
+    let klines: Vec<GateioKline> = serde_json::from_value(
+        msg.params
+            .get(1)
+            .cloned()
+            .ok_or_else(|| anyhow!("missing kline"))?,
+    )?;
+    let k = klines
+        .first()
+        .ok_or_else(|| anyhow!("missing kline data"))?;
+    let interval = msg.params.get(2).and_then(|v| v.as_str()).unwrap_or("1m");
+    let ev = core::events::KlineEvent {
+        event_time: k.timestamp,
+        symbol: symbol.to_string(),
+        kline: core::events::Kline {
+            start_time: k.timestamp,
+            close_time: k.timestamp,
+            interval: interval.to_string(),
+            open: Cow::Owned(k.open.clone().into_owned()),
+            close: Cow::Owned(k.close.clone().into_owned()),
+            high: Cow::Owned(k.high.clone().into_owned()),
+            low: Cow::Owned(k.low.clone().into_owned()),
+            volume: Cow::Owned(k.volume.clone().into_owned()),
+            trades: 0,
+            is_closed: true,
+            quote_volume: Cow::Owned("0".to_string()),
+            taker_buy_base_volume: Cow::Owned("0".to_string()),
+            taker_buy_quote_volume: Cow::Owned("0".to_string()),
+        },
+    };
+    Ok(StreamMessage {
+        stream: format!("{}@kline_{}", symbol, interval),
+        data: Event::Kline(ev),
+    })
 }
 
 #[async_trait]
@@ -280,19 +408,29 @@ impl ExchangeAdapter for GateioAdapter {
                     while let Some(msg) = read.next().await {
                         match msg {
                             Ok(Message::Text(text)) => {
-                                if let Ok(v) = serde_json::from_str::<Value>(&text) {
-                                    if v.get("method")
-                                        .and_then(|m| m.as_str())
-                                        == Some("kline.update")
-                                    {
-                                        if let Some(params) =
-                                            v.get("params").and_then(|p| p.as_array())
-                                        {
-                                            if let Some(symbol) =
-                                                params.get(0).and_then(|s| s.as_str())
-                                            {
-                                                debug!("kline update for {}", symbol);
-                                            }
+                                if let Ok(msg) = serde_json::from_str::<GateioStreamMessage>(&text)
+                                {
+                                    if msg.method == "server.ping" {
+                                        let _ = write
+                                            .lock()
+                                            .await
+                                            .send(Message::Text(
+                                                json!({"method": "server.pong"}).to_string(),
+                                            ))
+                                            .await;
+                                        continue;
+                                    }
+                                    if let Some(event) = map_message(msg) {
+                                        let symbol_key = match &event.data {
+                                            Event::Trade(ev) => &ev.symbol,
+                                            Event::DepthUpdate(ev) => &ev.symbol,
+                                            Event::Kline(ev) => &ev.symbol,
+                                            _ => unreachable!(),
+                                        };
+                                        let key = format!("{}:{}", self.cfg.name, symbol_key);
+                                        let (tx, _) = self.channels.get_or_create(&key);
+                                        if tx.send(event).is_err() {
+                                            break;
                                         }
                                     }
                                 }
