@@ -18,6 +18,8 @@ use core::config;
 use core::events::StreamMessage;
 use core::tls;
 
+mod ops;
+
 fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -119,6 +121,9 @@ pub async fn run() -> Result<()> {
     let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
     let client = build_client(&cfg, tls_config.clone())?;
 
+    let metrics_enabled = core::config::metrics_enabled();
+    ops::serve_all(metrics_enabled)?;
+
     let join_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
 
     let event_buffer_size = cfg.event_buffer_size;
@@ -135,7 +140,6 @@ pub async fn run() -> Result<()> {
     .await?;
 
     // Spawn a consumer task per partition to normalize events.
-    let metrics_enabled = core::config::metrics_enabled();
     spawn_consumers(receivers, join_set.clone(), metrics_enabled).await;
 
     // Drop the original senders so receivers can terminate once all adapters finish.
@@ -150,6 +154,8 @@ pub async fn run() -> Result<()> {
             }
         }
     }
+
+    ops::set_ready(false);
 
     Ok(())
 }
