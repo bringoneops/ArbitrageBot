@@ -62,6 +62,14 @@ pub struct Level {
     pub kind: BookKind,
 }
 
+fn is_sorted_desc(levels: &[Level]) -> bool {
+    levels.windows(2).all(|w| w[0].price >= w[1].price)
+}
+
+fn is_sorted_asc(levels: &[Level]) -> bool {
+    levels.windows(2).all(|w| w[0].price <= w[1].price)
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum Side {
     Buy,
@@ -588,20 +596,23 @@ impl<'a> From<ForceOrderEvent<'a>> for MdEvent {
 impl<'a> TryFrom<Event<'a>> for MdEvent {
     type Error = ();
     fn try_from(ev: Event<'a>) -> Result<Self, Self::Error> {
-        match ev {
-            Event::Trade(e) => Ok(MdEvent::from(e)),
-            Event::DepthUpdate(e) => Ok(MdEvent::from(e)),
-            Event::BookTicker(e) => Ok(MdEvent::from(e)),
-            Event::MiniTicker(e) => Ok(MdEvent::from(e)),
-            Event::Kline(e) => Ok(MdEvent::from(e)),
-            Event::Ticker(e) => Ok(MdEvent::from(e)),
-            Event::MarkPrice(e) => Ok(MdEvent::from(e)),
-            Event::IndexPrice(e) => Ok(MdEvent::from(e)),
-            Event::FundingRate(e) => Ok(MdEvent::from(e)),
-            Event::OpenInterest(e) => Ok(MdEvent::from(e)),
-            Event::ForceOrder(e) => Ok(MdEvent::from(e)),
-            _ => Err(()),
-        }
+        let md = match ev {
+            Event::Trade(e) => MdEvent::from(e),
+            Event::DepthUpdate(e) => MdEvent::from(e),
+            Event::BookTicker(e) => MdEvent::from(e),
+            Event::MiniTicker(e) => MdEvent::from(e),
+            Event::Kline(e) => MdEvent::from(e),
+            Event::Ticker(e) => MdEvent::from(e),
+            Event::MarkPrice(e) => MdEvent::from(e),
+            Event::IndexPrice(e) => MdEvent::from(e),
+            Event::FundingRate(e) => MdEvent::from(e),
+            Event::OpenInterest(e) => MdEvent::from(e),
+            Event::ForceOrder(e) => MdEvent::from(e),
+            _ => return Err(()),
+        };
+
+        md.validate()?;
+        Ok(md)
     }
 }
 
@@ -1471,6 +1482,69 @@ impl MdEvent {
             MdEvent::OpenInterest(e) => e.channel(),
             MdEvent::Liquidation(e) => e.channel(),
         }
+    }
+
+    pub fn validate(&self) -> Result<(), ()> {
+        match self {
+            MdEvent::Trade(t) => {
+                if t.quantity < 0.0 {
+                    return Err(());
+                }
+            }
+            MdEvent::BookTicker(b) => {
+                if b.bid_quantity < 0.0 || b.ask_quantity < 0.0 {
+                    return Err(());
+                }
+            }
+            MdEvent::MiniTicker(m) => {
+                if m.volume < 0.0 || m.quote_volume < 0.0 {
+                    return Err(());
+                }
+            }
+            MdEvent::Kline(k) => {
+                if k.volume < 0.0 {
+                    return Err(());
+                }
+            }
+            MdEvent::DepthL2Update(d) => {
+                if !is_sorted_desc(&d.bids) || !is_sorted_asc(&d.asks) {
+                    return Err(());
+                }
+                if d
+                    .bids
+                    .iter()
+                    .chain(d.asks.iter())
+                    .any(|l| l.quantity < 0.0)
+                {
+                    return Err(());
+                }
+            }
+            MdEvent::DepthSnapshot(d) => {
+                if !is_sorted_desc(&d.bids) || !is_sorted_asc(&d.asks) {
+                    return Err(());
+                }
+                if d
+                    .bids
+                    .iter()
+                    .chain(d.asks.iter())
+                    .any(|l| l.quantity < 0.0)
+                {
+                    return Err(());
+                }
+            }
+            MdEvent::OpenInterest(o) => {
+                if o.open_interest < 0.0 {
+                    return Err(());
+                }
+            }
+            MdEvent::Liquidation(l) => {
+                if l.quantity < 0.0 {
+                    return Err(());
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 

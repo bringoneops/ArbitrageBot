@@ -2,7 +2,7 @@ use arb_core::DepthSnapshot as CoreDepthSnapshot;
 use canonical::{
     events::{
         BingxStreamMessage, BitgetStreamMessage, BitmartStreamMessage, CoinexStreamMessage, Event,
-        ForceOrder, ForceOrderEvent, FundingRateEvent, GateioStreamMessage, IndexPriceEvent,
+        DepthUpdateEvent, ForceOrder, ForceOrderEvent, FundingRateEvent, GateioStreamMessage, IndexPriceEvent,
         Kline as EventKline, KlineEvent, KucoinStreamMessage, LatokenStreamMessage,
         LbankStreamMessage, MarkPriceEvent, MexcStreamMessage, MiniTickerEvent, OpenInterestEvent,
         TickerEvent, TradeEvent, XtStreamMessage,
@@ -118,6 +118,45 @@ fn mexc_depth_event_to_canonical() {
         }
         _ => panic!("expected depth"),
     }
+}
+
+#[test]
+fn negative_quantity_rejected() {
+    let trade_event = TradeEvent {
+        event_time: 1,
+        symbol: "BTCUSD".to_string(),
+        trade_id: 1,
+        price: Cow::Borrowed("100.0"),
+        quantity: Cow::Borrowed("-1.0"),
+        buyer_order_id: 10,
+        seller_order_id: 20,
+        trade_time: 1,
+        buyer_is_maker: false,
+        best_match: true,
+    };
+    let event = Event::Trade(trade_event);
+    assert!(MdEvent::try_from(event).is_err());
+}
+
+#[test]
+fn unsorted_book_rejected() {
+    let depth_event = DepthUpdateEvent {
+        event_time: 1,
+        symbol: "BTCUSD".to_string(),
+        first_update_id: 1,
+        final_update_id: 1,
+        previous_final_update_id: 0,
+        bids: vec![
+            [Cow::Borrowed("1.0"), Cow::Borrowed("1.0")],
+            [Cow::Borrowed("2.0"), Cow::Borrowed("1.0")],
+        ],
+        asks: vec![
+            [Cow::Borrowed("1.0"), Cow::Borrowed("1.0")],
+            [Cow::Borrowed("0.5"), Cow::Borrowed("1.0")],
+        ],
+    };
+    let event = Event::DepthUpdate(depth_event);
+    assert!(MdEvent::try_from(event).is_err());
 }
 
 #[test]
