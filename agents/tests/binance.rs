@@ -154,7 +154,7 @@ async fn fetch_symbols_reuses_client_connections() {
     let server_handle = tokio::spawn(server);
 
     let client = Client::new();
-    let url = format!("http://{}/exchangeInfo", addr);
+    let url = format!("http://{addr}/exchangeInfo");
 
     let s1 = fetch_symbols(&client, &url).await.unwrap();
     let s2 = fetch_symbols(&client, &url).await.unwrap();
