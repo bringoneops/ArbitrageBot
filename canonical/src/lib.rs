@@ -2,6 +2,9 @@ use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
+pub mod symbol;
+pub use symbol::{normalize_symbol, ContractSpec, SymbolId, VenueType};
+
 pub use arb_core::events;
 use arb_core::events::Channel;
 pub use arb_core::events::{
