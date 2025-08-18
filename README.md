@@ -96,6 +96,8 @@ The binary can be configured via environment variables:
 
 - `SOCKS5_PROXY` – optional `host:port` for routing all HTTP and WebSocket traffic through a SOCKS5 proxy.
 - `MD_SINK_FILE` – path to a JSON Lines file where normalized market data events are written.
+- `MD_SINK_KAFKA_BROKERS` – optional comma-separated list of Kafka brokers. When set, events are published to Kafka instead of the local file sink.
+- `MD_SINK_WAL_FILE` – path to a write-ahead log used with the Kafka sink. Events are logged here before publishing and replayed on restart. Failed publishes are appended to `<path>.dlq`.
 - `CHUNK_SIZE` – number of streams per WebSocket connection. Defaults to `100` if unset or invalid.
 - `STREAMS_CONFIG` – optional path to a JSON file specifying `global` and `per_symbol` stream lists. If omitted, a built-in `streams/binance_futures.json` configuration is used.
 - `SPOT_SYMBOLS` – comma-separated spot symbols to subscribe. Set to `ALL` to auto-discover all trading pairs (may subscribe to a very large number of streams).

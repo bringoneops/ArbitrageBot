@@ -21,7 +21,7 @@ use canonical::{MdEvent, MdEventKind};
 use core::config;
 use core::events::StreamMessage;
 use core::tls;
-use sink::{FileSink, Sink};
+use sink::{FileSink, KafkaSink, Sink, Wal};
 
 mod ops;
 mod sink;
@@ -250,8 +250,19 @@ pub async fn run() -> Result<()> {
     let metrics_enabled = core::config::metrics_enabled();
     ops::serve_all(metrics_enabled)?;
 
-    let sink_path = env::var("MD_SINK_FILE").context("MD_SINK_FILE is not set")?;
-    let sink: Arc<dyn Sink> = Arc::new(FileSink::new(sink_path).await?);
+    let sink: Arc<dyn Sink> = if let Ok(brokers) = env::var("MD_SINK_KAFKA_BROKERS") {
+        if brokers.is_empty() {
+            let sink_path = env::var("MD_SINK_FILE").context("MD_SINK_FILE is not set")?;
+            Arc::new(FileSink::new(sink_path).await?)
+        } else {
+            let wal_path = env::var("MD_SINK_WAL_FILE").unwrap_or_else(|_| "md.wal".into());
+            let kafka = KafkaSink::new(&brokers, "md_events")?;
+            Arc::new(Wal::new(wal_path, kafka).await?)
+        }
+    } else {
+        let sink_path = env::var("MD_SINK_FILE").context("MD_SINK_FILE is not set")?;
+        Arc::new(FileSink::new(sink_path).await?)
+    };
 
     let join_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
     // Install signal-based shutdown handling before starting intake tasks.
