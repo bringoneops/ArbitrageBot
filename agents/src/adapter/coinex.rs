@@ -20,11 +20,12 @@ use tokio::{
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use super::ExchangeAdapter;
-use crate::{registry, ChannelRegistry, TaskSet};
+use crate::{registry, ChannelRegistry, StreamSender, TaskSet};
 use futures::future::BoxFuture;
 use std::sync::Once;
 use tokio::sync::mpsc;
 use tracing::error;
+use std::collections::HashMap;
 
 pub struct CoinexConfig {
     pub id: &'static str,
@@ -149,6 +150,7 @@ pub fn register() {
                                 client.clone(),
                                 global_cfg.chunk_size,
                                 symbols,
+                                channels.clone(),
                             );
 
                             {
@@ -178,6 +180,7 @@ pub struct CoinexAdapter {
     _books: Arc<DashMap<String, OrderBook>>,
     http_bucket: Arc<TokenBucket>,
     ws_bucket: Arc<TokenBucket>,
+    channels: ChannelRegistry,
     tasks: Vec<JoinHandle<Result<()>>>,
     shutdown: Arc<AtomicBool>,
 }
@@ -188,6 +191,7 @@ impl CoinexAdapter {
         client: Client,
         chunk_size: usize,
         symbols: Vec<String>,
+        channels: ChannelRegistry,
     ) -> Self {
         let global_cfg = core::config::get();
         Self {
@@ -206,6 +210,7 @@ impl CoinexAdapter {
                 global_cfg.ws_refill_per_sec,
                 std::time::Duration::from_secs(1),
             )),
+            channels,
             tasks: Vec::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
         }
@@ -224,8 +229,18 @@ impl ExchangeAdapter for CoinexAdapter {
             let ws_url = self.cfg.ws_base.to_string();
             let ws_bucket = self.ws_bucket.clone();
             let shutdown = self.shutdown.clone();
+            let channels = self.channels.clone();
+            let cfg = self.cfg;
 
             let handle = tokio::spawn(async move {
+                let mut senders: HashMap<String, StreamSender> = HashMap::new();
+                for s in &symbols {
+                    let key = format!("{}:{}", cfg.name, s);
+                    if let Some(tx) = channels.get(&key) {
+                        senders.insert(s.clone(), tx);
+                    }
+                }
+
                 loop {
                     if shutdown.load(Ordering::Relaxed) {
                         break;
@@ -292,9 +307,22 @@ impl ExchangeAdapter for CoinexAdapter {
                                                             "bbo.update" => {
                                                                 if let Some(params) = v.get("params").and_then(|p| p.as_array()) {
                                                                     if params.len() >= 2 {
-                                                                        let symbol = params[0].as_str().unwrap_or_default();
+                                                                        let symbol = params[0].as_str().unwrap_or_default().to_string();
                                                                         if let Ok(data) = serde_json::from_value::<BboData>(params[1].clone()) {
-                                                                            tracing::debug!("coinex bbo {} bid {} ask {}", symbol, data.b, data.a);
+                                                                            let event = core::events::StreamMessage {
+                                                                                stream: format!("{}@bbo", symbol),
+                                                                                data: core::events::Event::BookTicker(core::events::BookTickerEvent {
+                                                                                    update_id: 0,
+                                                                                    symbol: symbol.clone(),
+                                                                                    best_bid_price: data.b.into(),
+                                                                                    best_bid_qty: data.B.into(),
+                                                                                    best_ask_price: data.a.into(),
+                                                                                    best_ask_qty: data.A.into(),
+                                                                                }),
+                                                                            };
+                                                                            if let Some(tx) = senders.get(&symbol) {
+                                                                                let _ = tx.send(event);
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
@@ -302,9 +330,20 @@ impl ExchangeAdapter for CoinexAdapter {
                                                             "index.update" => {
                                                                 if let Some(params) = v.get("params").and_then(|p| p.as_array()) {
                                                                     if params.len() >= 2 {
-                                                                        let symbol = params[0].as_str().unwrap_or_default();
-                                                                        let price = params[1].as_str().unwrap_or_default();
-                                                                        tracing::debug!("coinex index {} price {}", symbol, price);
+                                                                        let symbol = params[0].as_str().unwrap_or_default().to_string();
+                                                                        if let Some(price) = params[1].as_str() {
+                                                                            let event = core::events::StreamMessage {
+                                                                                stream: format!("{}@index", symbol),
+                                                                                data: core::events::Event::IndexPrice(core::events::IndexPriceEvent {
+                                                                                    event_time: 0,
+                                                                                    symbol: symbol.clone(),
+                                                                                    index_price: price.to_string().into(),
+                                                                                }),
+                                                                            };
+                                                                            if let Some(tx) = senders.get(&symbol) {
+                                                                                let _ = tx.send(event);
+                                                                            }
+                                                                        }
                                                                     }
                                                                 }
                                                             },
