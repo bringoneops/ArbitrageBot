@@ -1,6 +1,6 @@
 use agents::adapter::ExchangeAdapter;
 use arb_core::events::{Event, StreamMessage, TradeEvent};
-use canonical::MdEvent;
+use canonical::{MdEvent, MdEventKind};
 use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -63,5 +63,5 @@ async fn mock_agent_pipeline() {
     handle.await.unwrap();
     let events = out.lock().await;
     assert_eq!(events.len(), 1);
-    assert!(matches!(events[0], MdEvent::Trade(_)));
+    assert!(matches!(events[0].event, MdEventKind::Trade(_)));
 }

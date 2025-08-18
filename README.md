@@ -12,7 +12,9 @@ aggregate and normalize exchange data:
   channel.
 - **canonical** – defines a stable representation of trades and order
   book updates. It converts raw `arb_core` events into the `MdEvent`
-  types used across the system.
+  types used across the system. The schema is versioned with the
+  `SCHEMA_VERSION` constant in `canonical/src/lib.rs`; bump this value
+  whenever the canonical structs change.
 - **core** – shared utilities such as event definitions, configuration
   loading, rate limiting and TLS helpers.
 

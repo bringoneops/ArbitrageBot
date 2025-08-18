@@ -17,7 +17,7 @@ use tracing_subscriber::EnvFilter;
 use agents::ChannelRegistry;
 use agents::{spawn_adapters, TaskSet};
 use arb_core as core;
-use canonical::MdEvent;
+use canonical::{MdEvent, MdEventKind};
 use core::config;
 use core::events::StreamMessage;
 use core::tls;
@@ -61,14 +61,14 @@ static DEDUPE_CACHE: Lazy<Mutex<LruCache<DedupeKey, ()>>> =
     Lazy::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(1024).unwrap())));
 
 fn dedupe_key(ev: &MdEvent) -> Option<DedupeKey> {
-    match ev {
-        MdEvent::Trade(e) => e
+    match &ev.event {
+        MdEventKind::Trade(e) => e
             .trade_id
             .map(|id| (e.exchange.clone(), ev.channel() as u8, e.symbol.clone(), id)),
-        MdEvent::DepthL2Update(e) => e
+        MdEventKind::DepthL2Update(e) => e
             .final_update_id
             .map(|id| (e.exchange.clone(), ev.channel() as u8, e.symbol.clone(), id)),
-        MdEvent::DepthSnapshot(e) => Some((
+        MdEventKind::DepthSnapshot(e) => Some((
             e.exchange.clone(),
             ev.channel() as u8,
             e.symbol.clone(),
@@ -117,63 +117,63 @@ async fn process_stream_event<F, Fut>(
                 .unwrap_or_default()
                 .as_nanos() as u64;
             let seq_no = channels.next_seq_no(&msg.stream);
-            match &mut ev {
-                MdEvent::Trade(e) => {
+            match &mut ev.event {
+                MdEventKind::Trade(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::DepthL2Update(e) => {
+                MdEventKind::DepthL2Update(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::BookTicker(e) => {
+                MdEventKind::BookTicker(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::MiniTicker(e) => {
+                MdEventKind::MiniTicker(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::Kline(e) => {
+                MdEventKind::Kline(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::DepthSnapshot(e) => {
+                MdEventKind::DepthSnapshot(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::AvgPrice(e) => {
+                MdEventKind::AvgPrice(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::MarkPrice(e) => {
+                MdEventKind::MarkPrice(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::IndexPrice(e) => {
+                MdEventKind::IndexPrice(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::FundingRate(e) => {
+                MdEventKind::FundingRate(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::OpenInterest(e) => {
+                MdEventKind::OpenInterest(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
                 }
-                MdEvent::Liquidation(e) => {
+                MdEventKind::Liquidation(e) => {
                     e.ingest_ts_monotonic = monotonic;
                     e.ingest_ts_utc = utc;
                     e.seq_no = seq_no;
@@ -445,8 +445,8 @@ mod tests {
         };
         process_stream_event(msg, false, channels.clone(), forward).await;
         let ev1 = first.lock().unwrap().clone().unwrap();
-        match ev1 {
-            MdEvent::BookTicker(bt) => {
+        match ev1.event {
+            MdEventKind::BookTicker(bt) => {
                 assert!(bt.ingest_ts_monotonic > 0);
                 assert!(bt.ingest_ts_utc > 0);
                 assert_eq!(bt.seq_no, 0);
@@ -467,8 +467,8 @@ mod tests {
         let msg2 = sample_msg();
         process_stream_event(msg2, false, channels.clone(), forward2).await;
         let ev2 = second.lock().unwrap().clone().unwrap();
-        match ev2 {
-            MdEvent::BookTicker(bt) => {
+        match ev2.event {
+            MdEventKind::BookTicker(bt) => {
                 assert_eq!(bt.seq_no, 1);
             }
             _ => panic!("expected book ticker"),

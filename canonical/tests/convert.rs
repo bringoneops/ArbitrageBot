@@ -9,7 +9,7 @@ use canonical::{
     },
     AvgPrice, BookTicker, DepthL2Update, DepthSnapshot as CanonDepthSnapshot,
     FundingRate as CanonFundingRate, IndexPrice as CanonIndexPrice, Kline as CanonKline,
-    Liquidation as CanonLiquidation, MarkPrice as CanonMarkPrice, MdEvent,
+    Liquidation as CanonLiquidation, MarkPrice as CanonMarkPrice, MdEvent, MdEventKind,
     MiniTicker as CanonMiniTicker, OpenInterest as CanonOpenInterest, Side, Trade,
 };
 use serde_json::json;
@@ -30,8 +30,8 @@ fn trade_event_to_canonical() {
         best_match: true,
     };
     let md: MdEvent = MdEvent::from(trade_event);
-    match md {
-        MdEvent::Trade(ref t) => {
+    match md.event {
+        MdEventKind::Trade(ref t) => {
             assert_eq!(t.exchange, "binance");
             assert_eq!(t.symbol, "BTCUSD");
             assert_eq!(t.price, 100.0);
@@ -77,8 +77,8 @@ fn mexc_trade_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "mexc");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.price, 93220.0);
@@ -107,8 +107,8 @@ fn mexc_depth_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "mexc");
             assert_eq!(b.symbol, "BTCUSDT");
             assert_eq!(b.bids[0].price, 92876.0);
@@ -174,8 +174,8 @@ fn mexc_book_ticker_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::BookTicker(t) => {
+    match md.event {
+        MdEventKind::BookTicker(t) => {
             assert_eq!(t.exchange, "mexc");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.bid_price, 93387.28);
@@ -203,8 +203,8 @@ fn bingx_trade_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "bingx");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.price, 93200.0);
@@ -230,8 +230,8 @@ fn bingx_depth_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "bingx");
             assert_eq!(b.symbol, "BTCUSDT");
             assert_eq!(b.bids[0].price, 93200.0);
@@ -257,8 +257,8 @@ fn xt_trade_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "xt");
             assert_eq!(t.symbol, "BTC_USDT");
             assert_eq!(t.price, 100.0);
@@ -283,8 +283,8 @@ fn xt_depth_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "xt");
             assert_eq!(b.symbol, "BTC_USDT");
             assert_eq!(b.bids[0].price, 100.0);
@@ -311,8 +311,8 @@ fn xt_kline_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.exchange, "xt");
             assert_eq!(k.symbol, "BTC_USDT");
             assert_eq!(k.open, 90.0);
@@ -338,8 +338,8 @@ fn xt_ticker_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::BookTicker(t) => {
+    match md.event {
+        MdEventKind::BookTicker(t) => {
             assert_eq!(t.exchange, "xt");
             assert_eq!(t.symbol, "BTC_USDT");
             assert_eq!(t.bid_price, 100.0);
@@ -360,8 +360,8 @@ fn latoken_trade_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "latoken");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.price, 100.0);
@@ -383,8 +383,8 @@ fn latoken_depth_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "latoken");
             assert_eq!(b.symbol, "BTCUSDT");
             assert_eq!(b.bids[0].price, 100.0);
@@ -405,8 +405,8 @@ fn latoken_kline_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.exchange, "latoken");
             assert_eq!(k.symbol, "BTCUSDT");
             assert_eq!(k.open, 90.0);
@@ -431,8 +431,8 @@ fn mini_ticker_event_to_canonical() {
         quote_volume: Cow::Borrowed("1000"),
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::MiniTicker(t) => {
+    match md.event {
+        MdEventKind::MiniTicker(t) => {
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.close, 10.0);
             let s = serde_json::to_string(&t).unwrap();
@@ -466,8 +466,8 @@ fn kline_event_to_canonical() {
         kline,
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.symbol, "BTCUSDT");
             assert_eq!(k.close, 10.0);
             let s = serde_json::to_string(&k).unwrap();
@@ -519,8 +519,8 @@ fn avg_price_event_to_canonical() {
         count: 0,
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::AvgPrice(p) => {
+    match md.event {
+        MdEventKind::AvgPrice(p) => {
             assert_eq!(p.price, 10.0);
             let s = serde_json::to_string(&p).unwrap();
             let de: AvgPrice = serde_json::from_str(&s).unwrap();
@@ -542,8 +542,8 @@ fn mark_price_event_to_canonical() {
         estimated_settle_price: None,
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::MarkPrice(p) => {
+    match md.event {
+        MdEventKind::MarkPrice(p) => {
             assert_eq!(p.price, 100.0);
             assert_eq!(p.symbol, "BTCUSDT");
             let s = serde_json::to_string(&p).unwrap();
@@ -562,8 +562,8 @@ fn index_price_event_to_canonical() {
         index_price: Cow::Borrowed("101"),
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::IndexPrice(p) => {
+    match md.event {
+        MdEventKind::IndexPrice(p) => {
             assert_eq!(p.price, 101.0);
             let s = serde_json::to_string(&p).unwrap();
             let de: CanonIndexPrice = serde_json::from_str(&s).unwrap();
@@ -582,8 +582,8 @@ fn funding_rate_event_to_canonical() {
         funding_time: 0,
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::FundingRate(f) => {
+    match md.event {
+        MdEventKind::FundingRate(f) => {
             assert_eq!(f.rate, 0.01);
             let s = serde_json::to_string(&f).unwrap();
             let de: CanonFundingRate = serde_json::from_str(&s).unwrap();
@@ -601,8 +601,8 @@ fn open_interest_event_to_canonical() {
         open_interest: Cow::Borrowed("1234"),
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::OpenInterest(o) => {
+    match md.event {
+        MdEventKind::OpenInterest(o) => {
             assert_eq!(o.open_interest, 1234.0);
             let s = serde_json::to_string(&o).unwrap();
             let de: CanonOpenInterest = serde_json::from_str(&s).unwrap();
@@ -637,8 +637,8 @@ fn force_order_event_to_canonical() {
         },
     };
     let md = MdEvent::from(ev);
-    match md {
-        MdEvent::Liquidation(l) => {
+    match md.event {
+        MdEventKind::Liquidation(l) => {
             assert_eq!(l.price, 100.0);
             assert_eq!(l.quantity, 1.0);
             let s = serde_json::to_string(&l).unwrap();
@@ -667,8 +667,8 @@ fn gateio_trade_message_to_canonical() {
     .to_string();
     let msg: GateioStreamMessage<'_> = serde_json::from_str(&s).unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "gateio");
             assert_eq!(t.symbol, "BTC_USDT");
             assert_eq!(t.price, 93220.0);
@@ -699,8 +699,8 @@ fn gateio_depth_message_to_canonical() {
     .to_string();
     let msg: GateioStreamMessage<'_> = serde_json::from_str(&s).unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "gateio");
             assert_eq!(b.symbol, "BTC_USDT");
             assert_eq!(b.bids[0].price, 92876.0);
@@ -732,8 +732,8 @@ fn gateio_kline_message_to_canonical() {
     .to_string();
     let msg: GateioStreamMessage<'_> = serde_json::from_str(&s).unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.exchange, "gateio");
             assert_eq!(k.symbol, "BTC_USDT");
             assert_eq!(k.open, 93000.0);
@@ -764,8 +764,8 @@ fn kucoin_trade_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "kucoin");
             assert_eq!(t.symbol, "BTC-USDT");
             assert_eq!(t.price, 100.0);
@@ -796,8 +796,8 @@ fn kucoin_depth_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "kucoin");
             assert_eq!(b.symbol, "BTC-USDT");
             assert_eq!(b.bids[0].price, 100.0);
@@ -823,8 +823,8 @@ fn kucoin_kline_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.exchange, "kucoin");
             assert_eq!(k.symbol, "BTC-USDT");
             assert_eq!(k.open, 10.0);
@@ -844,8 +844,8 @@ fn bitget_trade_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "bitget");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.price, 100.0);
@@ -870,8 +870,8 @@ fn bitget_depth_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "bitget");
             assert_eq!(b.symbol, "BTCUSDT");
             assert_eq!(b.bids[0].price, 100.0);
@@ -891,8 +891,8 @@ fn bitget_ticker_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::BookTicker(t) => {
+    match md.event {
+        MdEventKind::BookTicker(t) => {
             assert_eq!(t.exchange, "bitget");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.bid_price, 100.0);
@@ -912,8 +912,8 @@ fn bitget_kline_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.exchange, "bitget");
             assert_eq!(k.symbol, "BTCUSDT");
             assert_eq!(k.open, 100.0);
@@ -939,8 +939,8 @@ fn bitmart_trade_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "bitmart");
             assert_eq!(t.symbol, "BTC_USDT");
             assert_eq!(t.price, 100.0);
@@ -968,8 +968,8 @@ fn bitmart_depth_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "bitmart");
             assert_eq!(b.symbol, "BTC_USDT");
             assert_eq!(b.bids[0].price, 100.0);
@@ -996,8 +996,8 @@ fn bitmart_ticker_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::BookTicker(t) => {
+    match md.event {
+        MdEventKind::BookTicker(t) => {
             assert_eq!(t.exchange, "bitmart");
             assert_eq!(t.symbol, "BTC_USDT");
             assert_eq!(t.bid_price, 100.0);
@@ -1025,8 +1025,8 @@ fn bitmart_kline_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.exchange, "bitmart");
             assert_eq!(k.symbol, "BTC_USDT");
             assert_eq!(k.open, 90.0);
@@ -1050,8 +1050,8 @@ fn bitmart_funding_rate_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::FundingRate(f) => {
+    match md.event {
+        MdEventKind::FundingRate(f) => {
             assert_eq!(f.exchange, "bitmart");
             assert_eq!(f.symbol, "BTC_USDT");
             assert_eq!(f.rate, 0.01);
@@ -1074,8 +1074,8 @@ fn coinex_trade_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "coinex");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.price, 93200.0);
@@ -1099,8 +1099,8 @@ fn coinex_depth_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "coinex");
             assert_eq!(b.symbol, "BTCUSDT");
             assert_eq!(b.bids[0].price, 93200.0);
@@ -1123,8 +1123,8 @@ fn coinex_bbo_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::BookTicker(t) => {
+    match md.event {
+        MdEventKind::BookTicker(t) => {
             assert_eq!(t.exchange, "coinex");
             assert_eq!(t.symbol, "BTCUSDT");
             assert_eq!(t.bid_price, 93200.0);
@@ -1144,8 +1144,8 @@ fn coinex_index_event_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::IndexPrice(p) => {
+    match md.event {
+        MdEventKind::IndexPrice(p) => {
             assert_eq!(p.exchange, "coinex");
             assert_eq!(p.symbol, "BTCUSDT");
             assert_eq!(p.price, 93200.0);
@@ -1166,8 +1166,8 @@ fn lbank_trade_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Trade(t) => {
+    match md.event {
+        MdEventKind::Trade(t) => {
             assert_eq!(t.exchange, "lbank");
             assert_eq!(t.symbol, "btc_usdt");
             assert_eq!(t.price, 93200.0);
@@ -1193,8 +1193,8 @@ fn lbank_depth_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::DepthL2Update(b) => {
+    match md.event {
+        MdEventKind::DepthL2Update(b) => {
             assert_eq!(b.exchange, "lbank");
             assert_eq!(b.symbol, "btc_usdt");
             assert_eq!(b.bids[0].price, 93200.0);
@@ -1222,8 +1222,8 @@ fn lbank_kbar_message_to_canonical() {
     }))
     .unwrap();
     let md = MdEvent::try_from(msg).unwrap();
-    match md {
-        MdEvent::Kline(k) => {
+    match md.event {
+        MdEventKind::Kline(k) => {
             assert_eq!(k.exchange, "lbank");
             assert_eq!(k.symbol, "btc_usdt");
             assert_eq!(k.open, 93000.0);

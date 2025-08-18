@@ -1,5 +1,5 @@
 use canonical::events::{Event, MexcStreamMessage, StreamMessage};
-use canonical::{BookKind, MdEvent, Side};
+use canonical::{BookKind, MdEvent, MdEventKind, Side};
 
 macro_rules! parses_event {
     ($name:ident, $json:expr, $pattern:pat, $checks:block) => {
@@ -19,8 +19,8 @@ fn parses_trade_event() {
     let json = r#"{"stream":"btcusdt@trade","data":{"e":"trade","E":123456789,"s":"BTCUSDT","t":12345,"p":"0.001","q":"100","b":88,"a":50,"T":123456785,"m":true,"M":true}}"#;
     let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
     let md = MdEvent::try_from(msg.data).expect("failed to convert");
-    match md {
-        MdEvent::Trade(ev) => {
+    match md.event {
+        MdEventKind::Trade(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
             assert_eq!(ev.trade_id, Some(12345));
             assert_eq!(ev.side, Some(Side::Sell));
@@ -92,8 +92,8 @@ fn parses_depth_update_event() {
     let json = r#"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1,"s":"BTCUSDT","U":2,"u":3,"pu":1,"b":[["1.5","3.0"],["1.0","2.0"]],"a":[["2.0","1.0"],["2.5","4.0"]]}}"#;
     let msg: StreamMessage<'_> = serde_json::from_str(json).expect("failed to parse");
     let md = MdEvent::try_from(msg.data).expect("failed to convert");
-    match md {
-        MdEvent::DepthL2Update(ev) => {
+    match md.event {
+        MdEventKind::DepthL2Update(ev) => {
             assert_eq!(ev.symbol, "BTCUSDT");
             assert_eq!(ev.ts, 1_000_000);
             assert_eq!(ev.bids[0].price, 1.5);
@@ -171,17 +171,17 @@ fn parses_mexc_events() {
     let trade_json = r#"{"channel":"spot@public.aggre.deals.v3.api.pb@100ms@BTCUSDT","publicdeals":{"dealsList":[{"price":"1.0","quantity":"2.0","tradetype":1,"time":1}],"eventtype":"spot@public.aggre.deals.v3.api.pb@100ms"},"symbol":"BTCUSDT","sendtime":2}"#;
     let trade_msg: MexcStreamMessage<'_> = serde_json::from_str(trade_json).unwrap();
     let md = MdEvent::try_from(trade_msg).unwrap();
-    assert!(matches!(md, MdEvent::Trade(_)));
+    assert!(matches!(md.event, MdEventKind::Trade(_)));
 
     let depth_json = r#"{"channel":"spot@public.aggre.depth.v3.api.pb@100ms@BTCUSDT","publicincreasedepths":{"asksList":[{"price":"2.0","quantity":"3.0"}],"bidsList":[{"price":"1.0","quantity":"4.0"}],"eventtype":"spot@public.aggre.depth.v3.api.pb@100ms"},"symbol":"BTCUSDT","sendtime":2}"#;
     let depth_msg: MexcStreamMessage<'_> = serde_json::from_str(depth_json).unwrap();
     let md = MdEvent::try_from(depth_msg).unwrap();
-    assert!(matches!(md, MdEvent::DepthL2Update(_)));
+    assert!(matches!(md.event, MdEventKind::DepthL2Update(_)));
 
     let ticker_json = r#"{"channel":"spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT","publicbookticker":{"bidprice":"1.0","bidquantity":"2.0","askprice":"3.0","askquantity":"4.0"},"symbol":"BTCUSDT","sendtime":2}"#;
     let ticker_msg: MexcStreamMessage<'_> = serde_json::from_str(ticker_json).unwrap();
     let md = MdEvent::try_from(ticker_msg).unwrap();
-    assert!(matches!(md, MdEvent::BookTicker(_)));
+    assert!(matches!(md.event, MdEventKind::BookTicker(_)));
 }
 
 parses_event!(
