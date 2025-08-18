@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use futures::{future::BoxFuture, SinkExt, StreamExt};
 use reqwest::Client;
 use serde_json::{json, Value};
-use std::sync::{Arc, Once};
+use std::{
+    borrow::Cow,
+    sync::{Arc, Once},
+};
 use tokio::{
     sync::mpsc,
     time::{interval, sleep, Duration},
@@ -14,6 +17,7 @@ use uuid::Uuid;
 
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
+use core::events::{KucoinKline, KucoinLevel2, KucoinStreamMessage, KucoinTrade};
 use rustls::ClientConfig;
 
 /// Candle intervals supported by KuCoin.
@@ -105,14 +109,21 @@ pub struct KucoinAdapter {
     cfg: &'static KucoinConfig,
     _client: Client,
     symbols: Vec<String>,
+    channels: ChannelRegistry,
 }
 
 impl KucoinAdapter {
-    pub fn new(cfg: &'static KucoinConfig, client: Client, symbols: Vec<String>) -> Self {
+    pub fn new(
+        cfg: &'static KucoinConfig,
+        client: Client,
+        symbols: Vec<String>,
+        channels: ChannelRegistry,
+    ) -> Self {
         Self {
             cfg,
             _client: client,
             symbols,
+            channels,
         }
     }
 
@@ -208,7 +219,23 @@ impl KucoinAdapter {
                 msg = read.next() => {
                     match msg {
                         Some(Ok(Message::Text(text))) => {
-                            if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                            if let Ok(ev_msg) = serde_json::from_str::<KucoinStreamMessage>(&text) {
+                                if let Some(event) = map_message(ev_msg) {
+                                    let symbol_key = match &event.data {
+                                        core::events::Event::Trade(e) => &e.symbol,
+                                        core::events::Event::DepthUpdate(e) => &e.symbol,
+                                        core::events::Event::Kline(e) => &e.symbol,
+                                        _ => "",
+                                    };
+                                    if !symbol_key.is_empty() {
+                                        let key = format!("{}:{}", self.cfg.name, symbol_key);
+                                        let (tx, _) = self.channels.get_or_create(&key);
+                                        if tx.send(event).is_err() {
+                                            break;
+                                        }
+                                    }
+                                }
+                            } else if let Ok(v) = serde_json::from_str::<Value>(&text) {
                                 if v.get("type").and_then(|v| v.as_str()) == Some("ping") {
                                     if let Some(id) = v.get("id").and_then(|v| v.as_str()) {
                                         let pong = json!({"id": id, "type": "pong"});
@@ -227,6 +254,101 @@ impl KucoinAdapter {
             }
         }
         Ok(())
+    }
+}
+
+fn map_message(msg: KucoinStreamMessage) -> Option<core::events::StreamMessage<'static>> {
+    match msg.subject.as_str() {
+        "trade.l3match" => {
+            let data: KucoinTrade = serde_json::from_value(msg.data).ok()?;
+            let buyer_is_maker = match data.side.as_ref() {
+                "sell" => true,
+                _ => false,
+            };
+            let ev = core::events::TradeEvent {
+                event_time: data.trade_time,
+                symbol: data.symbol.clone(),
+                trade_id: data.sequence,
+                price: Cow::Owned(data.price.into_owned()),
+                quantity: Cow::Owned(data.size.into_owned()),
+                buyer_order_id: 0,
+                seller_order_id: 0,
+                trade_time: data.trade_time,
+                buyer_is_maker,
+                best_match: true,
+            };
+            Some(core::events::StreamMessage {
+                stream: format!("{}@trade", ev.symbol),
+                data: core::events::Event::Trade(ev),
+            })
+        }
+        "trade.l2update" => {
+            let data: KucoinLevel2 = serde_json::from_value(msg.data).ok()?;
+            let bids = data
+                .changes
+                .bids
+                .into_iter()
+                .map(|lvl| {
+                    [
+                        Cow::Owned(lvl[0].clone().into_owned()),
+                        Cow::Owned(lvl[1].clone().into_owned()),
+                    ]
+                })
+                .collect();
+            let asks = data
+                .changes
+                .asks
+                .into_iter()
+                .map(|lvl| {
+                    [
+                        Cow::Owned(lvl[0].clone().into_owned()),
+                        Cow::Owned(lvl[1].clone().into_owned()),
+                    ]
+                })
+                .collect();
+            let ev = core::events::DepthUpdateEvent {
+                event_time: data.sequence_end,
+                symbol: data.symbol.clone(),
+                first_update_id: data.sequence_start,
+                final_update_id: data.sequence_end,
+                previous_final_update_id: 0,
+                bids,
+                asks,
+            };
+            Some(core::events::StreamMessage {
+                stream: format!("{}@depth", ev.symbol),
+                data: core::events::Event::DepthUpdate(ev),
+            })
+        }
+        "trade.candles.update" => {
+            let data: KucoinKline = serde_json::from_value(msg.data).ok()?;
+            let interval = msg.topic.split(':').nth(1).unwrap_or("").to_string();
+            let start = data.candles[0].parse::<u64>().unwrap_or(data.time);
+            let ev = core::events::KlineEvent {
+                event_time: data.time,
+                symbol: data.symbol.clone(),
+                kline: core::events::Kline {
+                    start_time: start,
+                    close_time: data.time,
+                    interval: interval.clone(),
+                    open: Cow::Owned(data.candles[1].clone().into_owned()),
+                    close: Cow::Owned(data.candles[2].clone().into_owned()),
+                    high: Cow::Owned(data.candles[3].clone().into_owned()),
+                    low: Cow::Owned(data.candles[4].clone().into_owned()),
+                    volume: Cow::Owned(data.candles[5].clone().into_owned()),
+                    trades: 0,
+                    is_closed: true,
+                    quote_volume: Cow::Owned("0".to_string()),
+                    taker_buy_base_volume: Cow::Owned("0".to_string()),
+                    taker_buy_quote_volume: Cow::Owned("0".to_string()),
+                },
+            };
+            Some(core::events::StreamMessage {
+                stream: format!("{}@kline_{}", ev.symbol, interval),
+                data: core::events::Event::Kline(ev),
+            })
+        }
+        _ => None,
     }
 }
 
@@ -299,7 +421,8 @@ pub fn register() {
                                 }
                             }
 
-                            let adapter = KucoinAdapter::new(cfg, client.clone(), symbols);
+                            let adapter =
+                                KucoinAdapter::new(cfg, client.clone(), symbols, channels.clone());
 
                             {
                                 let mut set = task_set.lock().await;
