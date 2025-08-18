@@ -249,6 +249,8 @@ pub async fn run() -> Result<()> {
     ops::serve_all(metrics_enabled)?;
 
     let join_set: TaskSet = Arc::new(Mutex::new(JoinSet::new()));
+    // Install signal-based shutdown handling before starting intake tasks.
+    ops::shutdown::install(join_set.clone());
 
     let event_buffer_size = cfg.event_buffer_size;
     let channels = agents::ChannelRegistry::new(event_buffer_size);
