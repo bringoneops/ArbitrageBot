@@ -25,7 +25,7 @@ fn lbank_parse_trade_and_print() {
                 "q": ev.quantity
             }
         });
-        println!("{}", out);
+        println!("{out}");
     } else {
         panic!("expected trade event");
     }
@@ -55,7 +55,7 @@ fn lbank_parse_depth_and_print() {
                 "a": ev.asks
             }
         });
-        println!("{}", out);
+        println!("{out}");
     } else {
         panic!("expected depth event");
     }
