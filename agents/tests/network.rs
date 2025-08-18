@@ -24,7 +24,7 @@ async fn run_ws_emits_event() {
         ws.close(None).await.unwrap();
     });
 
-    let url = format!("ws://{}", addr);
+    let url = format!("ws://{addr}");
     let (ws_stream, _) = connect_async(url).await.unwrap();
 
     let books = Arc::new(DashMap::new());
