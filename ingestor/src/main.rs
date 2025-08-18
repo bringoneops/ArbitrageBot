@@ -245,7 +245,7 @@ pub async fn run() -> Result<()> {
     debug!(?cfg, "loaded config");
 
     let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
-    let client = build_client(&cfg, tls_config.clone())?;
+    let client = build_client(cfg, tls_config.clone())?;
 
     let metrics_enabled = core::config::metrics_enabled();
     ops::serve_all(metrics_enabled)?;
