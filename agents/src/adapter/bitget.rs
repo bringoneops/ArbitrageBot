@@ -134,13 +134,13 @@ pub fn register() {
                                 }
                             }
 
-                              let adapter = BitgetAdapter::new(
-                                  cfg,
-                                  client.clone(),
-                                  global_cfg.chunk_size,
-                                  symbols,
-                                  channels.clone(),
-                              );
+                            let adapter = BitgetAdapter::new(
+                                cfg,
+                                client.clone(),
+                                global_cfg.chunk_size,
+                                symbols,
+                                channels.clone(),
+                            );
 
                             {
                                 let mut set = task_set.lock().await;
@@ -232,7 +232,11 @@ impl super::ExchangeAdapter for BitgetAdapter {
                                         match msg {
                                             Some(Ok(Message::Text(text))) => {
                                                 if let Ok(v) = serde_json::from_str::<Value>(&text) {
-                                                    if let Some(event) = parse_candle_message(&v) {
+                                                    if let Some(event) =
+                                                        parse_trade_message(&v)
+                                                            .or_else(|| parse_depth_message(&v))
+                                                            .or_else(|| parse_candle_message(&v))
+                                                    {
                                                         if let Some(sym) = event.data.symbol() {
                                                             if let Some(tx) = senders.get(sym) {
                                                                 if tx.send(event).is_err() { break; }
@@ -291,6 +295,103 @@ impl super::ExchangeAdapter for BitgetAdapter {
     async fn backfill(&mut self) -> Result<()> {
         Ok(())
     }
+}
+
+fn parse_trade_message(val: &Value) -> Option<StreamMessage<'static>> {
+    let arg = val.get("arg")?.as_object()?;
+    if arg.get("channel")?.as_str()? != "trade" {
+        return None;
+    }
+    let inst_id = arg.get("instId")?.as_str()?.to_string();
+    let data = val.get("data")?.as_array()?.get(0)?.as_object()?;
+    let ts = data
+        .get("ts")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let price = data
+        .get("price")
+        .or_else(|| data.get("px"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("0");
+    let qty = data
+        .get("sz")
+        .or_else(|| data.get("size"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("0");
+    let side = data.get("side").and_then(|v| v.as_str()).unwrap_or("");
+    let trade_id = data
+        .get("tradeId")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    let event = core::events::TradeEvent {
+        event_time: ts,
+        symbol: inst_id.clone(),
+        trade_id,
+        price: Cow::Owned(price.to_string()),
+        quantity: Cow::Owned(qty.to_string()),
+        buyer_order_id: 0,
+        seller_order_id: 0,
+        trade_time: ts,
+        buyer_is_maker: side.eq_ignore_ascii_case("sell"),
+        best_match: true,
+    };
+
+    Some(StreamMessage {
+        stream: Box::leak(format!("{}@trade", inst_id).into_boxed_str()).into(),
+        data: core::events::Event::Trade(event),
+    })
+}
+
+fn parse_depth_message(val: &Value) -> Option<StreamMessage<'static>> {
+    let arg = val.get("arg")?.as_object()?;
+    if arg.get("channel")?.as_str()? != "depth" {
+        return None;
+    }
+    let inst_id = arg.get("instId")?.as_str()?.to_string();
+    let data = val.get("data")?.as_array()?.get(0)?.as_object()?;
+    let ts = data
+        .get("ts")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let mut bids = Vec::new();
+    if let Some(arr) = data.get("bids").and_then(|v| v.as_array()) {
+        for level in arr.iter().filter_map(|l| l.as_array()) {
+            if level.len() >= 2 {
+                let price = level[0].as_str().unwrap_or("0").to_string();
+                let qty = level[1].as_str().unwrap_or("0").to_string();
+                bids.push([Cow::Owned(price), Cow::Owned(qty)]);
+            }
+        }
+    }
+    let mut asks = Vec::new();
+    if let Some(arr) = data.get("asks").and_then(|v| v.as_array()) {
+        for level in arr.iter().filter_map(|l| l.as_array()) {
+            if level.len() >= 2 {
+                let price = level[0].as_str().unwrap_or("0").to_string();
+                let qty = level[1].as_str().unwrap_or("0").to_string();
+                asks.push([Cow::Owned(price), Cow::Owned(qty)]);
+            }
+        }
+    }
+
+    let event = core::events::DepthUpdateEvent {
+        event_time: ts,
+        symbol: inst_id.clone(),
+        first_update_id: 0,
+        final_update_id: 0,
+        previous_final_update_id: 0,
+        bids,
+        asks,
+    };
+
+    Some(StreamMessage {
+        stream: Box::leak(format!("{}@depth", inst_id).into_boxed_str()).into(),
+        data: core::events::Event::DepthUpdate(event),
+    })
 }
 
 fn parse_candle_message(val: &Value) -> Option<StreamMessage<'static>> {
