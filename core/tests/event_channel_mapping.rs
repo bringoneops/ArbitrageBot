@@ -1,11 +1,12 @@
 use arb_core::events::Channel;
 use canonical::{
     AvgPrice, BookKind, BookTicker, DepthL2Update, DepthSnapshot, FundingRate, IndexPrice, Kline,
-    Level, Liquidation, MarkPrice, MdEvent, MiniTicker, OpenInterest, Trade,
+    Level, Liquidation, MarkPrice, MdEvent, MdEventKind, MiniTicker, OpenInterest, Trade, SCHEMA_VERSION,
 };
 
 fn sample_level(kind: BookKind) -> Level {
     Level {
+        schema_version: SCHEMA_VERSION,
         price: 0.0,
         quantity: 0.0,
         kind,
@@ -146,6 +147,6 @@ fn channel_enum_matches_events() {
     };
     assert_eq!(liq.channel(), Channel::Liquidation);
 
-    let md: MdEvent = MdEvent::Trade(trade);
+    let md: MdEvent = MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(trade) };
     assert_eq!(md.channel(), Channel::Trade);
 }

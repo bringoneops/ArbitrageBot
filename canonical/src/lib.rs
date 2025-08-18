@@ -23,8 +23,17 @@ use events::{
     OpenInterestEvent, TradeEvent, XtEvent,
 };
 
+pub const SCHEMA_VERSION: u32 = 1;
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum MdEvent {
+pub struct MdEvent {
+    pub schema_version: u32,
+    #[serde(flatten)]
+    pub event: MdEventKind,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum MdEventKind {
     Trade(Trade),
     DepthL2Update(DepthL2Update),
     BookTicker(BookTicker),
@@ -39,8 +48,9 @@ pub enum MdEvent {
     Liquidation(Liquidation),
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Trade {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub price: f64,
@@ -55,8 +65,29 @@ pub struct Trade {
     pub seq_no: u64,
 }
 
+impl Default for Trade {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            price: 0.0,
+            quantity: 0.0,
+            trade_id: None,
+            buyer_order_id: None,
+            seller_order_id: None,
+            timestamp: 0,
+            side: None,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Level {
+    pub schema_version: u32,
     pub price: f64,
     pub quantity: f64,
     pub kind: BookKind,
@@ -82,8 +113,9 @@ pub enum BookKind {
     Ask,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DepthL2Update {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -97,8 +129,28 @@ pub struct DepthL2Update {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for DepthL2Update {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            bids: Vec::new(),
+            asks: Vec::new(),
+            first_update_id: None,
+            final_update_id: None,
+            previous_final_update_id: None,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct BookTicker {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -111,8 +163,27 @@ pub struct BookTicker {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for BookTicker {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            bid_price: 0.0,
+            bid_quantity: 0.0,
+            ask_price: 0.0,
+            ask_quantity: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MiniTicker {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -127,8 +198,29 @@ pub struct MiniTicker {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for MiniTicker {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            open: 0.0,
+            high: 0.0,
+            low: 0.0,
+            close: 0.0,
+            volume: 0.0,
+            quote_volume: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Kline {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -142,8 +234,28 @@ pub struct Kline {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for Kline {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            open: 0.0,
+            close: 0.0,
+            high: 0.0,
+            low: 0.0,
+            volume: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DepthSnapshot {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -155,8 +267,26 @@ pub struct DepthSnapshot {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for DepthSnapshot {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            last_update_id: 0,
+            bids: Vec::new(),
+            asks: Vec::new(),
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AvgPrice {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -166,8 +296,24 @@ pub struct AvgPrice {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for AvgPrice {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            price: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MarkPrice {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -177,8 +323,24 @@ pub struct MarkPrice {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for MarkPrice {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            price: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct IndexPrice {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -188,8 +350,24 @@ pub struct IndexPrice {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for IndexPrice {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            price: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct FundingRate {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -199,8 +377,24 @@ pub struct FundingRate {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for FundingRate {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            rate: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct OpenInterest {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -210,8 +404,24 @@ pub struct OpenInterest {
     pub seq_no: u64,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for OpenInterest {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            open_interest: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Liquidation {
+    pub schema_version: u32,
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
@@ -220,6 +430,22 @@ pub struct Liquidation {
     pub ingest_ts_monotonic: u64,
     pub ingest_ts_utc: u64,
     pub seq_no: u64,
+}
+
+impl Default for Liquidation {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            exchange: String::new(),
+            symbol: String::new(),
+            ts: 0,
+            price: 0.0,
+            quantity: 0.0,
+            ingest_ts_monotonic: 0,
+            ingest_ts_utc: 0,
+            seq_no: 0,
+        }
+    }
 }
 
 impl<'a> From<TradeEvent<'a>> for Trade {
@@ -248,7 +474,7 @@ impl<'a> From<TradeEvent<'a>> for Trade {
 
 impl<'a> From<TradeEvent<'a>> for MdEvent {
     fn from(ev: TradeEvent<'a>) -> Self {
-        MdEvent::Trade(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(ev.into()) }
     }
 }
 
@@ -268,8 +494,8 @@ impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
             .bids
             .into_iter()
             .filter_map(|[p, q]| {
-                Some(Level {
-                    price: p.parse().ok()?,
+                Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                     quantity: q.parse().ok()?,
                     kind: BookKind::Bid,
                 })
@@ -279,8 +505,8 @@ impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
             .asks
             .into_iter()
             .filter_map(|[p, q]| {
-                Some(Level {
-                    price: p.parse().ok()?,
+                Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                     quantity: q.parse().ok()?,
                     kind: BookKind::Ask,
                 })
@@ -302,7 +528,7 @@ impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
 
 impl<'a> From<DepthUpdateEvent<'a>> for MdEvent {
     fn from(ev: DepthUpdateEvent<'a>) -> Self {
-        MdEvent::DepthL2Update(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(ev.into()) }
     }
 }
 
@@ -343,7 +569,7 @@ impl<'a> From<BookTickerEvent<'a>> for BookTicker {
 
 impl<'a> From<BookTickerEvent<'a>> for MdEvent {
     fn from(ev: BookTickerEvent<'a>) -> Self {
-        MdEvent::BookTicker(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::BookTicker(ev.into()) }
     }
 }
 
@@ -377,7 +603,7 @@ impl<'a> From<MiniTickerEvent<'a>> for MiniTicker {
 
 impl<'a> From<MiniTickerEvent<'a>> for MdEvent {
     fn from(ev: MiniTickerEvent<'a>) -> Self {
-        MdEvent::MiniTicker(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::MiniTicker(ev.into()) }
     }
 }
 
@@ -400,7 +626,7 @@ impl<'a> From<KlineEvent<'a>> for Kline {
 
 impl<'a> From<KlineEvent<'a>> for MdEvent {
     fn from(ev: KlineEvent<'a>) -> Self {
-        MdEvent::Kline(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(ev.into()) }
     }
 }
 
@@ -410,8 +636,8 @@ impl From<CoreDepthSnapshot> for DepthSnapshot {
             .bids
             .into_iter()
             .filter_map(|[p, q]| {
-                Some(Level {
-                    price: p.parse().ok()?,
+                Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                     quantity: q.parse().ok()?,
                     kind: BookKind::Bid,
                 })
@@ -421,8 +647,8 @@ impl From<CoreDepthSnapshot> for DepthSnapshot {
             .asks
             .into_iter()
             .filter_map(|[p, q]| {
-                Some(Level {
-                    price: p.parse().ok()?,
+                Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                     quantity: q.parse().ok()?,
                     kind: BookKind::Ask,
                 })
@@ -442,7 +668,7 @@ impl From<CoreDepthSnapshot> for DepthSnapshot {
 
 impl From<CoreDepthSnapshot> for MdEvent {
     fn from(s: CoreDepthSnapshot) -> Self {
-        MdEvent::DepthSnapshot(s.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthSnapshot(s.into()) }
     }
 }
 
@@ -466,7 +692,7 @@ impl<'a> From<TickerEvent<'a>> for AvgPrice {
 
 impl<'a> From<TickerEvent<'a>> for MdEvent {
     fn from(ev: TickerEvent<'a>) -> Self {
-        MdEvent::AvgPrice(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::AvgPrice(ev.into()) }
     }
 }
 
@@ -489,7 +715,7 @@ impl<'a> From<MarkPriceEvent<'a>> for MarkPrice {
 
 impl<'a> From<MarkPriceEvent<'a>> for MdEvent {
     fn from(ev: MarkPriceEvent<'a>) -> Self {
-        MdEvent::MarkPrice(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::MarkPrice(ev.into()) }
     }
 }
 
@@ -512,7 +738,7 @@ impl<'a> From<IndexPriceEvent<'a>> for IndexPrice {
 
 impl<'a> From<IndexPriceEvent<'a>> for MdEvent {
     fn from(ev: IndexPriceEvent<'a>) -> Self {
-        MdEvent::IndexPrice(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::IndexPrice(ev.into()) }
     }
 }
 
@@ -535,7 +761,7 @@ impl<'a> From<FundingRateEvent<'a>> for FundingRate {
 
 impl<'a> From<FundingRateEvent<'a>> for MdEvent {
     fn from(ev: FundingRateEvent<'a>) -> Self {
-        MdEvent::FundingRate(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::FundingRate(ev.into()) }
     }
 }
 
@@ -558,7 +784,7 @@ impl<'a> From<OpenInterestEvent<'a>> for OpenInterest {
 
 impl<'a> From<OpenInterestEvent<'a>> for MdEvent {
     fn from(ev: OpenInterestEvent<'a>) -> Self {
-        MdEvent::OpenInterest(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::OpenInterest(ev.into()) }
     }
 }
 
@@ -589,7 +815,7 @@ impl<'a> From<ForceOrderEvent<'a>> for Liquidation {
 
 impl<'a> From<ForceOrderEvent<'a>> for MdEvent {
     fn from(ev: ForceOrderEvent<'a>) -> Self {
-        MdEvent::Liquidation(ev.into())
+        MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Liquidation(ev.into()) }
     }
 }
 
@@ -626,7 +852,7 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                 let side = t
                     .buyer_is_maker
                     .map(|m| if m { Side::Sell } else { Side::Buy });
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "bingx".to_string(),
                     symbol: t.symbol,
                     price,
@@ -635,15 +861,15 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                     buyer_order_id: t.buyer_order_id,
                     seller_order_id: t.seller_order_id,
                     timestamp: t.trade_time * 1_000_000,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             BingxStreamMessage::DepthUpdate(d) => {
                 let bids = d
                     .bids
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Bid,
                         })
@@ -653,14 +879,14 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                     .asks
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "bingx".to_string(),
                     symbol: d.symbol,
                     ts: d.event_time * 1_000_000,
@@ -668,7 +894,7 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: d.first_update_id,
                     final_update_id: d.final_update_id,
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
             BingxStreamMessage::Unknown => Err(()),
         }
@@ -692,7 +918,7 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 _ => None,
             };
             let trade_id = t.trade_id.and_then(|s| s.parse().ok());
-            Ok(MdEvent::Trade(Trade {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                 exchange: "bitget".to_string(),
                 symbol,
                 price,
@@ -701,15 +927,15 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 buyer_order_id: None,
                 seller_order_id: None,
                 timestamp: t.ts,
-                side, ..Default::default()}))
+                side, ..Default::default() }) })
         } else if channel == "depth" {
             let d: BitgetDepthEvent = serde_json::from_value(v).map_err(|_| ())?;
             let bids = d
                 .bids
                 .into_iter()
                 .filter_map(|[p, q]| {
-                    Some(Level {
-                        price: p.parse().ok()?,
+                    Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                         quantity: q.parse().ok()?,
                         kind: BookKind::Bid,
                     })
@@ -719,14 +945,14 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 .asks
                 .into_iter()
                 .filter_map(|[p, q]| {
-                    Some(Level {
-                        price: p.parse().ok()?,
+                    Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                         quantity: q.parse().ok()?,
                         kind: BookKind::Ask,
                     })
                 })
                 .collect();
-            Ok(MdEvent::DepthL2Update(DepthL2Update {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                 exchange: "bitget".to_string(),
                 symbol,
                 ts: d.ts,
@@ -734,17 +960,17 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 asks,
                 first_update_id: None,
                 final_update_id: None,
-                previous_final_update_id: None, ..Default::default()}))
+                previous_final_update_id: None, ..Default::default() }) })
         } else if channel == "ticker" {
             let t: BitgetTickerEvent = serde_json::from_value(v).map_err(|_| ())?;
-            Ok(MdEvent::BookTicker(BookTicker {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::BookTicker(BookTicker {
                 exchange: "bitget".to_string(),
                 symbol,
                 ts: t.ts,
                 bid_price: t.bid_price.parse().ok().ok_or(())?,
                 bid_quantity: t.bid_qty.parse().ok().ok_or(())?,
                 ask_price: t.ask_price.parse().ok().ok_or(())?,
-                ask_quantity: t.ask_qty.parse().ok().ok_or(())?, ..Default::default()}))
+                ask_quantity: t.ask_qty.parse().ok().ok_or(())?, ..Default::default() }) })
         } else if channel.starts_with("candle") {
             let arr = v.as_array().ok_or(())?;
             if arr.len() < 6 {
@@ -756,7 +982,7 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
             let low: f64 = arr[3].as_str().ok_or(())?.parse().map_err(|_| ())?;
             let close: f64 = arr[4].as_str().ok_or(())?.parse().map_err(|_| ())?;
             let volume: f64 = arr[5].as_str().ok_or(())?.parse().map_err(|_| ())?;
-            Ok(MdEvent::Kline(Kline {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                 exchange: "bitget".to_string(),
                 symbol,
                 ts,
@@ -764,7 +990,7 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 close,
                 high,
                 low,
-                volume, ..Default::default()}))
+                volume, ..Default::default() }) })
         } else {
             Err(())
         }
@@ -786,7 +1012,7 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 "sell" | "SELL" => Some(Side::Sell),
                 _ => None,
             };
-            Ok(MdEvent::Trade(Trade {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                 exchange: "bitmart".to_string(),
                 symbol: t.symbol,
                 price,
@@ -795,15 +1021,15 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 buyer_order_id: None,
                 seller_order_id: None,
                 timestamp: t.trade_time * 1_000_000,
-                side, ..Default::default()}))
+                side, ..Default::default() }) })
         } else if table.contains("depth") {
             let d: BitmartDepthEvent = serde_json::from_value(v).map_err(|_| ())?;
             let bids = d
                 .bids
                 .into_iter()
                 .filter_map(|[p, q]| {
-                    Some(Level {
-                        price: p.parse().ok()?,
+                    Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                         quantity: q.parse().ok()?,
                         kind: BookKind::Bid,
                     })
@@ -813,14 +1039,14 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 .asks
                 .into_iter()
                 .filter_map(|[p, q]| {
-                    Some(Level {
-                        price: p.parse().ok()?,
+                    Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                         quantity: q.parse().ok()?,
                         kind: BookKind::Ask,
                     })
                 })
                 .collect();
-            Ok(MdEvent::DepthL2Update(DepthL2Update {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                 exchange: "bitmart".to_string(),
                 symbol: d.symbol,
                 ts: d.timestamp,
@@ -828,20 +1054,20 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 asks,
                 first_update_id: None,
                 final_update_id: d.version,
-                previous_final_update_id: d.prev_version, ..Default::default()}))
+                previous_final_update_id: d.prev_version, ..Default::default() }) })
         } else if table.contains("ticker") {
             let t: BitmartTickerEvent = serde_json::from_value(v).map_err(|_| ())?;
-            Ok(MdEvent::BookTicker(BookTicker {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::BookTicker(BookTicker {
                 exchange: "bitmart".to_string(),
                 symbol: t.symbol,
                 ts: t.timestamp,
                 bid_price: t.best_bid.parse().ok().ok_or(())?,
                 bid_quantity: t.best_bid_size.parse().ok().ok_or(())?,
                 ask_price: t.best_ask.parse().ok().ok_or(())?,
-                ask_quantity: t.best_ask_size.parse().ok().ok_or(())?, ..Default::default()}))
+                ask_quantity: t.best_ask_size.parse().ok().ok_or(())?, ..Default::default() }) })
         } else if table.contains("kline") {
             let k: BitmartKlineEvent = serde_json::from_value(v).map_err(|_| ())?;
-            Ok(MdEvent::Kline(Kline {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                 exchange: "bitmart".to_string(),
                 symbol: k.symbol,
                 ts: k.timestamp,
@@ -849,14 +1075,14 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 close: k.close.parse().ok().ok_or(())?,
                 high: k.high.parse().ok().ok_or(())?,
                 low: k.low.parse().ok().ok_or(())?,
-                volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
+                volume: k.volume.parse().ok().ok_or(())?, ..Default::default() }) })
         } else if table.contains("fundingRate") {
             let f: BitmartFundingRateEvent = serde_json::from_value(v).map_err(|_| ())?;
-            Ok(MdEvent::FundingRate(FundingRate {
+            Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::FundingRate(FundingRate {
                 exchange: "bitmart".to_string(),
                 symbol: f.symbol,
                 ts: f.funding_time,
-                rate: f.funding_rate.parse().ok().ok_or(())?, ..Default::default()}))
+                rate: f.funding_rate.parse().ok().ok_or(())?, ..Default::default() }) })
         } else {
             Err(())
         }
@@ -880,7 +1106,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     "sell" | "SELL" => Some(Side::Sell),
                     _ => None,
                 };
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "coinex".to_string(),
                     symbol: symbol.to_string(),
                     price,
@@ -889,7 +1115,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: t.trade_time,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             "depth.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -900,8 +1126,8 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     .bids
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Bid,
                         })
@@ -911,14 +1137,14 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     .asks
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "coinex".to_string(),
                     symbol: symbol.to_string(),
                     ts: depth.timestamp.unwrap_or_default(),
@@ -926,20 +1152,20 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
             "bbo.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
                 let bbo: CoinexBbo = serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
                     .map_err(|_| ())?;
-                Ok(MdEvent::BookTicker(BookTicker {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::BookTicker(BookTicker {
                     exchange: "coinex".to_string(),
                     symbol: symbol.to_string(),
                     ts: 0,
                     bid_price: bbo.bid_price.parse().ok().ok_or(())?,
                     bid_quantity: bbo.bid_qty.parse().ok().ok_or(())?,
                     ask_price: bbo.ask_price.parse().ok().ok_or(())?,
-                    ask_quantity: bbo.ask_qty.parse().ok().ok_or(())?, ..Default::default()}))
+                    ask_quantity: bbo.ask_qty.parse().ok().ok_or(())?, ..Default::default() }) })
             }
             "kline.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -947,7 +1173,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
                         .map_err(|_| ())?;
                 let k = klines.first().ok_or(())?;
-                Ok(MdEvent::Kline(Kline {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                     exchange: "coinex".to_string(),
                     symbol: symbol.to_string(),
                     ts: k.timestamp,
@@ -955,7 +1181,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     close: k.close.parse().ok().ok_or(())?,
                     high: k.high.parse().ok().ok_or(())?,
                     low: k.low.parse().ok().ok_or(())?,
-                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
+                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default() }) })
             }
             "index.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -967,11 +1193,11 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     .parse()
                     .ok()
                     .ok_or(())?;
-                Ok(MdEvent::IndexPrice(IndexPrice {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::IndexPrice(IndexPrice {
                     exchange: "coinex".to_string(),
                     symbol: symbol.to_string(),
                     ts: 0,
-                    price, ..Default::default()}))
+                    price, ..Default::default() }) })
             }
             _ => Err(()),
         }
@@ -991,7 +1217,7 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     2 => Some(Side::Sell),
                     _ => None,
                 };
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "mexc".to_string(),
                     symbol: msg.symbol,
                     price,
@@ -1000,15 +1226,15 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: deal.trade_time,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             MexcEvent::Depth { data } => {
                 let bids = data
                     .bids
                     .into_iter()
                     .filter_map(|lvl| {
-                        Some(Level {
-                            price: lvl.price.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: lvl.price.parse().ok()?,
                             quantity: lvl.quantity.parse().ok()?,
                             kind: BookKind::Bid,
                         })
@@ -1018,14 +1244,14 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     .asks
                     .into_iter()
                     .filter_map(|lvl| {
-                        Some(Level {
-                            price: lvl.price.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: lvl.price.parse().ok()?,
                             quantity: lvl.quantity.parse().ok()?,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "mexc".to_string(),
                     symbol: msg.symbol,
                     ts: msg.event_time,
@@ -1033,21 +1259,21 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
             MexcEvent::BookTicker { data } => {
                 let bid_price: f64 = data.bid_price.parse().ok().ok_or(())?;
                 let bid_quantity: f64 = data.bid_qty.parse().ok().ok_or(())?;
                 let ask_price: f64 = data.ask_price.parse().ok().ok_or(())?;
                 let ask_quantity: f64 = data.ask_qty.parse().ok().ok_or(())?;
-                Ok(MdEvent::BookTicker(BookTicker {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::BookTicker(BookTicker {
                     exchange: "mexc".to_string(),
                     symbol: msg.symbol,
                     ts: msg.event_time,
                     bid_price,
                     bid_quantity,
                     ask_price,
-                    ask_quantity, ..Default::default()}))
+                    ask_quantity, ..Default::default() }) })
             }
         }
     }
@@ -1070,7 +1296,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     "sell" => Some(Side::Sell),
                     _ => None,
                 };
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "gateio".to_string(),
                     symbol: symbol.to_string(),
                     price,
@@ -1079,7 +1305,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: trade.create_time_ms,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             "depth.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -1092,8 +1318,8 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     .filter_map(|lvl| {
                         let price: f64 = lvl[0].parse().ok()?;
                         let quantity: f64 = lvl[1].parse().ok()?;
-                        Some(Level {
-                            price,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price,
                             quantity,
                             kind: BookKind::Bid,
                         })
@@ -1105,14 +1331,14 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     .filter_map(|lvl| {
                         let price: f64 = lvl[0].parse().ok()?;
                         let quantity: f64 = lvl[1].parse().ok()?;
-                        Some(Level {
-                            price,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price,
                             quantity,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "gateio".to_string(),
                     symbol: symbol.to_string(),
                     ts: depth.timestamp,
@@ -1120,7 +1346,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: depth.id,
                     final_update_id: depth.id,
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
             "kline.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -1128,7 +1354,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     serde_json::from_value(msg.params.get(1).cloned().ok_or(())?)
                         .map_err(|_| ())?;
                 let k = klines.first().ok_or(())?;
-                Ok(MdEvent::Kline(Kline {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                     exchange: "gateio".to_string(),
                     symbol: symbol.to_string(),
                     ts: k.timestamp,
@@ -1136,7 +1362,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     close: k.close.parse().ok().ok_or(())?,
                     high: k.high.parse().ok().ok_or(())?,
                     low: k.low.parse().ok().ok_or(())?,
-                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
+                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default() }) })
             }
             _ => Err(()),
         }
@@ -1155,7 +1381,7 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                 let side = trade
                     .buyer_is_maker
                     .map(|m| if m { Side::Sell } else { Side::Buy });
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "xt".to_string(),
                     symbol: symbol.to_string(),
                     price,
@@ -1164,15 +1390,15 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: trade.trade_time * 1_000_000,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             XtEvent::Depth(d) if channel == "depth" => {
                 let bids = d
                     .bids
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Bid,
                         })
@@ -1182,14 +1408,14 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                     .asks
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "xt".to_string(),
                     symbol: symbol.to_string(),
                     ts: d.timestamp,
@@ -1197,9 +1423,9 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
-            XtEvent::Kline(k) if channel == "kline" => Ok(MdEvent::Kline(Kline {
+            XtEvent::Kline(k) if channel == "kline" => Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                 exchange: "xt".to_string(),
                 symbol: symbol.to_string(),
                 ts: k.timestamp,
@@ -1207,15 +1433,15 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                 close: k.close.parse().ok().ok_or(())?,
                 high: k.high.parse().ok().ok_or(())?,
                 low: k.low.parse().ok().ok_or(())?,
-                volume: k.volume.parse().ok().ok_or(())?, ..Default::default()})),
-            XtEvent::Ticker(t) if channel == "ticker" => Ok(MdEvent::BookTicker(BookTicker {
+                volume: k.volume.parse().ok().ok_or(())?, ..Default::default() }) }),
+            XtEvent::Ticker(t) if channel == "ticker" => Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::BookTicker(BookTicker {
                 exchange: "xt".to_string(),
                 symbol: symbol.to_string(),
                 ts: t.timestamp,
                 bid_price: t.bid_price.parse().ok().ok_or(())?,
                 bid_quantity: t.bid_qty.parse().ok().ok_or(())?,
                 ask_price: t.ask_price.parse().ok().ok_or(())?,
-                ask_quantity: t.ask_qty.parse().ok().ok_or(())?, ..Default::default()})),
+                ask_quantity: t.ask_qty.parse().ok().ok_or(())?, ..Default::default() }) }),
             _ => Err(()),
         }
     }
@@ -1237,7 +1463,7 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                         Some("sell") | Some("SELL") => Some(Side::Sell),
                         _ => None,
                     });
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "latoken".to_string(),
                     symbol: msg.symbol,
                     price,
@@ -1246,7 +1472,7 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: t.timestamp * 1_000_000,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             "depth" | "orderbook" => {
                 let d: LatokenDepthEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1254,8 +1480,8 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     .bids
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Bid,
                         })
@@ -1265,14 +1491,14 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     .asks
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "latoken".to_string(),
                     symbol: msg.symbol,
                     ts: d.timestamp * 1_000_000,
@@ -1280,11 +1506,11 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: d.first_update_id,
                     final_update_id: d.final_update_id,
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
             "kline" => {
                 let k: LatokenKlineEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
-                Ok(MdEvent::Kline(Kline {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                     exchange: "latoken".to_string(),
                     symbol: msg.symbol,
                     ts: k.timestamp * 1_000_000,
@@ -1292,18 +1518,18 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     close: k.close.parse().ok().ok_or(())?,
                     high: k.high.parse().ok().ok_or(())?,
                     low: k.low.parse().ok().ok_or(())?,
-                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
+                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default() }) })
             }
             "ticker" => {
                 let t: LatokenTickerEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
-                Ok(MdEvent::BookTicker(BookTicker {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::BookTicker(BookTicker {
                     exchange: "latoken".to_string(),
                     symbol: msg.symbol,
                     ts: t.timestamp * 1_000_000,
                     bid_price: t.bid_price.parse().ok().ok_or(())?,
                     bid_quantity: t.bid_qty.parse().ok().unwrap_or_default(),
                     ask_price: t.ask_price.parse().ok().ok_or(())?,
-                    ask_quantity: t.ask_qty.parse().ok().unwrap_or_default(), ..Default::default()}))
+                    ask_quantity: t.ask_qty.parse().ok().unwrap_or_default(), ..Default::default() }) })
             }
             _ => Err(()),
         }
@@ -1322,7 +1548,7 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                     "sell" | "SELL" => Some(Side::Sell),
                     _ => None,
                 };
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "lbank".to_string(),
                     symbol: pair,
                     price,
@@ -1331,15 +1557,15 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: 0,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             LbankStreamMessage::Depth { pair, depth } => {
                 let bids = depth
                     .bids
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Bid,
                         })
@@ -1349,14 +1575,14 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                     .asks
                     .into_iter()
                     .filter_map(|[p, q]| {
-                        Some(Level {
-                            price: p.parse().ok()?,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price: p.parse().ok()?,
                             quantity: q.parse().ok()?,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "lbank".to_string(),
                     symbol: pair,
                     ts: 0,
@@ -1364,9 +1590,9 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
-            LbankStreamMessage::Kbar { pair, kbar } => Ok(MdEvent::Kline(Kline {
+            LbankStreamMessage::Kbar { pair, kbar } => Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                 exchange: "lbank".to_string(),
                 symbol: pair,
                 ts: 0,
@@ -1374,7 +1600,7 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                 close: kbar.close.parse().ok().ok_or(())?,
                 high: kbar.high.parse().ok().ok_or(())?,
                 low: kbar.low.parse().ok().ok_or(())?,
-                volume: kbar.volume.parse().ok().ok_or(())?, ..Default::default()})),
+                volume: kbar.volume.parse().ok().ok_or(())?, ..Default::default() }) }),
             LbankStreamMessage::Unknown => Err(()),
         }
     }
@@ -1393,7 +1619,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     "sell" => Some(Side::Sell),
                     _ => None,
                 };
-                Ok(MdEvent::Trade(Trade {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Trade(Trade {
                     exchange: "kucoin".to_string(),
                     symbol: data.symbol,
                     price,
@@ -1402,7 +1628,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: data.trade_time,
-                    side, ..Default::default()}))
+                    side, ..Default::default() }) })
             }
             "trade.l2update" => {
                 let data: KucoinLevel2 = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1413,8 +1639,8 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     .filter_map(|lvl| {
                         let price: f64 = lvl[0].parse().ok()?;
                         let quantity: f64 = lvl[1].parse().ok()?;
-                        Some(Level {
-                            price,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price,
                             quantity,
                             kind: BookKind::Bid,
                         })
@@ -1427,14 +1653,14 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     .filter_map(|lvl| {
                         let price: f64 = lvl[0].parse().ok()?;
                         let quantity: f64 = lvl[1].parse().ok()?;
-                        Some(Level {
-                            price,
+                        Some(Level { schema_version: SCHEMA_VERSION,
+                price,
                             quantity,
                             kind: BookKind::Ask,
                         })
                     })
                     .collect();
-                Ok(MdEvent::DepthL2Update(DepthL2Update {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::DepthL2Update(DepthL2Update {
                     exchange: "kucoin".to_string(),
                     symbol: data.symbol,
                     ts: data.sequence_end,
@@ -1442,7 +1668,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     asks,
                     first_update_id: Some(data.sequence_start),
                     final_update_id: Some(data.sequence_end),
-                    previous_final_update_id: None, ..Default::default()}))
+                    previous_final_update_id: None, ..Default::default() }) })
             }
             "trade.candles.update" => {
                 let data: KucoinKline = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1451,7 +1677,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                 let high: f64 = data.candles[3].parse().ok().ok_or(())?;
                 let low: f64 = data.candles[4].parse().ok().ok_or(())?;
                 let volume: f64 = data.candles[5].parse().ok().ok_or(())?;
-                Ok(MdEvent::Kline(Kline {
+                Ok(MdEvent { schema_version: SCHEMA_VERSION, event: MdEventKind::Kline(Kline {
                     exchange: "kucoin".to_string(),
                     symbol: data.symbol,
                     ts: data.time,
@@ -1459,7 +1685,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     close,
                     high,
                     low,
-                    volume, ..Default::default()}))
+                    volume, ..Default::default() }) })
             }
             _ => Err(()),
         }
@@ -1468,45 +1694,45 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
 
 impl MdEvent {
     pub fn channel(&self) -> Channel {
-        match self {
-            MdEvent::Trade(e) => e.channel(),
-            MdEvent::DepthL2Update(e) => e.channel(),
-            MdEvent::BookTicker(e) => e.channel(),
-            MdEvent::MiniTicker(e) => e.channel(),
-            MdEvent::Kline(e) => e.channel(),
-            MdEvent::DepthSnapshot(e) => e.channel(),
-            MdEvent::AvgPrice(e) => e.channel(),
-            MdEvent::MarkPrice(e) => e.channel(),
-            MdEvent::IndexPrice(e) => e.channel(),
-            MdEvent::FundingRate(e) => e.channel(),
-            MdEvent::OpenInterest(e) => e.channel(),
-            MdEvent::Liquidation(e) => e.channel(),
+        match &self.event {
+            MdEventKind::Trade(e) => e.channel(),
+            MdEventKind::DepthL2Update(e) => e.channel(),
+            MdEventKind::BookTicker(e) => e.channel(),
+            MdEventKind::MiniTicker(e) => e.channel(),
+            MdEventKind::Kline(e) => e.channel(),
+            MdEventKind::DepthSnapshot(e) => e.channel(),
+            MdEventKind::AvgPrice(e) => e.channel(),
+            MdEventKind::MarkPrice(e) => e.channel(),
+            MdEventKind::IndexPrice(e) => e.channel(),
+            MdEventKind::FundingRate(e) => e.channel(),
+            MdEventKind::OpenInterest(e) => e.channel(),
+            MdEventKind::Liquidation(e) => e.channel(),
         }
     }
 
     pub fn validate(&self) -> Result<(), ()> {
-        match self {
-            MdEvent::Trade(t) => {
+        match &self.event {
+            MdEventKind::Trade(t) => {
                 if t.quantity < 0.0 {
                     return Err(());
                 }
             }
-            MdEvent::BookTicker(b) => {
+            MdEventKind::BookTicker(b) => {
                 if b.bid_quantity < 0.0 || b.ask_quantity < 0.0 {
                     return Err(());
                 }
             }
-            MdEvent::MiniTicker(m) => {
+            MdEventKind::MiniTicker(m) => {
                 if m.volume < 0.0 || m.quote_volume < 0.0 {
                     return Err(());
                 }
             }
-            MdEvent::Kline(k) => {
+            MdEventKind::Kline(k) => {
                 if k.volume < 0.0 {
                     return Err(());
                 }
             }
-            MdEvent::DepthL2Update(d) => {
+            MdEventKind::DepthL2Update(d) => {
                 if !is_sorted_desc(&d.bids) || !is_sorted_asc(&d.asks) {
                     return Err(());
                 }
@@ -1519,7 +1745,7 @@ impl MdEvent {
                     return Err(());
                 }
             }
-            MdEvent::DepthSnapshot(d) => {
+            MdEventKind::DepthSnapshot(d) => {
                 if !is_sorted_desc(&d.bids) || !is_sorted_asc(&d.asks) {
                     return Err(());
                 }
@@ -1532,12 +1758,12 @@ impl MdEvent {
                     return Err(());
                 }
             }
-            MdEvent::OpenInterest(o) => {
+            MdEventKind::OpenInterest(o) => {
                 if o.open_interest < 0.0 {
                     return Err(());
                 }
             }
-            MdEvent::Liquidation(l) => {
+            MdEventKind::Liquidation(l) => {
                 if l.quantity < 0.0 {
                     return Err(());
                 }
