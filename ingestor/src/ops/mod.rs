@@ -2,7 +2,7 @@ use anyhow::Result;
 
 mod health;
 #[cfg(feature = "prometheus-exporter")]
-mod metrics;
+pub mod metrics;
 
 pub use health::set_ready;
 

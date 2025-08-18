@@ -3,8 +3,8 @@ use arb_core as core;
 use dashmap::DashMap;
 use reqwest::Client;
 use rustls::ClientConfig;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
@@ -46,12 +46,44 @@ impl StreamSender {
         msg: core::events::StreamMessage<'static>,
     ) -> Result<(), mpsc::error::TrySendError<core::events::StreamMessage<'static>>> {
         use core::events::Event;
-        match msg.data {
-            Event::DepthUpdate(_) | Event::BookTicker(_) => self.book.try_send(msg),
-            Event::Trade(_) | Event::AggTrade(_) => self.trade.try_send(msg),
-            Event::Ticker(_) | Event::MiniTicker(_) => self.ticker.try_send(msg),
-            _ => self.trade.try_send(msg),
+
+        let metrics_enabled = core::config::metrics_enabled();
+        let channel;
+
+        let res = match msg.data {
+            Event::DepthUpdate(_) | Event::BookTicker(_) => {
+                channel = "book";
+                self.book.try_send(msg)
+            }
+            Event::Trade(_) | Event::AggTrade(_) => {
+                channel = "trade";
+                self.trade.try_send(msg)
+            }
+            Event::Ticker(_) | Event::MiniTicker(_) => {
+                channel = "ticker";
+                self.ticker.try_send(msg)
+            }
+            _ => {
+                channel = "trade";
+                self.trade.try_send(msg)
+            }
+        };
+
+        if metrics_enabled {
+            let depth = match channel {
+                "book" => self.book.max_capacity() - self.book.capacity(),
+                "trade" => self.trade.max_capacity() - self.trade.capacity(),
+                "ticker" => self.ticker.max_capacity() - self.ticker.capacity(),
+                _ => 0,
+            } as f64;
+            metrics::gauge!("adapter_queue_depth", "channel" => channel).set(depth);
+
+            if matches!(res, Err(mpsc::error::TrySendError::Full(_))) {
+                metrics::counter!("md_backpressure_drops_total", "channel" => channel).increment(1);
+            }
         }
+
+        res
     }
 }
 
@@ -170,25 +202,35 @@ fn dispatcher(
             }
 
             if core::config::metrics_enabled() {
-                metrics::gauge!("md_queue_depth", "channel" => "book")
-                    .set(book_rx.len() as f64);
-                metrics::gauge!("md_queue_depth", "channel" => "trade")
-                    .set(trade_rx.len() as f64);
+                metrics::gauge!("md_queue_depth", "channel" => "book").set(book_rx.len() as f64);
+                metrics::gauge!("md_queue_depth", "channel" => "trade").set(trade_rx.len() as f64);
                 metrics::gauge!("md_queue_depth", "channel" => "ticker")
                     .set(ticker_rx.len() as f64);
             }
 
             if ticker_rx.len() >= ticker_cap {
                 let _ = ticker_rx.try_recv();
+                if core::config::metrics_enabled() {
+                    metrics::counter!("md_backpressure_drops_total", "channel" => "ticker")
+                        .increment(1);
+                }
             }
             if trade_rx.len() >= trade_cap {
                 if ticker_rx.try_recv().is_err() {
                     let _ = trade_rx.try_recv();
+                    if core::config::metrics_enabled() {
+                        metrics::counter!("md_backpressure_drops_total", "channel" => "trade")
+                            .increment(1);
+                    }
                 }
             }
             if book_rx.len() >= book_cap {
                 if ticker_rx.try_recv().is_err() && trade_rx.try_recv().is_err() {
                     let _ = book_rx.try_recv();
+                    if core::config::metrics_enabled() {
+                        metrics::counter!("md_backpressure_drops_total", "channel" => "book")
+                            .increment(1);
+                    }
                 }
             }
         }
