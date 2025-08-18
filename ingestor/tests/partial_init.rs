@@ -9,6 +9,8 @@ use std::{
 };
 use tokio::{sync::Mutex, task::JoinSet};
 
+type InitFuture = Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>;
+
 async fn good_init(task_set: Arc<Mutex<JoinSet<()>>>, counter: Arc<AtomicUsize>) -> Result<()> {
     let c = counter.clone();
     {
@@ -29,7 +31,7 @@ async fn continues_when_one_exchange_fails() {
     let task_set = Arc::new(Mutex::new(JoinSet::new()));
     let counter = Arc::new(AtomicUsize::new(0));
 
-    let futures: Vec<Pin<Box<dyn Future<Output = (&'static str, Result<()>)> + Send>>> = vec![
+    let futures: Vec<InitFuture> = vec![
         {
             let set = task_set.clone();
             let counter = counter.clone();
