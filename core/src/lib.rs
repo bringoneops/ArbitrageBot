@@ -172,7 +172,7 @@ pub fn chunk_streams_with_config(
     for &sym in symbols {
         let sym_lower = sym.to_lowercase();
         for suffix in &config.per_symbol {
-            stream_set.insert(format!("{}@{}", sym_lower, suffix));
+            stream_set.insert(format!("{sym_lower}@{suffix}"));
         }
     }
 
