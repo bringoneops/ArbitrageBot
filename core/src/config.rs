@@ -41,6 +41,7 @@ pub struct Config {
     pub chunk_size: usize,
     pub event_buffer_size: usize,
     pub http_timeout_secs: u64,
+    pub book_refresh_secs: u64,
     pub http_burst: u32,
     pub http_refill_per_sec: u32,
     pub ws_burst: u32,
@@ -169,6 +170,7 @@ impl Config {
         let chunk_size = parse_usize_env("CHUNK_SIZE", 100);
         let event_buffer_size = parse_usize_env("EVENT_BUFFER_SIZE", 1024);
         let http_timeout_secs = parse_u64_env("HTTP_TIMEOUT_SECS", 30);
+        let book_refresh_secs = parse_u64_env("BOOK_REFRESH_SECS", 1800);
         let http_burst = parse_u32_env("HTTP_BURST", 10);
         let http_refill_per_sec = parse_u32_env("HTTP_REFILL_PER_SEC", 10);
         let ws_burst = parse_u32_env("WS_BURST", 5);
@@ -203,6 +205,7 @@ impl Config {
             chunk_size,
             event_buffer_size,
             http_timeout_secs,
+            book_refresh_secs,
             http_burst,
             http_refill_per_sec,
             ws_burst,
@@ -260,6 +263,12 @@ impl Config {
         self.ensure_in_range("chunk_size", self.chunk_size, 1, 1024)?;
         self.ensure_in_range("event_buffer_size", self.event_buffer_size, 1, 65_536)?;
         self.ensure_in_range("http_timeout_secs", self.http_timeout_secs as usize, 1, 300)?;
+        self.ensure_in_range(
+            "book_refresh_secs",
+            self.book_refresh_secs as usize,
+            60,
+            86_400,
+        )?;
         Ok(())
     }
 
