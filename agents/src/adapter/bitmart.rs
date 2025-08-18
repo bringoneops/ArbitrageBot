@@ -21,6 +21,8 @@ use tokio::{
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tracing::{error, info, warn};
 
+use core::events::{Event, StreamMessage};
+
 use super::ExchangeAdapter;
 use crate::{registry, ChannelRegistry, TaskSet};
 
@@ -186,9 +188,7 @@ async fn fetch_depth_snapshot(
     .into())
 }
 
-fn parse_depth_update_frame(
-    val: &Value,
-) -> Result<core::events::DepthUpdateEvent<'static>> {
+fn parse_depth_update_frame(val: &Value) -> Result<core::events::DepthUpdateEvent<'static>> {
     let symbol = val
         .get("symbol")
         .and_then(|v| v.as_str())
@@ -274,6 +274,7 @@ pub fn register() {
                                 cfg,
                                 client.clone(),
                                 global_cfg.chunk_size,
+                                channels.clone(),
                                 symbols,
                             );
 
@@ -301,6 +302,7 @@ pub struct BitmartAdapter {
     cfg: &'static BitmartConfig,
     client: Client,
     chunk_size: usize,
+    channels: ChannelRegistry,
     symbols: Vec<String>,
     tasks: Vec<JoinHandle<Result<()>>>,
     shutdown: Arc<AtomicBool>,
@@ -312,12 +314,14 @@ impl BitmartAdapter {
         cfg: &'static BitmartConfig,
         client: Client,
         chunk_size: usize,
+        channels: ChannelRegistry,
         symbols: Vec<String>,
     ) -> Self {
         Self {
             cfg,
             client,
             chunk_size,
+            channels,
             symbols,
             tasks: Vec::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -374,9 +378,10 @@ impl ExchangeAdapter for BitmartAdapter {
             let client = self.client.clone();
             let books = self.orderbooks.clone();
             let cfg = self.cfg;
-            let has_depth_increase = topics
-                .iter()
-                .any(|t| t.starts_with("spot/depth/increase") || t.starts_with("futures/depthIncrease"));
+            let channels = self.channels.clone();
+            let has_depth_increase = topics.iter().any(|t| {
+                t.starts_with("spot/depth/increase") || t.starts_with("futures/depthIncrease")
+            });
             let handle = tokio::spawn(async move {
                 loop {
                     if shutdown.load(Ordering::Relaxed) {
@@ -401,8 +406,12 @@ impl ExchangeAdapter for BitmartAdapter {
                                 let is_contract = cfg.id.contains("contract");
                                 for sym in &chunk_symbols {
                                     match fetch_depth_snapshot(&client, sym, is_contract).await {
-                                        Ok(book) => { books.insert(sym.clone(), book); }
-                                        Err(e) => warn!(symbol = %sym, "snapshot fetch failed: {}", e),
+                                        Ok(book) => {
+                                            books.insert(sym.clone(), book);
+                                        }
+                                        Err(e) => {
+                                            warn!(symbol = %sym, "snapshot fetch failed: {}", e)
+                                        }
                                     }
                                 }
                             }
@@ -445,6 +454,20 @@ impl ExchangeAdapter for BitmartAdapter {
                                                                                         .collect(),
                                                                                 };
                                                                                 books.insert(sym.clone(), snap.into());
+                                                                            }
+
+                                                                            let stream = format!("{}@depth", sym.clone());
+                                                                            let msg = StreamMessage {
+                                                                                stream,
+                                                                                data: Event::DepthUpdate(update),
+                                                                            };
+                                                                            let key = format!("{}:{}", cfg.name, sym);
+                                                                            if let Some(tx) = channels.get(&key) {
+                                                                                if let Err(e) = tx.send(msg) {
+                                                                                    warn!(channel = %key, "failed to send depth update: {}", e);
+                                                                                }
+                                                                            } else {
+                                                                                warn!("missing channel for {}", key);
                                                                             }
                                                                         }
                                                                     }
