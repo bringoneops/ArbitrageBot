@@ -24,6 +24,7 @@ fn channel_enum_matches_events() {
         seller_order_id: None,
         timestamp: 0,
         side: None,
+        ..Default::default()
     };
     assert_eq!(trade.channel(), Channel::Trade);
 
@@ -35,6 +36,7 @@ fn channel_enum_matches_events() {
         bid_quantity: 0.0,
         ask_price: 0.0,
         ask_quantity: 0.0,
+        ..Default::default()
     };
     assert_eq!(book.channel(), Channel::Book);
 
@@ -48,6 +50,7 @@ fn channel_enum_matches_events() {
         close: 0.0,
         volume: 0.0,
         quote_volume: 0.0,
+        ..Default::default()
     };
     assert_eq!(mini.channel(), Channel::MiniTicker);
 
@@ -60,6 +63,7 @@ fn channel_enum_matches_events() {
         high: 0.0,
         low: 0.0,
         volume: 0.0,
+        ..Default::default()
     };
     assert_eq!(kline.channel(), Channel::Kline);
 
@@ -72,6 +76,7 @@ fn channel_enum_matches_events() {
         first_update_id: None,
         final_update_id: None,
         previous_final_update_id: None,
+        ..Default::default()
     };
     assert_eq!(depth_update.channel(), Channel::Depth);
 
@@ -82,6 +87,7 @@ fn channel_enum_matches_events() {
         last_update_id: 0,
         bids: vec![sample_level(BookKind::Bid)],
         asks: vec![sample_level(BookKind::Ask)],
+        ..Default::default()
     };
     assert_eq!(depth_snapshot.channel(), Channel::Depth);
 
@@ -90,6 +96,7 @@ fn channel_enum_matches_events() {
         symbol: "sym".into(),
         ts: 0,
         price: 0.0,
+        ..Default::default()
     };
     assert_eq!(avg_price.channel(), Channel::AvgPrice);
 
@@ -98,6 +105,7 @@ fn channel_enum_matches_events() {
         symbol: "sym".into(),
         ts: 0,
         price: 0.0,
+        ..Default::default()
     };
     assert_eq!(mark_price.channel(), Channel::MarkPrice);
 
@@ -106,6 +114,7 @@ fn channel_enum_matches_events() {
         symbol: "sym".into(),
         ts: 0,
         price: 0.0,
+        ..Default::default()
     };
     assert_eq!(index_price.channel(), Channel::IndexPrice);
 
@@ -114,6 +123,7 @@ fn channel_enum_matches_events() {
         symbol: "sym".into(),
         ts: 0,
         rate: 0.0,
+        ..Default::default()
     };
     assert_eq!(funding.channel(), Channel::FundingRate);
 
@@ -122,6 +132,7 @@ fn channel_enum_matches_events() {
         symbol: "sym".into(),
         ts: 0,
         open_interest: 0.0,
+        ..Default::default()
     };
     assert_eq!(oi.channel(), Channel::OpenInterest);
 
@@ -131,6 +142,7 @@ fn channel_enum_matches_events() {
         ts: 0,
         price: 0.0,
         quantity: 0.0,
+        ..Default::default()
     };
     assert_eq!(liq.channel(), Channel::Liquidation);
 

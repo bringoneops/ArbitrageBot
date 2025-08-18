@@ -39,7 +39,7 @@ pub enum MdEvent {
     Liquidation(Liquidation),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Trade {
     pub exchange: String,
     pub symbol: String,
@@ -50,6 +50,9 @@ pub struct Trade {
     pub seller_order_id: Option<u64>,
     pub timestamp: u64,
     pub side: Option<Side>,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -71,7 +74,7 @@ pub enum BookKind {
     Ask,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DepthL2Update {
     pub exchange: String,
     pub symbol: String,
@@ -81,9 +84,12 @@ pub struct DepthL2Update {
     pub first_update_id: Option<u64>,
     pub final_update_id: Option<u64>,
     pub previous_final_update_id: Option<u64>,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct BookTicker {
     pub exchange: String,
     pub symbol: String,
@@ -92,9 +98,12 @@ pub struct BookTicker {
     pub bid_quantity: f64,
     pub ask_price: f64,
     pub ask_quantity: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MiniTicker {
     pub exchange: String,
     pub symbol: String,
@@ -105,9 +114,12 @@ pub struct MiniTicker {
     pub close: f64,
     pub volume: f64,
     pub quote_volume: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Kline {
     pub exchange: String,
     pub symbol: String,
@@ -117,9 +129,12 @@ pub struct Kline {
     pub high: f64,
     pub low: f64,
     pub volume: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DepthSnapshot {
     pub exchange: String,
     pub symbol: String,
@@ -127,55 +142,76 @@ pub struct DepthSnapshot {
     pub last_update_id: u64,
     pub bids: Vec<Level>,
     pub asks: Vec<Level>,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AvgPrice {
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
     pub price: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MarkPrice {
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
     pub price: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct IndexPrice {
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
     pub price: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct FundingRate {
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
     pub rate: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct OpenInterest {
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
     pub open_interest: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Liquidation {
     pub exchange: String,
     pub symbol: String,
     pub ts: u64,
     pub price: f64,
     pub quantity: f64,
+    pub ingest_ts_monotonic: u64,
+    pub ingest_ts_utc: u64,
+    pub seq_no: u64,
 }
 
 impl<'a> From<TradeEvent<'a>> for Trade {
@@ -197,6 +233,7 @@ impl<'a> From<TradeEvent<'a>> for Trade {
             seller_order_id: Some(ev.seller_order_id),
             timestamp: ev.trade_time * 1_000_000,
             side: Some(side),
+            ..Default::default()
         }
     }
 }
@@ -250,6 +287,7 @@ impl<'a> From<DepthUpdateEvent<'a>> for DepthL2Update {
             first_update_id: Some(ev.first_update_id),
             final_update_id: Some(ev.final_update_id),
             previous_final_update_id: Some(ev.previous_final_update_id),
+            ..Default::default()
         }
     }
 }
@@ -290,6 +328,7 @@ impl<'a> From<BookTickerEvent<'a>> for BookTicker {
             bid_quantity,
             ask_price,
             ask_quantity,
+            ..Default::default()
         }
     }
 }
@@ -323,6 +362,7 @@ impl<'a> From<MiniTickerEvent<'a>> for MiniTicker {
             close,
             volume,
             quote_volume,
+            ..Default::default()
         }
     }
 }
@@ -345,6 +385,7 @@ impl<'a> From<KlineEvent<'a>> for Kline {
             high: k.high_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
             low: k.low_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
             volume: k.volume_decimal().unwrap_or_default().to_f64().unwrap_or_default(),
+            ..Default::default()
         }
     }
 }
@@ -386,6 +427,7 @@ impl From<CoreDepthSnapshot> for DepthSnapshot {
             last_update_id: s.last_update_id,
             bids,
             asks,
+            ..Default::default()
         }
     }
 }
@@ -409,6 +451,7 @@ impl<'a> From<TickerEvent<'a>> for AvgPrice {
             symbol,
             ts: ev.event_time,
             price,
+            ..Default::default()
         }
     }
 }
@@ -431,6 +474,7 @@ impl<'a> From<MarkPriceEvent<'a>> for MarkPrice {
             symbol: ev.symbol,
             ts: ev.event_time,
             price,
+            ..Default::default()
         }
     }
 }
@@ -453,6 +497,7 @@ impl<'a> From<IndexPriceEvent<'a>> for IndexPrice {
             symbol: ev.symbol,
             ts: ev.event_time,
             price,
+            ..Default::default()
         }
     }
 }
@@ -475,6 +520,7 @@ impl<'a> From<FundingRateEvent<'a>> for FundingRate {
             symbol: ev.symbol,
             ts: ev.event_time,
             rate,
+            ..Default::default()
         }
     }
 }
@@ -497,6 +543,7 @@ impl<'a> From<OpenInterestEvent<'a>> for OpenInterest {
             symbol: ev.symbol,
             ts: ev.event_time,
             open_interest,
+            ..Default::default()
         }
     }
 }
@@ -527,6 +574,7 @@ impl<'a> From<ForceOrderEvent<'a>> for Liquidation {
             ts: ev.event_time,
             price,
             quantity,
+            ..Default::default()
         }
     }
 }
@@ -576,8 +624,7 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                     buyer_order_id: t.buyer_order_id,
                     seller_order_id: t.seller_order_id,
                     timestamp: t.trade_time * 1_000_000,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             BingxStreamMessage::DepthUpdate(d) => {
                 let bids = d
@@ -610,8 +657,7 @@ impl<'a> TryFrom<BingxStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: d.first_update_id,
                     final_update_id: d.final_update_id,
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             BingxStreamMessage::Unknown => Err(()),
         }
@@ -644,8 +690,7 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 buyer_order_id: None,
                 seller_order_id: None,
                 timestamp: t.ts,
-                side,
-            }))
+                side, ..Default::default()}))
         } else if channel == "depth" {
             let d: BitgetDepthEvent = serde_json::from_value(v).map_err(|_| ())?;
             let bids = d
@@ -678,8 +723,7 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 asks,
                 first_update_id: None,
                 final_update_id: None,
-                previous_final_update_id: None,
-            }))
+                previous_final_update_id: None, ..Default::default()}))
         } else if channel == "ticker" {
             let t: BitgetTickerEvent = serde_json::from_value(v).map_err(|_| ())?;
             Ok(MdEvent::BookTicker(BookTicker {
@@ -689,8 +733,7 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 bid_price: t.bid_price.parse().ok().ok_or(())?,
                 bid_quantity: t.bid_qty.parse().ok().ok_or(())?,
                 ask_price: t.ask_price.parse().ok().ok_or(())?,
-                ask_quantity: t.ask_qty.parse().ok().ok_or(())?,
-            }))
+                ask_quantity: t.ask_qty.parse().ok().ok_or(())?, ..Default::default()}))
         } else if channel.starts_with("candle") {
             let arr = v.as_array().ok_or(())?;
             if arr.len() < 6 {
@@ -710,8 +753,7 @@ impl<'a> TryFrom<BitgetStreamMessage<'a>> for MdEvent {
                 close,
                 high,
                 low,
-                volume,
-            }))
+                volume, ..Default::default()}))
         } else {
             Err(())
         }
@@ -742,8 +784,7 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 buyer_order_id: None,
                 seller_order_id: None,
                 timestamp: t.trade_time * 1_000_000,
-                side,
-            }))
+                side, ..Default::default()}))
         } else if table.contains("depth") {
             let d: BitmartDepthEvent = serde_json::from_value(v).map_err(|_| ())?;
             let bids = d
@@ -776,8 +817,7 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 asks,
                 first_update_id: None,
                 final_update_id: d.version,
-                previous_final_update_id: d.prev_version,
-            }))
+                previous_final_update_id: d.prev_version, ..Default::default()}))
         } else if table.contains("ticker") {
             let t: BitmartTickerEvent = serde_json::from_value(v).map_err(|_| ())?;
             Ok(MdEvent::BookTicker(BookTicker {
@@ -787,8 +827,7 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 bid_price: t.best_bid.parse().ok().ok_or(())?,
                 bid_quantity: t.best_bid_size.parse().ok().ok_or(())?,
                 ask_price: t.best_ask.parse().ok().ok_or(())?,
-                ask_quantity: t.best_ask_size.parse().ok().ok_or(())?,
-            }))
+                ask_quantity: t.best_ask_size.parse().ok().ok_or(())?, ..Default::default()}))
         } else if table.contains("kline") {
             let k: BitmartKlineEvent = serde_json::from_value(v).map_err(|_| ())?;
             Ok(MdEvent::Kline(Kline {
@@ -799,16 +838,14 @@ impl<'a> TryFrom<BitmartStreamMessage<'a>> for MdEvent {
                 close: k.close.parse().ok().ok_or(())?,
                 high: k.high.parse().ok().ok_or(())?,
                 low: k.low.parse().ok().ok_or(())?,
-                volume: k.volume.parse().ok().ok_or(())?,
-            }))
+                volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
         } else if table.contains("fundingRate") {
             let f: BitmartFundingRateEvent = serde_json::from_value(v).map_err(|_| ())?;
             Ok(MdEvent::FundingRate(FundingRate {
                 exchange: "bitmart".to_string(),
                 symbol: f.symbol,
                 ts: f.funding_time,
-                rate: f.funding_rate.parse().ok().ok_or(())?,
-            }))
+                rate: f.funding_rate.parse().ok().ok_or(())?, ..Default::default()}))
         } else {
             Err(())
         }
@@ -841,8 +878,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: t.trade_time,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             "depth.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -879,8 +915,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             "bbo.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -893,8 +928,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     bid_price: bbo.bid_price.parse().ok().ok_or(())?,
                     bid_quantity: bbo.bid_qty.parse().ok().ok_or(())?,
                     ask_price: bbo.ask_price.parse().ok().ok_or(())?,
-                    ask_quantity: bbo.ask_qty.parse().ok().ok_or(())?,
-                }))
+                    ask_quantity: bbo.ask_qty.parse().ok().ok_or(())?, ..Default::default()}))
             }
             "kline.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -910,8 +944,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     close: k.close.parse().ok().ok_or(())?,
                     high: k.high.parse().ok().ok_or(())?,
                     low: k.low.parse().ok().ok_or(())?,
-                    volume: k.volume.parse().ok().ok_or(())?,
-                }))
+                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
             }
             "index.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -927,8 +960,7 @@ impl<'a> TryFrom<CoinexStreamMessage<'a>> for MdEvent {
                     exchange: "coinex".to_string(),
                     symbol: symbol.to_string(),
                     ts: 0,
-                    price,
-                }))
+                    price, ..Default::default()}))
             }
             _ => Err(()),
         }
@@ -957,8 +989,7 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: deal.trade_time,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             MexcEvent::Depth { data } => {
                 let bids = data
@@ -991,8 +1022,7 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             MexcEvent::BookTicker { data } => {
                 let bid_price: f64 = data.bid_price.parse().ok().ok_or(())?;
@@ -1006,8 +1036,7 @@ impl<'a> TryFrom<MexcStreamMessage<'a>> for MdEvent {
                     bid_price,
                     bid_quantity,
                     ask_price,
-                    ask_quantity,
-                }))
+                    ask_quantity, ..Default::default()}))
             }
         }
     }
@@ -1039,8 +1068,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: trade.create_time_ms,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             "depth.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -1081,8 +1109,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: depth.id,
                     final_update_id: depth.id,
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             "kline.update" => {
                 let symbol = msg.params.get(0).and_then(|v| v.as_str()).ok_or(())?;
@@ -1098,8 +1125,7 @@ impl<'a> TryFrom<GateioStreamMessage<'a>> for MdEvent {
                     close: k.close.parse().ok().ok_or(())?,
                     high: k.high.parse().ok().ok_or(())?,
                     low: k.low.parse().ok().ok_or(())?,
-                    volume: k.volume.parse().ok().ok_or(())?,
-                }))
+                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
             }
             _ => Err(()),
         }
@@ -1127,8 +1153,7 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: trade.trade_time * 1_000_000,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             XtEvent::Depth(d) if channel == "depth" => {
                 let bids = d
@@ -1161,8 +1186,7 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             XtEvent::Kline(k) if channel == "kline" => Ok(MdEvent::Kline(Kline {
                 exchange: "xt".to_string(),
@@ -1172,8 +1196,7 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                 close: k.close.parse().ok().ok_or(())?,
                 high: k.high.parse().ok().ok_or(())?,
                 low: k.low.parse().ok().ok_or(())?,
-                volume: k.volume.parse().ok().ok_or(())?,
-            })),
+                volume: k.volume.parse().ok().ok_or(())?, ..Default::default()})),
             XtEvent::Ticker(t) if channel == "ticker" => Ok(MdEvent::BookTicker(BookTicker {
                 exchange: "xt".to_string(),
                 symbol: symbol.to_string(),
@@ -1181,8 +1204,7 @@ impl<'a> TryFrom<XtStreamMessage<'a>> for MdEvent {
                 bid_price: t.bid_price.parse().ok().ok_or(())?,
                 bid_quantity: t.bid_qty.parse().ok().ok_or(())?,
                 ask_price: t.ask_price.parse().ok().ok_or(())?,
-                ask_quantity: t.ask_qty.parse().ok().ok_or(())?,
-            })),
+                ask_quantity: t.ask_qty.parse().ok().ok_or(())?, ..Default::default()})),
             _ => Err(()),
         }
     }
@@ -1213,8 +1235,7 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: t.timestamp * 1_000_000,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             "depth" | "orderbook" => {
                 let d: LatokenDepthEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1248,8 +1269,7 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: d.first_update_id,
                     final_update_id: d.final_update_id,
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             "kline" => {
                 let k: LatokenKlineEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1261,8 +1281,7 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     close: k.close.parse().ok().ok_or(())?,
                     high: k.high.parse().ok().ok_or(())?,
                     low: k.low.parse().ok().ok_or(())?,
-                    volume: k.volume.parse().ok().ok_or(())?,
-                }))
+                    volume: k.volume.parse().ok().ok_or(())?, ..Default::default()}))
             }
             "ticker" => {
                 let t: LatokenTickerEvent = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1273,8 +1292,7 @@ impl<'a> TryFrom<LatokenStreamMessage<'a>> for MdEvent {
                     bid_price: t.bid_price.parse().ok().ok_or(())?,
                     bid_quantity: t.bid_qty.parse().ok().unwrap_or_default(),
                     ask_price: t.ask_price.parse().ok().ok_or(())?,
-                    ask_quantity: t.ask_qty.parse().ok().unwrap_or_default(),
-                }))
+                    ask_quantity: t.ask_qty.parse().ok().unwrap_or_default(), ..Default::default()}))
             }
             _ => Err(()),
         }
@@ -1302,8 +1320,7 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: 0,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             LbankStreamMessage::Depth { pair, depth } => {
                 let bids = depth
@@ -1336,8 +1353,7 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                     asks,
                     first_update_id: None,
                     final_update_id: None,
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             LbankStreamMessage::Kbar { pair, kbar } => Ok(MdEvent::Kline(Kline {
                 exchange: "lbank".to_string(),
@@ -1347,8 +1363,7 @@ impl<'a> TryFrom<LbankStreamMessage<'a>> for MdEvent {
                 close: kbar.close.parse().ok().ok_or(())?,
                 high: kbar.high.parse().ok().ok_or(())?,
                 low: kbar.low.parse().ok().ok_or(())?,
-                volume: kbar.volume.parse().ok().ok_or(())?,
-            })),
+                volume: kbar.volume.parse().ok().ok_or(())?, ..Default::default()})),
             LbankStreamMessage::Unknown => Err(()),
         }
     }
@@ -1376,8 +1391,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     buyer_order_id: None,
                     seller_order_id: None,
                     timestamp: data.trade_time,
-                    side,
-                }))
+                    side, ..Default::default()}))
             }
             "trade.l2update" => {
                 let data: KucoinLevel2 = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1417,8 +1431,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     asks,
                     first_update_id: Some(data.sequence_start),
                     final_update_id: Some(data.sequence_end),
-                    previous_final_update_id: None,
-                }))
+                    previous_final_update_id: None, ..Default::default()}))
             }
             "trade.candles.update" => {
                 let data: KucoinKline = serde_json::from_value(msg.data).map_err(|_| ())?;
@@ -1435,8 +1448,7 @@ impl TryFrom<KucoinStreamMessage> for MdEvent {
                     close,
                     high,
                     low,
-                    volume,
-                }))
+                    volume, ..Default::default()}))
             }
             _ => Err(()),
         }
