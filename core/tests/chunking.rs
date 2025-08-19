@@ -5,7 +5,7 @@ use std::collections::HashSet;
 #[test]
 fn chunks_do_not_exceed_hundred_streams() {
     // Create mock symbols to generate more than one chunk
-    let symbols: Vec<String> = (0..4).map(|i| format!("SYM{}", i)).collect();
+    let symbols: Vec<String> = (0..4).map(|i| format!("SYM{i}")).collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
     let chunks = chunk_streams(&symbol_refs, 100);
 
@@ -43,7 +43,7 @@ fn returns_expected_number_of_chunks() {
         .sum::<usize>();
     let per_symbol = one_symbol_count - global_count;
 
-    let symbols: Vec<String> = (0..2).map(|i| format!("SYM{}", i)).collect();
+    let symbols: Vec<String> = (0..2).map(|i| format!("SYM{i}")).collect();
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
     let expected_total = global_count + symbol_refs.len() * per_symbol;
     let expected_chunks = expected_total.div_ceil(chunk_size);

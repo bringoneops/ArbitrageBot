@@ -43,7 +43,7 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
         .use_preconfigured_tls(tls_config);
     if let Some(proxy) = cfg.proxy_url.as_ref().filter(|p| !p.is_empty()) {
         client_builder = client_builder
-            .proxy(Proxy::all(format!("socks5h://{}", proxy)).context("invalid proxy URL")?);
+            .proxy(Proxy::all(format!("socks5h://{proxy}")).context("invalid proxy URL")?);
     }
     client_builder.build().context("building HTTP client")
 }
@@ -245,7 +245,7 @@ pub async fn run() -> Result<()> {
     debug!(?cfg, "loaded config");
 
     let tls_config = tls::build_tls_config(cfg.ca_bundle.as_deref(), &cfg.cert_pins)?;
-    let client = build_client(&cfg, tls_config.clone())?;
+    let client = build_client(cfg, tls_config.clone())?;
 
     let metrics_enabled = core::config::metrics_enabled();
     ops::serve_all(metrics_enabled)?;
