@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use lru::LruCache;
 use once_cell::sync::Lazy;
 use reqwest::{Client, Proxy};
-use rustls::ClientConfig;
+use tokio_rustls::rustls::ClientConfig;
 use std::future::Future;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, num::NonZeroUsize, sync::Arc};

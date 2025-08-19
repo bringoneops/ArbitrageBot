@@ -12,7 +12,7 @@ anyhow = "1"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.17", optional = true }
 metrics-exporter-dogstatsd = { version = "0.9", optional = true }
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
+tokio-rustls = { version = "0.24", features = ["dangerous_configuration"], default-features = false }
 rustls-pemfile = "1"
 rustls-native-certs = "0.6"
 sha2 = "0.10"

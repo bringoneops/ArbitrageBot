@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rustls::{client::WebPkiVerifier, Certificate, ClientConfig, RootCertStore};
+use tokio_rustls::rustls::{client::WebPkiVerifier, Certificate, ClientConfig, RootCertStore};
 use rustls_native_certs::load_native_certs;
 use rustls_pemfile::certs;
 use sha2::{Digest, Sha256};
@@ -17,16 +17,16 @@ impl PinnedVerifier {
     }
 }
 
-impl rustls::client::ServerCertVerifier for PinnedVerifier {
+impl tokio_rustls::rustls::client::ServerCertVerifier for PinnedVerifier {
     fn verify_server_cert(
         &self,
         end_entity: &Certificate,
         intermediates: &[Certificate],
-        server_name: &rustls::client::ServerName,
+        server_name: &tokio_rustls::rustls::client::ServerName,
         scts: &mut dyn Iterator<Item = &[u8]>,
         ocsp: &[u8],
         now: SystemTime,
-    ) -> std::result::Result<rustls::client::ServerCertVerified, rustls::Error> {
+    ) -> std::result::Result<tokio_rustls::rustls::client::ServerCertVerified, tokio_rustls::rustls::Error> {
         self.inner
             .verify_server_cert(end_entity, intermediates, server_name, scts, ocsp, now)?;
         let fingerprint = Sha256::digest(&end_entity.0);
@@ -35,9 +35,9 @@ impl rustls::client::ServerCertVerifier for PinnedVerifier {
             .iter()
             .any(|p| p.as_slice().ct_eq(fingerprint.as_slice()).into())
         {
-            Ok(rustls::client::ServerCertVerified::assertion())
+            Ok(tokio_rustls::rustls::client::ServerCertVerified::assertion())
         } else {
-            Err(rustls::Error::General("certificate pin mismatch".into()))
+            Err(tokio_rustls::rustls::Error::General("certificate pin mismatch".into()))
         }
     }
 }
