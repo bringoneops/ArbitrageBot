@@ -68,8 +68,8 @@ fn bench_ingestor(c: &mut Criterion) {
 
     let p99 = latency.borrow().value_at_percentile(99.0);
     let alloc_p99 = allocs.borrow().value_at_percentile(99.0);
-    println!("p99 latency: {} ns", p99);
-    println!("p99 allocations: {}", alloc_p99);
+    println!("p99 latency: {p99} ns");
+    println!("p99 allocations: {alloc_p99}");
 }
 
 criterion_group!(benches, bench_ingestor);

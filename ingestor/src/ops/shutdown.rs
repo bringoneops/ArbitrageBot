@@ -35,7 +35,7 @@ pub fn install(join_set: TaskSet) {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(8080);
-        let url = format!("http://127.0.0.1:{}/healthz", port);
+        let url = format!("http://127.0.0.1:{port}/healthz");
         let client = Client::new();
         if let Err(e) = client.get(url).send().await {
             error!("healthz check failed: {e}");
