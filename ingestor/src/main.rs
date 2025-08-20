@@ -253,6 +253,7 @@ pub async fn run() -> Result<()> {
 
     let sink: Arc<dyn Sink> = if let Ok(brokers) = env::var("MD_SINK_KAFKA_BROKERS") {
         if brokers.is_empty() {
+            // Default to a local JSON Lines file when MD_SINK_FILE is not set.
             let sink_path = env::var("MD_SINK_FILE").unwrap_or_else(|_| "output.jsonl".into());
             Arc::new(FileSink::new(sink_path).await?)
         } else {
@@ -261,6 +262,7 @@ pub async fn run() -> Result<()> {
             Arc::new(Wal::new(wal_path, kafka).await?)
         }
     } else {
+        // Default to a local JSON Lines file when MD_SINK_FILE is not set.
         let sink_path = env::var("MD_SINK_FILE").unwrap_or_else(|_| "output.jsonl".into());
         Arc::new(FileSink::new(sink_path).await?)
     };
