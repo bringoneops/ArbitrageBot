@@ -117,6 +117,21 @@ static BINGX_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
     from_slice(&mut data).expect("invalid bingx stream configuration")
 });
 
+static OKX_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams/okx.json").to_vec();
+    from_slice(&mut data).expect("invalid okx stream configuration")
+});
+
+static COINBASE_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams/coinbase.json").to_vec();
+    from_slice(&mut data).expect("invalid coinbase stream configuration")
+});
+
+static KRAKEN_STREAM_CONFIG: Lazy<StreamConfig> = Lazy::new(|| {
+    let mut data = include_bytes!("../../streams/kraken.json").to_vec();
+    from_slice(&mut data).expect("invalid kraken stream configuration")
+});
+
 /// Returns the default stream configuration.
 pub fn default_stream_config() -> &'static StreamConfig {
     &STREAM_CONFIG
@@ -140,6 +155,9 @@ pub fn stream_config_for_exchange(name: &str) -> &'static StreamConfig {
         "CoinEx Perpetual" => &COINEX_PERPETUAL_STREAM_CONFIG,
         "LATOKEN" => &LATOKEN_STREAM_CONFIG,
         "Bitget" => &BITGET_STREAM_CONFIG,
+        "OKX" => &OKX_STREAM_CONFIG,
+        "Coinbase" => &COINBASE_STREAM_CONFIG,
+        "Kraken" => &KRAKEN_STREAM_CONFIG,
         _ => default_stream_config(),
     }
 }
