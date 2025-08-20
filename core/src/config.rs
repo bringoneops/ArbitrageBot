@@ -159,6 +159,27 @@ fn parse_list_env(var: &str) -> Vec<String> {
         .collect()
 }
 
+/// Translate user-friendly exchange identifiers to the registered adapter IDs.
+///
+/// Keep this mapping in sync with the `EXCHANGES` documentation in README.md.
+fn resolve_exchange_id(id: &str) -> String {
+    let norm = id.to_lowercase().replace('-', "_");
+    match norm.as_str() {
+        "binance" | "binance_global" | "binance_spot" => "binance_global_spot".into(),
+        "binance_us" | "binanceus" => "binance_us_spot".into(),
+        "bingx" => "bingx_spot".into(),
+        "bitmart" => "bitmart_spot".into(),
+        "coinex" => "coinex_spot".into(),
+        "gateio" => "gateio_spot".into(),
+        "kucoin" => "kucoin_spot".into(),
+        "latoken" => "latoken_spot".into(),
+        "lbank" => "lbank_spot".into(),
+        "mexc" => "mexc_spot".into(),
+        "xt" => "xt_spot".into(),
+        other => other.to_string(),
+    }
+}
+
 /* --------------------------------- Config -------------------------------- */
 
 impl Config {
@@ -183,6 +204,7 @@ impl Config {
         let exchange_ids = parse_list_env("EXCHANGES");
         let exchanges = exchange_ids
             .into_iter()
+            .map(|id| resolve_exchange_id(&id))
             .map(|id| {
                 let var = format!("{}_SYMBOLS", id.to_uppercase());
                 let symbols = match parse_symbols_env(&var) {
@@ -331,5 +353,13 @@ mod tests {
         env::remove_var("PARSE_LIST_ENV_TEST_MISSING");
         let result = parse_list_env("PARSE_LIST_ENV_TEST_MISSING");
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn exchange_aliases_are_resolved() {
+        assert_eq!(resolve_exchange_id("binance"), "binance_global_spot");
+        assert_eq!(resolve_exchange_id("binance-us"), "binance_us_spot");
+        assert_eq!(resolve_exchange_id("BITMART"), "bitmart_spot");
+        assert_eq!(resolve_exchange_id("binance_futures"), "binance_futures");
     }
 }

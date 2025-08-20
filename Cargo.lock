@@ -33,6 +33,7 @@ dependencies = [
  "metrics-util",
  "once_cell",
  "rand 0.8.5",
+ "regex",
  "reqwest",
  "rustls 0.21.12",
  "serde",
