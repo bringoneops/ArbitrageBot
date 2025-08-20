@@ -289,6 +289,9 @@ pub async fn spawn_adapters(
     adapter::latoken::register();
     adapter::lbank::register();
     adapter::bitget::register();
+    adapter::okx::register();
+    adapter::coinbase::register();
+    adapter::kraken::register();
 
     let mut receivers = Vec::new();
 
