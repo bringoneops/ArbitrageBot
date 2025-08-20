@@ -40,7 +40,8 @@ fn build_client(cfg: &config::Config, tls_config: Arc<ClientConfig>) -> Result<C
     let mut client_builder = Client::builder()
         .timeout(Duration::from_secs(cfg.http_timeout_secs))
         .user_agent(user_agent)
-        .use_preconfigured_tls(tls_config);
+        // Clone the underlying TLS config so reqwest receives a concrete `ClientConfig`
+        .use_preconfigured_tls(tls_config.as_ref().clone());
     if let Some(proxy) = cfg.proxy_url.as_ref().filter(|p| !p.is_empty()) {
         client_builder = client_builder
             .proxy(Proxy::all(format!("socks5h://{proxy}")).context("invalid proxy URL")?);
