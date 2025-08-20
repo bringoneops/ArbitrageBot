@@ -109,6 +109,7 @@ The binary can be configured via environment variables:
 - `WS_BURST` – maximum burst of WebSocket messages. Defaults to `5`.
 - `WS_REFILL_PER_SEC` – WebSocket token refill rate per second. Defaults to `5`.
 - `CERT_PINS` – comma-separated list of SHA-256 certificate fingerprints in hex.
+- `EXCHANGES` – comma-separated list of exchange adapter IDs to enable. Supported IDs: `binance_us_spot`, `binance_global_spot`, `binance_futures`, `binance_delivery`, `binance_options`, `bingx_spot`, `bingx_swap`, `bitget`, `bitmart_spot`, `bitmart_contract`, `coinex_spot`, `coinex_perpetual`, `gateio_spot`, `gateio_futures`, `kucoin_spot`, `kucoin_futures`, `latoken_spot`, `lbank_spot`, `mexc_spot`, `xt_spot`, `xt_futures`.
 
 Example using a local proxy:
 

@@ -305,7 +305,12 @@ pub async fn spawn_adapters(
             .await?;
             receivers.append(&mut res);
         } else {
-            error!("No adapter factory registered for {}", exch.id);
+            let available = registry::registered_ids();
+            error!(
+                "No adapter factory registered for {}. Supported exchanges: {}",
+                exch.id,
+                available.join(", ")
+            );
         }
     }
 

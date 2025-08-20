@@ -35,3 +35,8 @@ pub fn register_adapter(id: &'static str, factory: AdapterFactory) {
 pub fn get_adapter(id: &str) -> Option<AdapterFactory> {
     REGISTRY.get(id).map(|f| f.value().clone())
 }
+
+/// Return a list of all exchange identifiers with registered factories.
+pub fn registered_ids() -> Vec<&'static str> {
+    REGISTRY.iter().map(|entry| *entry.key()).collect()
+}
