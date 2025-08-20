@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use arb_core as core;
 use dashmap::DashMap;
 use reqwest::Client;
@@ -315,6 +315,11 @@ pub async fn spawn_adapters(
                 available.join(", ")
             );
         }
+    }
+    if receivers.is_empty() {
+        return Err(anyhow!(
+            "no adapters were started due to unrecognized exchange IDs"
+        ));
     }
 
     Ok(receivers)

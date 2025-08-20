@@ -38,6 +38,7 @@ dependencies = [
  "rustls 0.21.12",
  "serde",
  "serde_json",
+ "serial_test",
  "simd-json",
  "tokio",
  "tokio-socks",
