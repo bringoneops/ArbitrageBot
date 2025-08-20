@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use lru::LruCache;
 use once_cell::sync::Lazy;
 use reqwest::{Client, Proxy};
-use tokio_rustls::rustls::ClientConfig;
 use std::future::Future;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, num::NonZeroUsize, sync::Arc};
@@ -11,6 +10,7 @@ use tokio::{
     sync::{mpsc, Mutex},
     task::JoinSet,
 };
+use tokio_rustls::rustls::ClientConfig;
 use tracing::{debug, error};
 use tracing_subscriber::EnvFilter;
 
@@ -253,7 +253,7 @@ pub async fn run() -> Result<()> {
 
     let sink: Arc<dyn Sink> = if let Ok(brokers) = env::var("MD_SINK_KAFKA_BROKERS") {
         if brokers.is_empty() {
-            let sink_path = env::var("MD_SINK_FILE").context("MD_SINK_FILE is not set")?;
+            let sink_path = env::var("MD_SINK_FILE").unwrap_or_else(|_| "output.jsonl".into());
             Arc::new(FileSink::new(sink_path).await?)
         } else {
             let wal_path = env::var("MD_SINK_WAL_FILE").unwrap_or_else(|_| "md.wal".into());
@@ -261,7 +261,7 @@ pub async fn run() -> Result<()> {
             Arc::new(Wal::new(wal_path, kafka).await?)
         }
     } else {
-        let sink_path = env::var("MD_SINK_FILE").context("MD_SINK_FILE is not set")?;
+        let sink_path = env::var("MD_SINK_FILE").unwrap_or_else(|_| "output.jsonl".into());
         Arc::new(FileSink::new(sink_path).await?)
     };
 
